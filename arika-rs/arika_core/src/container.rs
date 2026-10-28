@@ -86,6 +86,14 @@ pub fn group_by_magic(chunks: &[Chunk]) -> HashMap<String, Vec<&Chunk>> {
     map
 }
 
+pub fn u16_at(data: &[u8], offset: usize) -> Result<u16> {
+    if offset + 2 > data.len() {
+        return Err(ArikaError::Other("truncated u16".into()));
+    }
+    let mut c = Cursor::new(&data[offset..offset + 2]);
+    Ok(c.read_u16::<LittleEndian>()?)
+}
+
 pub fn u32_at(data: &[u8], offset: usize) -> Result<u32> {
     if offset + 4 > data.len() {
         return Err(ArikaError::Other("truncated u32".into()));
@@ -141,4 +149,57 @@ pub fn string_list(data: &[u8], count: usize) -> Result<Vec<String>> {
         at = end + 1;
     }
     Ok(names)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_container_fpix() {
+        // Match Python test_container: FPIX with one XPIX chunk containing TIM2.
+        let chunk = {
+            let mut c = Vec::new();
+            c.extend_from_slice(b"XPIX");
+            c.extend_from_slice(&40u32.to_le_bytes());
+            c.extend_from_slice(&vec![0u8; 24]);
+            c.extend_from_slice(b"TIM2abcd");
+            c
+        };
+        let mut data = Vec::new();
+        data.extend_from_slice(b"FPIX");
+        data.extend_from_slice(&(36u32 + chunk.len() as u32).to_le_bytes());
+        data.extend_from_slice(&1u32.to_le_bytes());
+        data.extend_from_slice(&0x100u32.to_le_bytes());
+        data.extend_from_slice(&vec![0u8; 16]);
+        data.extend_from_slice(&36u32.to_le_bytes());
+        data.extend_from_slice(&chunk);
+
+        let chunks = parse_directory(&data, Some(b"FPIX")).expect("parse");
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(&chunks[0].magic, b"XPIX");
+        assert_eq!(chunks[0].data[..4], *b"XPIX");
+    }
+
+    #[test]
+    fn parse_container_rejects_truncated() {
+        let chunk = {
+            let mut c = Vec::new();
+            c.extend_from_slice(b"XPIX");
+            c.extend_from_slice(&40u32.to_le_bytes());
+            c.extend_from_slice(&vec![0u8; 24]);
+            c.extend_from_slice(b"TIM2abcd");
+            c
+        };
+        let mut data = Vec::new();
+        data.extend_from_slice(b"FPIX");
+        data.extend_from_slice(&(36u32 + chunk.len() as u32).to_le_bytes());
+        data.extend_from_slice(&1u32.to_le_bytes());
+        data.extend_from_slice(&0x100u32.to_le_bytes());
+        data.extend_from_slice(&vec![0u8; 16]);
+        data.extend_from_slice(&36u32.to_le_bytes());
+        data.extend_from_slice(&chunk);
+
+        assert!(parse_directory(&data[..data.len() - 1], Some(b"FPIX")).is_err());
+    }
 }

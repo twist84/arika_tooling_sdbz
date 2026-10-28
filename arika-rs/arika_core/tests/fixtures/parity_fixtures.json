@@ -1,0 +1,99 @@
+{
+  "stg": {
+    "names": [
+      "EFFECT",
+      "STAGE",
+      "MeshBody"
+    ],
+    "template_count": 0,
+    "roots": [
+      0,
+      1
+    ],
+    "node_count": 3,
+    "stage_root": "STAGE",
+    "mesh_instance": {
+      "name": "MeshBody",
+      "translation": [
+        1.0,
+        2.0,
+        3.0
+      ]
+    }
+  },
+  "hit": {
+    "object_count": 1,
+    "polygon_count": 1,
+    "vertex_count": 3,
+    "object_name": "test_obj",
+    "polygon_vertex_count": 3
+  },
+  "mot2": {
+    "fps": 60.0,
+    "frame_count": 7,
+    "node_count": 1,
+    "channel_counts": [
+      1,
+      1,
+      0
+    ],
+    "translation_values": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.0,
+        4.0,
+        6.0
+      ]
+    ],
+    "rotation_values": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ]
+    ],
+    "scale_animated": false
+  },
+  "tim2": {
+    "width": 2,
+    "height": 2,
+    "rgba_hex": "ff0000ff00ff00ff0000ffffffff00ff"
+  },
+  "cht": {
+    "byte_size": 4700,
+    "name_table": [
+      "test",
+      "common"
+    ],
+    "action_count": 1,
+    "motion_id": 232,
+    "variant_count": 2,
+    "v0_motion_name": "test",
+    "v0_resource_bank": 0,
+    "v0_child_blocks": {
+      "type_68": 1,
+      "type_36": 1,
+      "type_32": 3,
+      "type_12": 1
+    },
+    "v1_motion_name": "common",
+    "v1_resource_bank": 1
+  },
+  "rng": {
+    "seed_0_next": 0,
+    "seed_0_state_after": 1,
+    "seed_1_next": 1481765933,
+    "seed_1_state_after": 6364136223846793006
+  }
+}

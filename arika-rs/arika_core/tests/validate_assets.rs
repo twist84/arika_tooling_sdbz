@@ -126,6 +126,89 @@ fn mot2_sample() {
     let data = std::fs::read(fixtures().join("sample.mot2")).unwrap();
     let m = parse_mot2(&data).expect("mot2");
     assert_eq!(m.fps, 60.0);
-    assert_eq!(m.frame_count, 2);
+    assert_eq!(m.frame_count, 7);
     assert_eq!(m.nodes.len(), 1);
+}
+
+
+#[test]
+fn shared_python_rust_parity_manifest() {
+    // This manifest is also consumed by arika-py/test_arika_rust_parity.py.
+    let root = fixtures();
+    let expected: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(root.join("parity_fixtures.json")).expect("parity manifest"),
+    ).expect("valid parity manifest");
+
+    let stg = parse_stg(&std::fs::read(root.join("sample.stg")).unwrap()).unwrap();
+    let stg_expected = &expected["stg"];
+    assert_eq!(serde_json::to_value(&stg.names).unwrap(), stg_expected["names"]);
+    assert_eq!(stg.template_count, stg_expected["template_count"].as_u64().unwrap() as u32);
+    assert_eq!(serde_json::to_value(&stg.roots).unwrap(), stg_expected["roots"]);
+    assert_eq!(stg.nodes.len(), stg_expected["node_count"].as_u64().unwrap() as usize);
+    let stage_root = stg.roots[1];
+    assert_eq!(stg.nodes[stage_root].name, stg_expected["stage_root"].as_str().unwrap());
+    let instance = stage_instances(&stg).into_iter().find(|v| v.name == stg_expected["mesh_instance"]["name"].as_str().unwrap()).unwrap();
+    let expected_translation: Vec<f64> = stg_expected["mesh_instance"]["translation"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    for (actual, expected) in instance.translation.iter().zip(expected_translation) {
+        assert!((*actual as f64 - expected).abs() < 1e-6);
+    }
+
+    let hit = parse_hit(&std::fs::read(root.join("sample.hit")).unwrap()).unwrap();
+    let hit_expected = &expected["hit"];
+    assert_eq!(hit.objects.len(), hit_expected["object_count"].as_u64().unwrap() as usize);
+    assert_eq!(hit.polygons.len(), hit_expected["polygon_count"].as_u64().unwrap() as usize);
+    assert_eq!(hit.vertices.len(), hit_expected["vertex_count"].as_u64().unwrap() as usize);
+    assert_eq!(hit.objects[0].name, hit_expected["object_name"].as_str().unwrap());
+    assert_eq!(hit.polygons[0].vertex_count, hit_expected["polygon_vertex_count"].as_u64().unwrap() as u32);
+
+    let mot = parse_mot2(&std::fs::read(root.join("sample.mot2")).unwrap()).unwrap();
+    let mot_expected = &expected["mot2"];
+    assert_eq!(mot.fps as f64, mot_expected["fps"].as_f64().unwrap());
+    assert_eq!(mot.frame_count as u64, mot_expected["frame_count"].as_u64().unwrap());
+    assert_eq!(mot.nodes.len(), mot_expected["node_count"].as_u64().unwrap() as usize);
+    assert_eq!(serde_json::to_value([1, 1, 0]).unwrap(), mot_expected["channel_counts"]);
+    let expected_t = mot_expected["translation_values"].as_array().unwrap();
+    for (actual, expected) in mot.nodes[0].translation.values.iter().zip(expected_t) {
+        for (a, e) in actual.iter().zip(expected.as_array().unwrap()) {
+            assert!((*a as f64 - e.as_f64().unwrap()).abs() < 1e-6);
+        }
+    }
+    let expected_r = mot_expected["rotation_values"].as_array().unwrap();
+    for (actual, expected) in mot.nodes[0].rotation.values.iter().zip(expected_r) {
+        for (a, e) in actual.iter().zip(expected.as_array().unwrap()) {
+            assert!((*a as f64 - e.as_f64().unwrap()).abs() < 1e-6);
+        }
+    }
+    assert_eq!(mot.nodes[0].scale.animated, mot_expected["scale_animated"].as_bool().unwrap());
+
+    let tim2_data = std::fs::read(root.join("sample.tim2")).unwrap();
+    let image = decode_tim2(&tim2_data).unwrap();
+    let tim_expected = &expected["tim2"];
+    assert_eq!(image.width as u64, tim_expected["width"].as_u64().unwrap());
+    assert_eq!(image.height as u64, tim_expected["height"].as_u64().unwrap());
+    let rgba_hex: String = image.rgba.iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(rgba_hex, tim_expected["rgba_hex"].as_str().unwrap());
+
+    let cht_data = std::fs::read(root.join("sample.cht")).unwrap();
+    let cht = arika_core::cht::parse_cht(&cht_data).unwrap();
+    let cht_expected = &expected["cht"];
+    assert_eq!(cht.byte_size, cht_expected["byte_size"].as_u64().unwrap() as usize);
+    assert_eq!(serde_json::to_value(&cht.name_table).unwrap(), cht_expected["name_table"]);
+    assert_eq!(cht.actions.len(), cht_expected["action_count"].as_u64().unwrap() as usize);
+    let action = &cht.actions[0];
+    assert_eq!(action.motion_id, cht_expected["motion_id"].as_u64().unwrap() as u32);
+    assert_eq!(action.variants.len(), cht_expected["variant_count"].as_u64().unwrap() as usize);
+    assert_eq!(action.variants[0].motion_name, cht_expected["v0_motion_name"].as_str().unwrap());
+    assert_eq!(action.variants[0].resource_bank, cht_expected["v0_resource_bank"].as_u64().unwrap() as u16);
+    assert_eq!(serde_json::to_value(&action.variants[0].child_blocks).unwrap(), cht_expected["v0_child_blocks"]);
+    assert_eq!(action.variants[1].motion_name, cht_expected["v1_motion_name"].as_str().unwrap());
+    assert_eq!(action.variants[1].resource_bank, cht_expected["v1_resource_bank"].as_u64().unwrap() as u16);
+
+    let rng_expected = &expected["rng"];
+    let (s0, v0) = arika_core::rng::next_rng(0);
+    assert_eq!(v0, rng_expected["seed_0_next"].as_u64().unwrap() as u32);
+    assert_eq!(s0, rng_expected["seed_0_state_after"].as_u64().unwrap());
+    let (s1, v1) = arika_core::rng::next_rng(1);
+    assert_eq!(v1, rng_expected["seed_1_next"].as_u64().unwrap() as u32);
+    assert_eq!(s1, rng_expected["seed_1_state_after"].as_u64().unwrap());
 }

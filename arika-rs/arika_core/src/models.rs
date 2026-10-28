@@ -554,7 +554,7 @@ fn parse_xmod(
 
                 let mut jnts = [0u16; 4];
                 let mut wts = [0.0f32; 4];
-                let mut next = voff + slot * 16;
+                let next = voff + slot * 16;
 
                 if skinned {
                     if next + 32 <= data.len() {

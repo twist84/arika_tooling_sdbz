@@ -667,8 +667,13 @@ class c_viewport(QRenderWidget):
             self.m_gizmo_drag=None;self.unsetCursor();self.m_last=None;self.m_press=None;self.m_navigation_start=None;self.request_draw();return
         if e.button()==C.Qt.MouseButton.LeftButton and self.m_press is not None and not self.m_dragged and not self.m_navigation_start and self.m_renderer:
             width,height=self.get_physical_size();index=self.m_renderer.pick(int(e.position().x()*width/max(1,self.width())),int(e.position().y()*height/max(1,self.height())))
-            hidden=self.m_renderer.m_hidden if self.m_renderer is not None else (hidden_nodes(self.m_project.m_document) if self.m_project else set())
-            if self.m_isolated is not None and self.m_project and index not in self.m_renderer.selection_nodes_cached(self.m_isolated):index=-1
+            hidden=getattr(self.m_renderer,'m_hidden',None) if self.m_renderer is not None else None
+            if hidden is None:hidden=hidden_nodes(self.m_project.m_document) if self.m_project else set()
+            if self.m_isolated is not None and self.m_project:
+                scope=(self.m_renderer.selection_nodes_cached(self.m_isolated)
+                    if self.m_renderer is not None and hasattr(self.m_renderer,'selection_nodes_cached')
+                    else selection_nodes(self.m_project.m_document,self.m_isolated))
+                if index not in scope:index=-1
             if index not in hidden and any(i['index']==index and not i['collision'] for i in self.m_renderer.m_instances):self.selected.emit(index)
             else:index=-1
             additive=bool(e.modifiers()&(C.Qt.KeyboardModifier.ShiftModifier|C.Qt.KeyboardModifier.ControlModifier))
@@ -1119,7 +1124,7 @@ class c_scene_editor(W.QMainWindow):
         axis_locks=transform_locks(self.m_project.m_document,index)
         for field_index,(field,value) in enumerate(zip(self.m_fields,values if editable else [0]*9)):
             field.setValue(value);component=field_index//3;axis=field_index%3;component_name=('location','rotation','scale')[component]
-            field.setEnabled(editable and not locked and not axis_locks[component_name][axis]);field.setReadOnly(locked or axis_locks[component_name][axis])
+            field.setEnabled(editable and not axis_locks[component_name][axis]);field.setReadOnly(locked or axis_locks[component_name][axis])
         for field_index,check in self.m_axis_lock_checks.items():
             component=field_index//3;axis=field_index%3;component_name=('location','rotation','scale')[component]
             check.blockSignals(True);check.setChecked(axis_locks[component_name][axis]);check.setEnabled(editable and not locked);check.blockSignals(False)

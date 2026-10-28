@@ -72,9 +72,19 @@ def _quaternion_to_euler(q):
     if length <= 1e-12:
         raise ValueError('invalid rotation quaternion')
     x, y, z, w = x/length, y/length, z/length, w/length
-    return (math.atan2(2.0 * (w*x + y*z), 1.0 - 2.0 * (x*x + y*y)),
-            math.asin(max(-1.0, min(1.0, 2.0 * (w*y - z*x))),),
-            math.atan2(2.0 * (w*z + x*y), 1.0 - 2.0 * (y*y + z*z)))
+    sin_pitch = max(-1.0, min(1.0, 2.0 * (w*y - z*x)))
+    pitch = math.asin(sin_pitch)
+
+    # At +/-90 degrees of pitch, Euler roll and yaw are not independently
+    # defined. Choose yaw=0 for a stable canonical representation rather than
+    # letting floating-point noise produce (pi, pi/2, pi) for a pure Y rotation.
+    if abs(sin_pitch) >= 1.0 - 1e-10:
+        roll = math.atan2(2.0 * (w*x - y*z), 1.0 - 2.0 * (x*x + z*z))
+        yaw = 0.0
+    else:
+        roll = math.atan2(2.0 * (w*x + y*z), 1.0 - 2.0 * (x*x + y*y))
+        yaw = math.atan2(2.0 * (w*z + x*y), 1.0 - 2.0 * (y*y + z*z))
+    return (roll, pitch, yaw)
 
 
 def _multiply_quaternions(a, b):

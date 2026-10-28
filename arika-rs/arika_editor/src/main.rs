@@ -11,7 +11,7 @@ use bevy::render::RenderPlugin;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use egui_dock::{DockArea, DockState, Style, TabViewer};
+use egui_dock::TabViewer;
 use clap::Parser;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -178,6 +178,7 @@ fn apply_cli_args(mut state: ResMut<EditorState>) {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Resource)]
 struct EditorState {
     status: String,
@@ -205,6 +206,19 @@ struct EditorState {
     show_outliner: bool,
     show_properties: bool,
     show_console: bool,
+    show_asset_browser: bool,
+    view_mode: usize,
+    gizmo_mode: String,
+    transform_orientation: String,
+    pivot_mode: String,
+    viewport_grid: bool,
+    viewport_axes: bool,
+    viewport_highlight: bool,
+    viewport_cull: bool,
+    viewport_orthographic: bool,
+    viewport_background: [f32; 4],
+    recent_stages: Vec<String>,
+    recent_projects: Vec<String>,
     hierarchy: Vec<String>,
     mdl_path: String,
     pix_path: String,
@@ -224,6 +238,9 @@ struct EditorState {
     visible: std::collections::HashMap<String, bool>,
     locked: std::collections::HashMap<String, bool>,
     materials: Vec<arika_core::models::Material>,
+    textures: Vec<arika_core::models::TextureSlot>,
+    meshes: Vec<(String, usize, usize)>,
+    texture_previews: Vec<Option<egui::TextureHandle>>,
     dock_state: Option<egui_dock::DockState<DockTab>>,
 }
 
@@ -256,6 +273,19 @@ impl Default for EditorState {
             show_outliner: true,
             show_properties: true,
             show_console: true,
+            show_asset_browser: true,
+            view_mode: 0,
+            gizmo_mode: "transform".into(),
+            transform_orientation: "local".into(),
+            pivot_mode: "median".into(),
+            viewport_grid: true,
+            viewport_axes: true,
+            viewport_highlight: true,
+            viewport_cull: false,
+            viewport_orthographic: false,
+            viewport_background: [0.125, 0.635, 0.831, 1.0],
+            recent_stages: Vec::new(),
+            recent_projects: Vec::new(),
             hierarchy: vec!["(empty)".into()],
             mdl_path: String::new(),
             pix_path: String::new(),
@@ -275,9 +305,12 @@ impl Default for EditorState {
             visible: Default::default(),
             locked: Default::default(),
             materials: Vec::new(),
+            textures: Vec::new(),
+            meshes: Vec::new(),
+            texture_previews: Vec::new(),
             dock_state: {
                 let mut ds = egui_dock::DockState::new(vec![DockTab::Outliner]);
-                let [_o, props] = ds.main_surface_mut().split_below(egui_dock::NodeIndex::root(), 0.6, vec![DockTab::Properties, DockTab::Materials, DockTab::Console]);
+                let [_o, _below] = ds.main_surface_mut().split_below(egui_dock::NodeIndex::root(), 0.55, vec![DockTab::Properties, DockTab::Materials, DockTab::Console]);
                 Some(ds)
             },
         }
@@ -416,7 +449,85 @@ impl<'a> egui_dock::TabViewer for DockTabViewer<'a> {
             DockTab::AssetBrowser => {
                 ui.heading("Asset Browser");
                 ui.separator();
-                ui.label(format!("{} textures", state.texture_count));
+                ui.label(format!(
+                    "{} textures · {} materials · {} meshes",
+                    state.textures.len(),
+                    state.materials.len(),
+                    state.meshes.len()
+                ));
+                if state.textures.is_empty() && state.materials.is_empty() && state.meshes.is_empty() {
+                    ui.label("No model loaded");
+                }
+                egui::CollapsingHeader::new(format!("Textures ({})", state.textures.len()))
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            for i in 0..state.textures.len() {
+                                if state.texture_previews.len() <= i {
+                                    state.texture_previews.resize(i + 1, None);
+                                }
+                                let (w, hgt, rgba) = {
+                                    let t = &state.textures[i];
+                                    (t.width, t.height, t.rgba.clone())
+                                };
+                                if state.texture_previews[i].is_none() && !rgba.is_empty() {
+                                    let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                        [w as usize, hgt as usize],
+                                        &rgba,
+                                    );
+                                    let handle = ui.ctx().load_texture(
+                                        format!("tex_{}", i),
+                                        color_image,
+                                        egui::TextureOptions::default(),
+                                    );
+                                    state.texture_previews[i] = Some(handle);
+                                }
+                                ui.horizontal(|ui| {
+                                    if let Some(h) = &state.texture_previews[i] {
+                                        let max_dim = w.max(hgt) as f32;
+                                        let scale = if max_dim > 0.0 { (64.0 / max_dim).min(1.0) } else { 1.0 };
+                                        let img_size = egui::Vec2::new(w as f32 * scale, hgt as f32 * scale);
+                                        ui.image((h.id(), img_size));
+                                    } else {
+                                        let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(64.0), egui::Sense::hover());
+                                        ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0_f32, egui::Color32::from_gray(80)));
+                                    }
+                                    ui.label(format!("#{} {}x{}", i, w, hgt));
+                                });
+                            }
+                        });
+                    });
+                egui::CollapsingHeader::new(format!("Materials ({})", state.materials.len()))
+                    .show(ui, |ui| {
+                        for (i, m) in state.materials.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                ui.label(format!("#{}", i));
+                                let ca = egui::Color32::from_rgba_unmultiplied(
+                                    (m.color_a[0] * 255.0) as u8,
+                                    (m.color_a[1] * 255.0) as u8,
+                                    (m.color_a[2] * 255.0) as u8,
+                                    (m.color_a[3] * 255.0) as u8,
+                                );
+                                let (r, _) = ui.allocate_exact_size(egui::Vec2::splat(14.0), egui::Sense::hover());
+                                ui.painter().rect_filled(r, 2.0, ca);
+                                let cb = egui::Color32::from_rgba_unmultiplied(
+                                    (m.color_b[0] * 255.0) as u8,
+                                    (m.color_b[1] * 255.0) as u8,
+                                    (m.color_b[2] * 255.0) as u8,
+                                    (m.color_b[3] * 255.0) as u8,
+                                );
+                                let (r2, _) = ui.allocate_exact_size(egui::Vec2::splat(14.0), egui::Sense::hover());
+                                ui.painter().rect_filled(r2, 2.0, cb);
+                                ui.label(format!("tex={}", m.texture_index));
+                            });
+                        }
+                    });
+                egui::CollapsingHeader::new(format!("Meshes ({})", state.meshes.len()))
+                    .show(ui, |ui| {
+                        for (name, vc, tc) in &state.meshes {
+                            ui.label(format!("{} — {} vertices / {} triangles", name, vc, tc));
+                        }
+                    });
             }
         }
     }
@@ -565,10 +676,18 @@ fn orbit_camera(
     }
 }
 
+fn subtree_matches(stage: &arika_core::stages::Stage, idx: usize, filter: &str) -> bool {
+    if idx >= stage.nodes.len() { return false; }
+    let node = &stage.nodes[idx];
+    let name = if node.name.is_empty() { format!("node {}", idx) } else { node.name.clone() };
+    if name.to_lowercase().contains(filter) { return true; }
+    node.children.iter().any(|&c| subtree_matches(stage, c, filter))
+}
+
 fn render_outliner_node(state: &mut EditorState, stage: &arika_core::stages::Stage, idx: usize, depth: usize, ui: &mut egui_dock::egui::Ui, filter: &str) {
     let node = &stage.nodes[idx];
     let name = if node.name.is_empty() { format!("node {}", idx) } else { node.name.clone() };
-    if !filter.is_empty() && !name.to_lowercase().contains(filter) {
+    if !filter.is_empty() && !subtree_matches(stage, idx, filter) {
         return;
     }
     let has_children = !node.children.is_empty();
@@ -596,13 +715,25 @@ fn render_outliner_node(state: &mut EditorState, stage: &arika_core::stages::Sta
         ui.checkbox(locked, "L");
         ui.label(format!("k{}", node.kind));
     });
-    if has_children && state.expanded.contains(&idx) {
+    let expanded = if !filter.is_empty() { true } else { state.expanded.contains(&idx) };
+    if has_children && expanded {
         for &c in &node.children {
             if c < stage.nodes.len() {
                 render_outliner_node(state, stage, c, depth + 1, ui, filter);
             }
         }
     }
+}
+
+fn reset_layout(state: &mut EditorState) {
+    let mut ds = egui_dock::DockState::new(vec![DockTab::Outliner]);
+    let [_o, _below] = ds.main_surface_mut().split_below(egui_dock::NodeIndex::root(), 0.55, vec![DockTab::Properties, DockTab::Materials, DockTab::Console]);
+    state.dock_state = Some(ds);
+    state.show_outliner = true;
+    state.show_properties = true;
+    state.show_console = true;
+    state.show_asset_browser = true;
+    state.status = "Layout reset".into();
 }
 
 fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
@@ -633,6 +764,15 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
     egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("File", |ui| {
+                if ui.button("Add character…").clicked() {
+                    state.status = "Add character not yet implemented".into();
+                    ui.close_menu();
+                }
+                if ui.button("Add example Goku").clicked() {
+                    state.status = "Add example Goku not yet implemented".into();
+                    ui.close_menu();
+                }
+                ui.separator();
                 if ui.button("Open stage…").clicked() {
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter("Stage scene", &["stg"])
@@ -649,12 +789,79 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
                             state.pix_path = pix.to_string_lossy().into_owned();
                         }
                         state.pending_load_stg = true;
+                        let stg_path = state.stg_path.clone();
+                        state.recent_stages.push(stg_path);
+                        state.recent_stages.dedup();
+                        if state.recent_stages.len() > 12 {
+                            state.recent_stages.remove(0);
+                        }
                     }
                     ui.close_menu();
                 }
+                if ui.button("Open project…").clicked() {
+                    state.status = "Open project not yet implemented".into();
+                    ui.close_menu();
+                }
+                ui.menu_button("Open Recent", |ui| {
+                    ui.menu_button("Stages", |ui| {
+                        if state.recent_stages.is_empty() {
+                            ui.button("No recent stages").clicked();
+                        }
+                        for path in state.recent_stages.clone() {
+                            if ui.button(&path).clicked() {
+                                state.stg_path = path.clone();
+                                state.pending_load_stg = true;
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                    ui.menu_button("Projects", |ui| {
+                        if state.recent_projects.is_empty() {
+                            ui.button("No recent projects").clicked();
+                        }
+                        for path in state.recent_projects.clone() {
+                            if ui.button(&path).clicked() {
+                                state.status = format!("Open project: {}", path);
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                    ui.separator();
+                    if ui.button("Clear Recent Files").clicked() {
+                        state.recent_stages.clear();
+                        state.recent_projects.clear();
+                        state.status = "Recent files cleared".into();
+                        ui.close_menu();
+                    }
+                });
                 ui.separator();
                 if ui.button("Save stage…").clicked() {
                     state.status = "Save stage not yet implemented".into();
+                    ui.close_menu();
+                }
+                if ui.button("Save STG copy…").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Stage scene", &["stg"])
+                        .set_title("Save STG copy")
+                        .save_file()
+                    {
+                        if !state.stage_bytes.is_empty() {
+                            match std::fs::write(&path, &state.stage_bytes) {
+                                Ok(()) => {
+                                    state.status = format!("Saved STG copy {}", path.display());
+                                    state.recent_stages.push(path.to_string_lossy().into_owned());
+                                    state.recent_stages.dedup();
+                                    if state.recent_stages.len() > 12 {
+                                        state.recent_stages.remove(0);
+                                    }
+                                }
+                                Err(e) => state.status = format!("Save failed: {e}"),
+                            }
+                        } else {
+                            state.status = "No stage to save".into();
+                        }
+                    }
+                    ui.close_menu();
                 }
                 if ui.button("Export glTF…").clicked() {
                     if let Some(path) = rfd::FileDialog::new()
@@ -662,7 +869,7 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
                         .set_title("Export glTF")
                         .save_file()
                     {
-                        let mut msg = String::new();
+                        let msg = String::new();
                         if let Some(stage) = state.stage.clone() {
                             let mdl_path = state.mdl_path.clone();
                             let pix_path = state.pix_path.clone();
@@ -712,11 +919,18 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
                     ui.close_menu();
                 }
                 ui.separator();
-                if ui.button("Quit").clicked() {
+                if ui.button("Exit").clicked() {
                     std::process::exit(0);
                 }
             });
             ui.menu_button("Edit", |ui| {
+                if ui.button("Delete selected objects").clicked() {
+                    state.pending_delete_selected = true;
+                }
+                if ui.button("Duplicate selected").clicked() {
+                    state.status = "Duplicate not yet implemented".into();
+                }
+                ui.separator();
                 if ui.button("Undo").clicked() {
                     if !state.undo_stack.is_empty() {
                         let snap = state.stage_bytes.clone();
@@ -735,18 +949,12 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
                         state.status = "Redo".into();
                     }
                 }
-                ui.separator();
-                if ui.button("Delete selected").clicked() {
-                    state.pending_delete_selected = true;
-                }
-                if ui.button("Duplicate selected").clicked() {
-                    state.status = "Duplicate not yet implemented".into();
-                }
             });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut state.show_outliner, "Outliner");
                 ui.checkbox(&mut state.show_properties, "Properties");
                 ui.checkbox(&mut state.show_console, "Console");
+                ui.checkbox(&mut state.show_asset_browser, "Asset Browser");
                 ui.checkbox(&mut state.show_collision, "Collision overlay");
             });
             ui.menu_button("Viewports", |ui| {
@@ -767,9 +975,13 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
                     state.show_console = !state.show_console;
                     state.status = format!("Console: {}", state.show_console);
                 }
+                if ui.button("Asset Browser").clicked() {
+                    state.show_asset_browser = !state.show_asset_browser;
+                    state.status = format!("Asset Browser: {}", state.show_asset_browser);
+                }
                 ui.separator();
-                if ui.button("Reset Layout").clicked() {
-                    state.status = "Reset layout not yet implemented".into();
+                if ui.button("Reset layout").clicked() {
+                    reset_layout(&mut state);
                 }
             });
             ui.menu_button("Help", |ui| {
@@ -782,24 +994,118 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
             });
         });
     });
-    egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+    egui::TopBottomPanel::top("viewport_header").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Workspace:");
-            for name in ["Layout", "Shading", "Textures", "Object"] {
-                let selected = state.workspace == name;
-                if ui.selectable_label(selected, name).clicked() {
-                    state.workspace = name.to_string();
+            ui.label("View:");
+            egui::ComboBox::from_label("")
+                .selected_text(match state.view_mode {
+                    0 => "World", 1 => "Material Preview", 2 => "Texture Browser",
+                    3 => "Object View", 4 => "Menu Editor", _ => "World",
+                })
+                .show_ui(ui, |ui| {
+                    if ui.selectable_value(&mut state.view_mode, 0, "World").clicked() {}
+                    if ui.selectable_value(&mut state.view_mode, 1, "Material Preview").clicked() {}
+                    if ui.selectable_value(&mut state.view_mode, 2, "Texture Browser").clicked() {}
+                    if ui.selectable_value(&mut state.view_mode, 3, "Object View").clicked() {}
+                    if ui.selectable_value(&mut state.view_mode, 4, "Menu Editor").clicked() {}
+                });
+            ui.separator();
+
+            ui.menu_button("View", |ui| {
+                if ui.button("Frame all").clicked() {
+                    state.need_frame_all = true;
+                    ui.close_menu();
+                }
+                if ui.button("Frame selected").clicked() {
+                    state.need_frame_sel = true;
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui.button("Top").clicked() { state.status = "View: Top".into(); ui.close_menu(); }
+                if ui.button("Front").clicked() { state.status = "View: Front".into(); ui.close_menu(); }
+                if ui.button("Right").clicked() { state.status = "View: Right".into(); ui.close_menu(); }
+                if ui.button("Left").clicked() { state.status = "View: Left".into(); ui.close_menu(); }
+                if ui.button("Bottom").clicked() { state.status = "View: Bottom".into(); ui.close_menu(); }
+                ui.separator();
+                if ui.button("Toggle Local View").clicked() {
+                    state.status = "Local View toggled".into();
+                    ui.close_menu();
+                }
+            });
+            ui.separator();
+
+            ui.label("Tool:");
+            for (label, mode) in [("Transform", "transform"), ("Move", "move"), ("Rotate", "rotate"), ("Scale", "scale")] {
+                let selected = state.gizmo_mode == mode;
+                if ui.selectable_label(selected, label).clicked() {
+                    state.gizmo_mode = mode.to_string();
                 }
             }
             ui.separator();
-            ui.label("View:");
-            if ui.button("Frame all").clicked() {
-                state.need_frame_all = true;
-            }
-            if ui.button("Frame sel").clicked() {
-                state.need_frame_sel = true;
-            }
+
+            ui.label("Orientation:");
+            egui::ComboBox::from_label("")
+                .selected_text(&state.transform_orientation)
+                .show_ui(ui, |ui| {
+                    for name in ["Global", "Local", "Normal", "Gimbal", "View", "Cursor", "Custom"] {
+                        if ui.selectable_value(&mut state.transform_orientation, name.to_string(), name).clicked() {}
+                    }
+                });
             ui.separator();
+
+            ui.label("Pivot:");
+            egui::ComboBox::from_label("")
+                .selected_text(&state.pivot_mode)
+                .show_ui(ui, |ui| {
+                    for name in ["Median Point", "Active Element", "Individual Origins", "3D Cursor"] {
+                        if ui.selectable_value(&mut state.pivot_mode, name.to_string(), name).clicked() {}
+                    }
+                });
+            ui.separator();
+
+            ui.menu_button("Snap", |ui| {
+                ui.label("Move increment:");
+                for v in [0.1, 0.25, 0.5, 1.0, 5.0, 10.0] {
+                    let selected = (state.snap_move - v).abs() < 1e-9;
+                    if ui.selectable_label(selected, format!("{} units", v)).clicked() {
+                        state.snap_move = v;
+                        ui.close_menu();
+                    }
+                }
+                ui.label("Rotation increment:");
+                for v in [1.0, 5.0, 10.0, 15.0, 30.0, 45.0, 90.0] {
+                    let selected = (state.snap_rotate - v).abs() < 1e-9;
+                    if ui.selectable_label(selected, format!("{}°", v)).clicked() {
+                        state.snap_rotate = v;
+                        ui.close_menu();
+                    }
+                }
+                ui.label("Scale increment:");
+                for v in [0.01, 0.05, 0.1, 0.25, 0.5] {
+                    let selected = (state.snap_scale - v).abs() < 1e-9;
+                    if ui.selectable_label(selected, format!("{}%", (v * 100.0) as i32)).clicked() {
+                        state.snap_scale = v;
+                        ui.close_menu();
+                    }
+                }
+            });
+            ui.separator();
+
+            ui.menu_button("Viewport", |ui| {
+                ui.checkbox(&mut state.viewport_grid, "Floor grid");
+                ui.checkbox(&mut state.viewport_axes, "World axes");
+                ui.checkbox(&mut state.viewport_highlight, "Selection highlight");
+                ui.checkbox(&mut state.viewport_cull, "Backface culling");
+                ui.separator();
+                ui.checkbox(&mut state.viewport_orthographic, "Orthographic projection");
+                ui.separator();
+                if ui.button("Background color…").clicked() {
+                    state.status = "Background color picker not yet implemented".into();
+                    ui.close_menu();
+                }
+            });
+            ui.separator();
+
             ui.label("Shading:");
             egui::ComboBox::from_label("")
                 .selected_text(match state.shading_mode { 0 => "Textured", 1 => "Solid", 2 => "Wireframe", _ => "Textured" })
@@ -809,43 +1115,8 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
                     ui.selectable_value(&mut state.shading_mode, 2, "Wireframe");
                 });
             ui.separator();
+
             ui.checkbox(&mut state.show_collision, "Collision");
-            ui.separator();
-            ui.label("3D Viewport:");
-            if ui.button("Perspective").clicked() {
-                state.status = "3D Viewport: Perspective".into();
-            }
-            ui.separator();
-            ui.label("World:");
-            if ui.button("Default World").clicked() {
-                state.status = "World: Default".into();
-            }
-            ui.separator();
-            ui.label("View:");
-            if ui.button("Top").clicked() { state.status = "View: Top".into(); }
-            if ui.button("Front").clicked() { state.status = "View: Front".into(); }
-            if ui.button("Side").clicked() { state.status = "View: Side".into(); }
-            ui.separator();
-            ui.label("Transform:");
-            if ui.button("Move").clicked() { state.status = "Tool: Move".into(); }
-            if ui.button("Rotate").clicked() { state.status = "Tool: Rotate".into(); }
-            if ui.button("Scale").clicked() { state.status = "Tool: Scale".into(); }
-            ui.separator();
-            ui.label("Local:");
-            if ui.button("Local").clicked() { state.status = "Transform orientation: Local".into(); }
-            ui.separator();
-            ui.label("Median Point:");
-            if ui.button("Median Point").clicked() { state.status = "Pivot: Median Point".into(); }
-            ui.separator();
-            ui.label("Snap:");
-            if ui.button("Snap").clicked() { state.status = "Snap toggle".into(); }
-            ui.separator();
-            ui.label("Textured:");
-            if ui.button("Textured").clicked() { state.status = "Viewport shading: Textured".into(); }
-            ui.separator();
-            if ui.button("Viewport").clicked() {
-                state.status = "Viewport button clicked".into();
-            }
         });
     });
 
@@ -861,27 +1132,66 @@ fn ui_system(mut contexts: EguiContexts, mut state: ResMut<EditorState>) {
             viewer.state.dock_state = Some(dock_state);
         });
 
-    egui::TopBottomPanel::bottom("asset_browser")
-        .default_height(110.0)
-        .resizable(true)
-        .show(ctx, |ui| {
-            ui.heading("Asset Browser — Textures");
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.label(format!("{} textures", state.texture_count));
+    if state.show_asset_browser {
+        egui::TopBottomPanel::bottom("asset_browser_panel")
+            .resizable(true)
+            .default_height(145.0)
+            .show(ctx, |ui| {
+                ui.heading("Asset Browser — Textures");
                 ui.separator();
-                ui.label("Click to preview (not yet wired)");
+                ui.label(format!(
+                    "{} textures · {} materials · {} meshes",
+                    state.textures.len(),
+                    state.materials.len(),
+                    state.meshes.len()
+                ));
+                if state.textures.is_empty() && state.materials.is_empty() && state.meshes.is_empty() {
+                    ui.label("No model loaded");
+                }
+                egui::CollapsingHeader::new(format!("Textures ({})", state.textures.len()))
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            egui::Grid::new("texture_grid").num_columns(4).show(ui, |ui| {
+                                for i in 0..state.textures.len() {
+                                    if state.texture_previews.len() <= i {
+                                        state.texture_previews.resize(i + 1, None);
+                                    }
+                                    let (w, hgt, rgba) = {
+                                        let t = &state.textures[i];
+                                        (t.width, t.height, t.rgba.clone())
+                                    };
+                                    if state.texture_previews[i].is_none() && !rgba.is_empty() {
+                                        let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                            [w as usize, hgt as usize],
+                                            &rgba,
+                                        );
+                                        let handle = ui.ctx().load_texture(
+                                            format!("tex_{}", i),
+                                            color_image,
+                                            egui::TextureOptions::default(),
+                                        );
+                                        state.texture_previews[i] = Some(handle);
+                                    }
+                                    ui.horizontal(|ui| {
+                                        if let Some(h) = &state.texture_previews[i] {
+                                            let max_dim = w.max(hgt) as f32;
+                                            let scale = if max_dim > 0.0 { (64.0 / max_dim).min(1.0) } else { 1.0 };
+                                            let img_size = egui::Vec2::new(w as f32 * scale, hgt as f32 * scale);
+                                            ui.image((h.id(), img_size));
+                                        } else {
+                                            let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(64.0), egui::Sense::hover());
+                                            ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0_f32, egui::Color32::from_gray(80)));
+                                        }
+                                        ui.label(format!("#{} {}x{}", i, w, hgt));
+                                    });
+                                    ui.end_row();
+                                }
+                            });
+                        });
+                    });
             });
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for i in 0..state.texture_count {
-                        let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(64.0), egui::Sense::click());
-                        ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0, egui::Color32::from_gray(80)));
-                        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, format!("{}", i), egui::FontId::proportional(10.0), egui::Color32::LIGHT_GRAY);
-                    }
-                });
-            });
-        });
+    }
 
     egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
         ui.set_min_height(24.0);
@@ -920,10 +1230,6 @@ fn apply_load_request(
             commands.entity(e).despawn();
         }
         state.clear_scene = false;
-    }
-
-    if state.apply_transform {
-        state.apply_transform = false;
     }
 
     if state.pending_load_mdl {
@@ -1128,6 +1434,9 @@ fn load_model_into_scene(
         tex_note = " · no PIX".into();
     }
     state.texture_count = model.textures.len();
+    state.textures = model.textures.clone();
+    state.meshes = model.meshes.iter().map(|m| (m.name.clone(), m.positions.len(), m.indices.len() / 3)).collect();
+    state.texture_previews = vec![None; state.textures.len()];
 
     for e in loaded {
         commands.entity(e).despawn();
@@ -1442,7 +1751,24 @@ fn arika_mesh_to_bevy(mesh: &ArikaMesh) -> Mesh {
 fn gizmo_system(
     mut state: ResMut<EditorState>,
     mut query: Query<(&LoadedMesh, &mut Transform)>,
+    mut gizmos: Gizmos,
 ) {
+    if state.viewport_axes {
+        gizmos.line(Vec3::ZERO, Vec3::X * 3.0, Color::srgb(1.0, 0.2, 0.2));
+        gizmos.line(Vec3::ZERO, Vec3::Y * 3.0, Color::srgb(0.2, 1.0, 0.2));
+        gizmos.line(Vec3::ZERO, Vec3::Z * 3.0, Color::srgb(0.2, 0.4, 1.0));
+    }
+    if state.viewport_grid {
+        for x in -10..=10 {
+            let color = if x == 0 { Color::srgba(0.5, 0.5, 0.5, 0.4) } else { Color::srgba(0.3, 0.3, 0.3, 0.2) };
+            gizmos.line(Vec3::new(x as f32, 0.0, -10.0), Vec3::new(x as f32, 0.0, 10.0), color);
+        }
+        for z in -10..=10 {
+            let color = if z == 0 { Color::srgba(0.5, 0.5, 0.5, 0.4) } else { Color::srgba(0.3, 0.3, 0.3, 0.2) };
+            gizmos.line(Vec3::new(-10.0, 0.0, z as f32), Vec3::new(10.0, 0.0, z as f32), color);
+        }
+    }
+
     if state.apply_transform {
         state.apply_transform = false;
         if let Some(sel) = state.selected.last().cloned() {
@@ -1515,8 +1841,19 @@ fn gizmo_system(
     if let Some(sel) = state.selected.last().cloned() {
         for (lm, tf) in &query {
             if lm.name == sel || sel.ends_with(&lm.name) {
-                let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
-                let _ = (rx, ry, rz, &tf);
+                let pos = tf.translation;
+                let rot = tf.rotation;
+                let (right, up, forward) = if state.transform_orientation == "local" {
+                    (rot * Vec3::X, rot * Vec3::Y, rot * Vec3::Z)
+                } else {
+                    (Vec3::X, Vec3::Y, Vec3::Z)
+                };
+                gizmos.line(pos, pos + right * 1.5, Color::srgb(1.0, 0.1, 0.1));
+                gizmos.sphere(pos + right * 1.5, 0.08, Color::srgb(1.0, 0.1, 0.1));
+                gizmos.line(pos, pos + up * 1.5, Color::srgb(0.1, 1.0, 0.1));
+                gizmos.sphere(pos + up * 1.5, 0.08, Color::srgb(0.1, 1.0, 0.1));
+                gizmos.line(pos, pos + forward * 1.5, Color::srgb(0.1, 0.3, 1.0));
+                gizmos.sphere(pos + forward * 1.5, 0.08, Color::srgb(0.1, 0.3, 1.0));
                 break;
             }
         }
@@ -1530,13 +1867,13 @@ fn apply_theme(ctx: &egui::Context) {
     visuals.selection.bg_fill = egui::Color32::from_rgb(0x4a, 0x90, 0xd9);
     visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(0x2a, 0x2a, 0x2a);
     visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(0x2d, 0x2d, 0x2d);
-    visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x44, 0x44, 0x44));
+    visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0x44, 0x44, 0x44));
     visuals.widgets.active.bg_fill = egui::Color32::from_rgb(0x3a, 0x3a, 0x3a);
     visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(0x38, 0x38, 0x38);
     visuals.faint_bg_color = egui::Color32::from_rgb(0x22, 0x22, 0x22);
     visuals.extreme_bg_color = egui::Color32::from_rgb(0x14, 0x14, 0x1a);
     visuals.code_bg_color = egui::Color32::from_rgb(0x1a, 0x1a, 0x1a);
-    visuals.window_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x33, 0x33, 0x33));
+    visuals.window_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0x33, 0x33, 0x33));
     visuals.window_rounding = egui::Rounding::same(4.0);
     ctx.set_visuals(visuals);
 

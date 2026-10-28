@@ -10,6 +10,11 @@ pub mod models;
 pub mod motion;
 pub mod stages;
 pub mod tim2;
+pub mod audio;
+pub mod cht;
+pub mod clock;
+pub mod rng;
+pub mod project;
 
 pub use dat::{Archive, Entry};
 pub use error::{ArikaError, Result};

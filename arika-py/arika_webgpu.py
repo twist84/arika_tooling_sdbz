@@ -12,7 +12,10 @@ from pathlib import Path
 import tempfile
 import numpy as np
 from PIL import Image
-import wgpu
+try:
+    import wgpu
+except ImportError:  # Pure camera/color helpers and unit tests do not need a GPU runtime.
+    wgpu = None
 from arika_import import c_gltf_reader
 from arika_models import identity,local_matrix,multiply
 from arika_scene_state import selection_nodes,hidden_nodes
@@ -102,6 +105,8 @@ def viewport_guides(center,distance,grid=True,axes=True):
 
 class c_webgpu_renderer:
     def __init__(self,canvas=None,format='rgba8unorm'):
+        if wgpu is None:
+            raise RuntimeError('WebGPU rendering requires the optional wgpu package; install requirements_scene_editor.txt')
         self.m_adapter=wgpu.gpu.request_adapter_sync(power_preference='high-performance',canvas=canvas)
         self.m_device=self.m_adapter.request_device_sync();self.m_context=canvas.get_wgpu_context() if canvas else None
         self.m_format=self.m_context.get_preferred_format(self.m_adapter) if canvas else format
@@ -162,13 +167,18 @@ class c_webgpu_renderer:
                 destroyed.add(id(texture));self._destroy_resource(texture)
 
     def selection_nodes_cached(self,selected):
+        # Keep the helper usable on lightweight renderer instances used by tests/tools.
+        cache=getattr(self,'m_selection_cache',None)
+        if cache is None:
+            cache={}
+            self.m_selection_cache=cache
         if isinstance(selected,int):key=('index',selected)
         else:key=('indices',tuple(sorted(selected)))
-        if key not in self.m_selection_cache:
-            if len(self.m_selection_cache)>=32:self.m_selection_cache.pop(next(iter(self.m_selection_cache)))
+        if key not in cache:
+            if len(cache)>=32:cache.pop(next(iter(cache)))
             document=self.m_project.m_document if self.m_project else {}
-            self.m_selection_cache[key]=selection_nodes(document,selected)
-        return self.m_selection_cache[key]
+            cache[key]=selection_nodes(document,selected)
+        return cache[key]
 
     def set_project(self,project,geometry=True,fit=False):
         same_project=self.m_project is project

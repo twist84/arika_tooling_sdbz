@@ -61,4 +61,23 @@ mod tests {
         let encoded = encode_info(&decoded).unwrap();
         assert_eq!(encoded, raw);
     }
+
+    #[test]
+    fn roundtrip_all_byte_values() {
+        // Match Python test_codec_all_byte_values: for every first byte value,
+        // encode then decode must roundtrip.
+        for first_byte in 0u8..=255u8 {
+            let mut plain = vec![0u8; HEADER + 256 * 7];
+            plain[0] = first_byte;
+            plain[1..16].copy_from_slice(&MAGIC[1..]);
+            for (i, chunk) in plain[16..].chunks_mut(256).enumerate() {
+                for (j, b) in chunk.iter_mut().enumerate() {
+                    *b = ((i * 256 + j) % 256) as u8;
+                }
+            }
+            let encoded = encode_info(&plain).unwrap();
+            let decoded = decode_info(&encoded).unwrap();
+            assert_eq!(decoded, plain, "roundtrip failed for first_byte={first_byte}");
+        }
+    }
 }

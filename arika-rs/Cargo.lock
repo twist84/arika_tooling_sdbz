@@ -247,6 +247,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "tracing-subscriber",
+ "walkdir",
 ]
 
 [[package]]
@@ -261,6 +262,7 @@ dependencies = [
  "png 0.17.16",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tracing",
 ]

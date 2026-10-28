@@ -155,7 +155,7 @@ pub fn build_gltf(model: &Model, motions: &[crate::motion::Motion], mesh_filter:
             }));
         } else {
             for (i, m) in model.materials.iter().enumerate() {
-                let ca = m.color_a;
+                let _ca = m.color_a;
                 let mut mat = json!({
                     "name": format!("mat_{}", i),
                     "pbrMetallicRoughness": {

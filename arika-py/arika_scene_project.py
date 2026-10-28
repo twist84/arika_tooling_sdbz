@@ -7,6 +7,7 @@ from arika_stage_editor import c_stage_document
 from arika_stages import parse_stg,build_stage_gltf
 from arika_models import euler_radians,quaternion,require,local_matrix,multiply,identity
 from arika_import import write_output
+from arika_scene_characters import merge_character
 
 
 def material_preview_document(document,index):

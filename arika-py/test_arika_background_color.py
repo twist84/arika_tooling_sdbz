@@ -32,6 +32,7 @@ class BackgroundColorTests(unittest.TestCase):
             renderer=c_webgpu_renderer.__new__(c_webgpu_renderer)
             renderer.m_device=SimpleNamespace(queue=queue,create_command_encoder=lambda:encoder)
             renderer.m_project=None;renderer.m_format=texture_format;renderer.m_size=(1,1)
+            renderer.m_hidden=set();renderer.m_selection_cache={};renderer.m_instances=[];renderer.m_meshes={}
             texture=SimpleNamespace(create_view=lambda:None)
             renderer.m_depth=texture;renderer.m_pick=texture
             renderer.m_camera=None;renderer.m_camera_group=None
