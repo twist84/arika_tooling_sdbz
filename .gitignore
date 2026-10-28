@@ -1,0 +1,13 @@
+# AI
+/.kilo
+
+# python
+/arika-py/__pycache__
+
+# assets
+/source_data
+
+# stupid javascript
+/arika-py/node_modules/
+/arika-py/package-lock.json
+/arika-py/package.json

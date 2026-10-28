@@ -1,0 +1,527 @@
+{
+  "format": "ARIKA_CHT_MAPPING_VALIDATION",
+  "files": [
+    {
+      "file": "ply/p01/p01act.cht",
+      "source_sha256": "1aa53138e20ccdfdcc3ce154692f97b0af402677095c0cb7840766de09bd3433",
+      "bytes_consumed": 128080,
+      "actions": 221,
+      "resolved": 467,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p01/p01sel.cht",
+      "source_sha256": "0d393aca59a0efacd157f7eb2f1cd58b611bd3fddd801862a60b443d23d25cf4",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p02/p02act.cht",
+      "source_sha256": "cd246c15f099ea487e1b05fcb4ee39c1577293f0d1ea5ddcbc2e299ffad8fbfd",
+      "bytes_consumed": 124848,
+      "actions": 217,
+      "resolved": 444,
+      "missing_bank": 0,
+      "missing_motion": 2
+    },
+    {
+      "file": "ply/p02/p02sel.cht",
+      "source_sha256": "c412badb442aae2f39d207c3ec0361e4b1ad61c725f2d2cd9c9928267190018e",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p03/p03act.cht",
+      "source_sha256": "c51b44bc3b790fa0176966262b8f09af8ce370de8c44ca552d18abf381378060",
+      "bytes_consumed": 123968,
+      "actions": 209,
+      "resolved": 472,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p03/p03sel.cht",
+      "source_sha256": "02bddbdf2a0f8be7ce687425da09776266ca8bc76f94c555b296816d1315b874",
+      "bytes_consumed": 5092,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p04/p04act.cht",
+      "source_sha256": "f786ec88617d9307f4f7b454fe08502845a9a6739bd45d852e2c5eda324f343e",
+      "bytes_consumed": 112464,
+      "actions": 210,
+      "resolved": 428,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p04/p04sel.cht",
+      "source_sha256": "534f23cc3f4f9186977680f3dc84801155eb6bd8b56b9f331de9b1a07a3d0d63",
+      "bytes_consumed": 5092,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p05/p05act.cht",
+      "source_sha256": "02eabdf892e803059e7543ef9ba022e889b7101c4d237d735fd8c9e2921d123e",
+      "bytes_consumed": 123264,
+      "actions": 216,
+      "resolved": 455,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p05/p05sel.cht",
+      "source_sha256": "4d3f1e3281af71534a842632ef957d52f81a2a0f336580df39a042c624f42865",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p09/p09act.cht",
+      "source_sha256": "769afdfec2b3e75cfd924adb21cfe2522cf6373cd9fa1fc9b50ec4dce07f940f",
+      "bytes_consumed": 118816,
+      "actions": 215,
+      "resolved": 463,
+      "missing_bank": 0,
+      "missing_motion": 4
+    },
+    {
+      "file": "ply/p09/p09sel.cht",
+      "source_sha256": "6e824583198f3ef41d67e541697c0035ee04765f42f643a137c40e165a5fef16",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p10/p10act.cht",
+      "source_sha256": "cfdb669c395147eb55ba6182cd47f9e15dc9f1e873a07c8e6f2efc1460373440",
+      "bytes_consumed": 122208,
+      "actions": 209,
+      "resolved": 440,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p10/p10sel.cht",
+      "source_sha256": "9eca4d5cbbfa7efbf6d9f10ae27b0172e6c2ccb0195597827c80e263b067a9cb",
+      "bytes_consumed": 5092,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p11/p11act.cht",
+      "source_sha256": "35b4557ed974d9032d3c88773c2f8ba5f66e0c0c9815fe151ea7276f427e1af1",
+      "bytes_consumed": 124112,
+      "actions": 216,
+      "resolved": 467,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p11/p11sel.cht",
+      "source_sha256": "1949440e03d3aa8672e263bb9350037bc3190563639fe3064c3ebb162fda49c2",
+      "bytes_consumed": 5124,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p12/p12act.cht",
+      "source_sha256": "94070ea455889ebc9dfbdb90195dac259944c2151c459ca8b73284ec9e3c14df",
+      "bytes_consumed": 168048,
+      "actions": 209,
+      "resolved": 521,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p12/p12sel.cht",
+      "source_sha256": "2d9ed2ef4575ffa3910f51c5861bc4f573531a585c809f90d3ab5ff3988f639f",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p22/p22act.cht",
+      "source_sha256": "0a23377a4e2048d0cfd923e4f9b5a39f647dfaa924898568257a1dbddc9e7023",
+      "bytes_consumed": 125824,
+      "actions": 218,
+      "resolved": 482,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p22/p22sel.cht",
+      "source_sha256": "91c5013194d1eeb2cf2047bd0b46d7c47ddea06c9eaf9d424e52fc00cbd65e2c",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p23/p23act.cht",
+      "source_sha256": "6a1609c464a475449afb3abbfd3b8699f45e821a97d558068fc2a45cdc933a68",
+      "bytes_consumed": 121888,
+      "actions": 208,
+      "resolved": 477,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p23/p23sel.cht",
+      "source_sha256": "55224e0bcc2793eaad9a636e4c897c45a7cc63c924c8aafd0fd2fda69bdd0d73",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p24/p24act.cht",
+      "source_sha256": "bb369493c75eac8d7d9b64ca0b242ecba28e2d843d9de29fdaf1adf39e1a6f0d",
+      "bytes_consumed": 119008,
+      "actions": 212,
+      "resolved": 457,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p24/p24sel.cht",
+      "source_sha256": "663e2fc85c9e112b1ebacf7722c603bb2a98ea6ea56fa18cb1994a047e6ec745",
+      "bytes_consumed": 5092,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p25/p25act.cht",
+      "source_sha256": "7a41850dad39f8a32ed0b9ed8a2c499d36900436a9b9b03f0881f7f9353ab726",
+      "bytes_consumed": 117008,
+      "actions": 208,
+      "resolved": 449,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p25/p25sel.cht",
+      "source_sha256": "14cfdd4aa249779be35487992d840e40851f79158fe72328dd132834167b99a0",
+      "bytes_consumed": 5092,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p26/p26act.cht",
+      "source_sha256": "b120fa9c2637fd2b0af755c592414a5d1e341f1490aa365689990f8ca0c0eeb0",
+      "bytes_consumed": 114592,
+      "actions": 209,
+      "resolved": 447,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p26/p26sel.cht",
+      "source_sha256": "858c6158ff1a5b4be74a432c299bb7779300a04bf4409e1c71c41637b6fb3aae",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p27/p27act.cht",
+      "source_sha256": "f671970aae05e9c5f83f7a5603c31a60bb10ecc9501a91eb50bf6f291248b74b",
+      "bytes_consumed": 135968,
+      "actions": 213,
+      "resolved": 492,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p27/p27sel.cht",
+      "source_sha256": "1bec10fd23c3cf48b42128f68f8809119eae2d5fa46042b2e3a11767fb3e695b",
+      "bytes_consumed": 5092,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p28/p28act.cht",
+      "source_sha256": "af812487574c77d1b98e3bb8fd065333f7f7476efec12e2ec0cd431dc0d5fa3b",
+      "bytes_consumed": 115456,
+      "actions": 209,
+      "resolved": 451,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p28/p28sel.cht",
+      "source_sha256": "ce508b6a6047c8d492c5ec28afd2a00045a3985cc9bb4956136ded0a2ba52e2f",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p29/p29act.cht",
+      "source_sha256": "913d9fbc4ded93030fbd1a056fb184c0585feed3877aea7fee291993d2e885f3",
+      "bytes_consumed": 123808,
+      "actions": 214,
+      "resolved": 439,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p29/p29sel.cht",
+      "source_sha256": "5f721e7c1cef5ca722667cb0201b7fafee7b039cad40ebd699b0b06b3350a4be",
+      "bytes_consumed": 5060,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/p30/p30act.cht",
+      "source_sha256": "b46a2f085b8fafc65818c7d1953db92b94f7dc6ed295788921f22e0155d3b516",
+      "bytes_consumed": 123680,
+      "actions": 210,
+      "resolved": 475,
+      "missing_bank": 0,
+      "missing_motion": 2
+    },
+    {
+      "file": "ply/p30/p30sel.cht",
+      "source_sha256": "ed96211d28aca3de23e4d23f3b7015b029dd143ccc8feb91e4ee8c10ca1c1651",
+      "bytes_consumed": 5092,
+      "actions": 1,
+      "resolved": 3,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "ply/snr/snr.cht",
+      "source_sha256": "b5c5c8bed7788128509d0c6df2f7c9972ffee9157c208086b1f76fd367e0a017",
+      "bytes_consumed": 6792,
+      "actions": 8,
+      "resolved": 13,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "trc/01/fin01.cht",
+      "source_sha256": "fc7815f6a45da951b8c117aa0c1083ed3dae748f34a613d9e7024a143d37b819",
+      "bytes_consumed": 8376,
+      "actions": 14,
+      "resolved": 22,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "trc/02/fin02.cht",
+      "source_sha256": "cdfbed7d8b58903d427c7d0c5ee2df6304f25323741a2d6aec80def4e24f5a62",
+      "bytes_consumed": 9600,
+      "actions": 18,
+      "resolved": 29,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "trc/03/fin03.cht",
+      "source_sha256": "5a2feb5e5060bbc4d34407d6ed9e923188a385ca5d6b981052a02f6efced2f81",
+      "bytes_consumed": 8376,
+      "actions": 14,
+      "resolved": 22,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "trc/04/fin04.cht",
+      "source_sha256": "7c5561a0065f426ed369248b909bad573aea2cdd15dd8fb054d5fc6fdff258b5",
+      "bytes_consumed": 8364,
+      "actions": 13,
+      "resolved": 22,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "trc/05/fin05.cht",
+      "source_sha256": "6f6a6fd1b4523eb06ea644fc69826402378dfb1bf3639283fabf2c3380ab0ccf",
+      "bytes_consumed": 8376,
+      "actions": 14,
+      "resolved": 22,
+      "missing_bank": 0,
+      "missing_motion": 0
+    },
+    {
+      "file": "trc/06/fin06.cht",
+      "source_sha256": "cd64fe0908786462f081d6e47599d522a72a7795ddb23731685a099979847bcb",
+      "bytes_consumed": 7140,
+      "actions": 9,
+      "resolved": 15,
+      "missing_bank": 0,
+      "missing_motion": 0
+    }
+  ],
+  "total_files": 43,
+  "total_actions": 3931,
+  "resolved": 8525,
+  "unresolved": [
+    {
+      "file": "ply/p02/p02act.cht",
+      "motion_id": 234,
+      "variant": 0,
+      "motion_name": "m02234m0a",
+      "resource_bank": 0,
+      "status": "missing_motion"
+    },
+    {
+      "file": "ply/p02/p02act.cht",
+      "motion_id": 234,
+      "variant": 1,
+      "motion_name": "m02234m0l",
+      "resource_bank": 0,
+      "status": "missing_motion"
+    },
+    {
+      "file": "ply/p09/p09act.cht",
+      "motion_id": 234,
+      "variant": 0,
+      "motion_name": "m09233m0a",
+      "resource_bank": 0,
+      "status": "missing_motion"
+    },
+    {
+      "file": "ply/p09/p09act.cht",
+      "motion_id": 234,
+      "variant": 1,
+      "motion_name": "m09233m0l",
+      "resource_bank": 0,
+      "status": "missing_motion"
+    },
+    {
+      "file": "ply/p09/p09act.cht",
+      "motion_id": 533,
+      "variant": 0,
+      "motion_name": "m09233m0a",
+      "resource_bank": 0,
+      "status": "missing_motion"
+    },
+    {
+      "file": "ply/p09/p09act.cht",
+      "motion_id": 533,
+      "variant": 1,
+      "motion_name": "m09233m0l",
+      "resource_bank": 0,
+      "status": "missing_motion"
+    },
+    {
+      "file": "ply/p30/p30act.cht",
+      "motion_id": 234,
+      "variant": 0,
+      "motion_name": "m05232m0a",
+      "resource_bank": 0,
+      "status": "missing_motion"
+    },
+    {
+      "file": "ply/p30/p30act.cht",
+      "motion_id": 234,
+      "variant": 1,
+      "motion_name": "m05232m0l",
+      "resource_bank": 0,
+      "status": "missing_motion"
+    }
+  ],
+  "runtime_relocations": [
+    {
+      "file": "ply/p01/p01act.cht",
+      "ee_address": "0x1866c00",
+      "relocated_records_checked": 467
+    },
+    {
+      "file": "ply/p25/p25act.cht",
+      "ee_address": "0x198e400",
+      "relocated_records_checked": 449
+    }
+  ],
+  "snapshot_sha256": "69ab980f08df3bfd928e0f0fdcd19d267600b9fa6d197f2dfe7038566beacce8",
+  "scope": "Explicit bank 0 companion / bank 1 p00x packages. Contextual fallback is not applied. Runtime checks compare relocated name pointers and packed bank/name indices.",
+  "gltf_exports": [
+    {
+      "file": "goku_motion_232_variant_1.gltf",
+      "accessors_checked": 108,
+      "animation_channels": 211,
+      "motion_binding": {
+        "variant": 1,
+        "offset": 42052,
+        "name_index": 143,
+        "motion_name": "m01232m0l",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 39,
+        "package_motion": "m01232m0l.mot",
+        "motion_id": 232,
+        "cht_sha256": "1aa53138e20ccdfdcc3ce154692f97b0af402677095c0cb7840766de09bd3433"
+      }
+    },
+    {
+      "file": "goku_bound_face_events.gltf",
+      "accessors_checked": 126,
+      "animation_channels": 215,
+      "motion_binding": {
+        "variant": 1,
+        "offset": 42052,
+        "name_index": 143,
+        "motion_name": "m01232m0l",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 39,
+        "package_motion": "m01232m0l.mot",
+        "motion_id": 232,
+        "cht_sha256": "1aa53138e20ccdfdcc3ce154692f97b0af402677095c0cb7840766de09bd3433"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1258 @@
+{
+  "format": "ARIKA_SEQUENCE_VALIDATION",
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+  "common_transitions_checked": 284,
+  "synthetic_transitions_checked": 79,
+  "unsupported_transitions": [
+    {
+      "slot": 235,
+      "segment": 1,
+      "reason": "unsupported sequence flags 0x00200000 at segment 1"
+    }
+  ],
+  "characters": [
+    {
+      "character": "p01",
+      "planned": 139,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p02",
+      "planned": 138,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "missing_motion"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p03",
+      "planned": 136,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 101,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 401,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p04",
+      "planned": 138,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p05",
+      "planned": 140,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p09",
+      "planned": 138,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "missing_motion"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p10",
+      "planned": 139,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p11",
+      "planned": 138,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p12",
+      "planned": 136,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 101,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 401,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p22",
+      "planned": 138,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p23",
+      "planned": 136,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 101,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 401,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p24",
+      "planned": 136,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 101,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 401,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p25",
+      "planned": 136,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 101,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 401,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p26",
+      "planned": 139,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p27",
+      "planned": 137,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 101,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 401,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p28",
+      "planned": 136,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 101,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 401,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p29",
+      "planned": 138,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    },
+    {
+      "character": "p30",
+      "planned": 136,
+      "unresolved": [
+        {
+          "slot": 1,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 10,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 11,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 12,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 13,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 14,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 15,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 16,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 17,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 56,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 100,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 101,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 125,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 234,
+          "reason": "missing_motion"
+        },
+        {
+          "slot": 401,
+          "reason": "motion variant is absent from CHT"
+        },
+        {
+          "slot": 425,
+          "reason": "logical motion ID is absent from CHT"
+        },
+        {
+          "slot": 725,
+          "reason": "logical motion ID is absent from CHT"
+        }
+      ]
+    }
+  ],
+  "scope": "MIPS prefix check validates branch/index selection only. Timeline sampling is an authored-frame preview, not native tick/blend emulation.",
+  "gltf_exports": [
+    {
+      "file": "goku_action_232_sequence.gltf",
+      "accessors_checked": 338,
+      "animation_channels": 1421,
+      "motion_binding": null
+    },
+    {
+      "file": "goku_action_232_faces.gltf",
+      "accessors_checked": 356,
+      "animation_channels": 1425,
+      "motion_binding": null
+    }
+  ]
+}

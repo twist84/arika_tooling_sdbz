@@ -1,0 +1,16 @@
+{
+  "format": "ARIKA_NATIVE_CLOCK_VALIDATION",
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+  "parameter_setups": 456,
+  "steps_checked": 4444,
+  "fields": [
+    "position",
+    "stop_timer",
+    "blend_remaining",
+    "flags",
+    "carry",
+    "wrap_fraction",
+    "blend_weight"
+  ],
+  "scope": "Bitwise scalar comparison with an IEEE-float32 interpreter executing the original timing prefix through 0x1B8948, early exits, and coefficient arithmetic at 0x1B8C34/3C. This is not a PS2 hardware capture or full R5900 FPU emulator. Pose sampling, motion-list callbacks and complete action orchestration are excluded. Final flags model subsequent dirty/terminal cleanup. Setup translation is inspected separately, not executed by this prefix oracle."
+}

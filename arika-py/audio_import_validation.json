@@ -1,0 +1,32 @@
+{
+  "edited_ase": "ply/p01/p01.ase",
+  "edited_ams": "sqm/knrn_in.ams",
+  "unchanged_ase_slots_preserved": 32,
+  "decoder_checks": [
+    {
+      "source": "ply/p01/p01.ase",
+      "frames": 24052,
+      "ffmpeg_exact": true,
+      "snr_db": 23.151845584231904
+    },
+    {
+      "source": "sqm/knrn_in.ams/left",
+      "frames": 88648,
+      "ffmpeg_exact": true,
+      "snr_db": 52.59846331022018
+    },
+    {
+      "source": "sqm/knrn_in.ams/right",
+      "frames": 88648,
+      "ffmpeg_exact": true,
+      "snr_db": 29.288993450049766
+    }
+  ],
+  "repacked_assets_verified": 2,
+  "gameplay_tested": false,
+  "noop_assets": 344,
+  "noop_assets_byte_identical": true,
+  "noop_info_byte_identical": true,
+  "noop_game_byte_identical": true,
+  "unit_tests_passed": 14
+}

@@ -1,0 +1,9 @@
+{
+  "format": "ARIKA_COMMON_STARTUP_VALIDATION",
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+  "common_cases_checked": 285,
+  "blend_initializer_cases_checked": 36,
+  "synthetic_cases_checked": 158,
+  "unsupported": [],
+  "scope": "Original 0x1D7120 control/startup prefix and 0x1D7470 wrapper through entry to 0x1B9690; separate valid-context initializer prefix 0x1B96FC through 0x1B971C checks blend inheritance/reset and previous-reference clear. Successful CHT lookup is stubbed to bank 1/index 7. Checks target, requested ID/variant, raw float arguments, flags, bank and resource-pointer arithmetic. Does not validate CHT lookup implementation, root transforms, callbacks, complete scalar chain, or pose evaluation."
+}

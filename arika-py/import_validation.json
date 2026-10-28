@@ -1,0 +1,9 @@
+{
+  "bit_identical_roundtrips": {
+    "face_ani_json_roundtrips": 20,
+    "model_json_roundtrips": 476,
+    "motion_package_json_roundtrips": 57
+  },
+  "unique_payloads": 276,
+  "errors": []
+}

@@ -1,0 +1,7 @@
+{
+  "segments": [
+    {"at": 0, "motion_id": 232, "variant": 0, "blend": 0.17},
+    {"at": 1.3333333333333333, "motion_id": 232, "variant": 1, "blend": 0.17, "loop": true},
+    {"at": 3.2, "motion_id": 232, "variant": 0, "blend": 0.25, "reverse": true}
+  ]
+}

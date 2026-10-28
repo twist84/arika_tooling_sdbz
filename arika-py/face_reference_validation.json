@@ -1,0 +1,12 @@
+{
+  "programs": 325,
+  "compared_ticks": 104000,
+  "seeds": [
+    0,
+    1
+  ],
+  "tick_rate": 60,
+  "exact_float32_state_and_pose_match": true,
+  "late_events": "Long holds were advanced equally in the port and reference; this is controller equivalence, not a full gameplay replay.",
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0"
+}

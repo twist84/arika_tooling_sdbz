@@ -1,0 +1,27 @@
+{
+  "format": "ARIKA_ACTION_POSE_VALIDATION",
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+  "constant_chain_runs": 128,
+  "input_steps_checked": 768,
+  "pose_evaluations_checked": 880,
+  "scope": "Composed original scalar timing, pose-dispatch, startup-argument, and constant-bone helper instruction oracles with host float32/trig. Checks synthetic chain ordering/poses under the documented controller, plus tail call sites showing pose return precedes terminal callback. Not a full-program R5900 execution or hardware comparison. Animated track sampling, HandAni, root transforms and gameplay callbacks are outside this oracle.",
+  "gltf_exports": [
+    {
+      "file": "goku_action_232_native_poses.gltf",
+      "accessors_checked": 338,
+      "animation_channels": 1421,
+      "motion_binding": null
+    }
+  ],
+  "pose_trace": {
+    "file": "goku_action_232_native_poses.json",
+    "samples_checked": 601,
+    "startup_events": 4,
+    "pose_evaluations": 603,
+    "dispatch_counts": {
+      "helper": 24,
+      "animated_channels": 579
+    },
+    "scalar_trace_matched": true
+  }
+}

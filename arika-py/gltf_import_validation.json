@@ -1,0 +1,18 @@
+[
+  {
+    "file": "ply/p01/p01a.mdl",
+    "bit_identical": true
+  },
+  {
+    "file": "stg/s00/s00a.mdl",
+    "bit_identical": true
+  },
+  {
+    "file": "shd/shd.mdl",
+    "bit_identical": true
+  },
+  {
+    "file": "eff/e04/e04268z.mdl",
+    "bit_identical": true
+  }
+]

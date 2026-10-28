@@ -1,0 +1,84 @@
+{
+  "asset": "dis/main_menu.pix",
+  "sha256": "b5bef7fb13ccb4cd7f1e0cb005a29c623b166244c2b51ad559e09c1a1ad4e991",
+  "entries": [
+    {
+      "index": 0,
+      "width": 256,
+      "height": 256,
+      "sha256": "531388382285369822a34a89a4725e4ab6a60432321ec9dd30279b76823fa23a"
+    },
+    {
+      "index": 1,
+      "width": 512,
+      "height": 512,
+      "sha256": "3e58edd94552b47dd0ae051c5b97a350303675608af1bf08867963bc0d02040c"
+    },
+    {
+      "index": 2,
+      "width": 512,
+      "height": 512,
+      "sha256": "16ee591369677f6a06e2b598ac1a852e81f477d1b646b487a37460a4bd82f686"
+    },
+    {
+      "index": 3,
+      "width": 512,
+      "height": 512,
+      "sha256": "660e6b9eecd40e4b4d86cde94ce08a2f5782163d8a81c107265ffea25533e727"
+    },
+    {
+      "index": 4,
+      "width": 512,
+      "height": 512,
+      "sha256": "603f8f86e51d3843050a2a3de3f434010c03380abf2c412ed4b566820ab0a8c4"
+    },
+    {
+      "index": 5,
+      "width": 512,
+      "height": 512,
+      "sha256": "a68c17e4588bf9633290907d8423d0d3b160410f4d92bc2de303c7cc131102f9"
+    },
+    {
+      "index": 6,
+      "width": 512,
+      "height": 512,
+      "sha256": "7427ffae50607ee974391784f852991857fc9d9dce3bd57f58f329a8e2f24a4a"
+    },
+    {
+      "index": 7,
+      "width": 512,
+      "height": 512,
+      "sha256": "fd06edd0527f5c0f6e619027ca2e396af8592e720e4bc63ba256fca1fc388b5a"
+    },
+    {
+      "index": 8,
+      "width": 512,
+      "height": 512,
+      "sha256": "da6f6122060bdcea37e68b74963614c08f17df1bb4aadda5f41706dd45242da5"
+    },
+    {
+      "index": 9,
+      "width": 512,
+      "height": 512,
+      "sha256": "990c23789433d8b3a6fa99aabe8d553d6f8b854fc3239dfc1e382b90b04c34ca"
+    },
+    {
+      "index": 10,
+      "width": 512,
+      "height": 512,
+      "sha256": "79457a8c546606dcd56dd3e32ba370c9a7e9f0ec86d40016cf28f26472b5522b"
+    },
+    {
+      "index": 11,
+      "width": 512,
+      "height": 512,
+      "sha256": "fd2591d84eca460d8087564af29478e90aa6c606c064a69072734d8959b99f31"
+    },
+    {
+      "index": 12,
+      "width": 512,
+      "height": 512,
+      "sha256": "4e0e798e996b5df1460ad0edd9b527ce78e8e94217989496f8daf61fd91cdaa9"
+    }
+  ]
+}

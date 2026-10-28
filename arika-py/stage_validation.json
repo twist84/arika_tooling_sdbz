@@ -1,0 +1,279 @@
+{
+  "format": "ARIKA_STAGE_VALIDATION",
+  "stage_scenes": 13,
+  "totals": {
+    "nodes": 8059,
+    "mesh_references": 3746,
+    "collision_references": 4799,
+    "hit_objects": 2886,
+    "polygons": 20206,
+    "vertices": 66301
+  },
+  "files": [
+    {
+      "file": "stg/s00/s00a.stg",
+      "templates": 0,
+      "node_kinds": {
+        "1": 2,
+        "2": 3,
+        "3": 5,
+        "6": 1
+      },
+      "nodes": 11,
+      "mesh_references": 3,
+      "collision_references": 17,
+      "hit_objects": 17,
+      "polygons": 113,
+      "vertices": 446
+    },
+    {
+      "file": "stg/s01/s01a.stg",
+      "templates": 13,
+      "node_kinds": {
+        "1": 116,
+        "6": 99,
+        "2": 382,
+        "3": 198,
+        "5": 25,
+        "4": 19
+      },
+      "nodes": 839,
+      "mesh_references": 382,
+      "collision_references": 862,
+      "hit_objects": 660,
+      "polygons": 4196,
+      "vertices": 13254
+    },
+    {
+      "file": "stg/s02/s02a.stg",
+      "templates": 7,
+      "node_kinds": {
+        "1": 102,
+        "6": 93,
+        "2": 386,
+        "3": 215,
+        "4": 44,
+        "5": 24
+      },
+      "nodes": 864,
+      "mesh_references": 386,
+      "collision_references": 472,
+      "hit_objects": 331,
+      "polygons": 2458,
+      "vertices": 8525
+    },
+    {
+      "file": "stg/s03/s03a.stg",
+      "templates": 11,
+      "node_kinds": {
+        "1": 76,
+        "6": 48,
+        "2": 186,
+        "3": 160
+      },
+      "nodes": 470,
+      "mesh_references": 186,
+      "collision_references": 292,
+      "hit_objects": 122,
+      "polygons": 983,
+      "vertices": 3400
+    },
+    {
+      "file": "stg/s03/s03b.stg",
+      "templates": 13,
+      "node_kinds": {
+        "1": 258,
+        "6": 71,
+        "2": 431,
+        "3": 198,
+        "4": 17
+      },
+      "nodes": 975,
+      "mesh_references": 431,
+      "collision_references": 353,
+      "hit_objects": 67,
+      "polygons": 361,
+      "vertices": 1202
+    },
+    {
+      "file": "stg/s04/s04a.stg",
+      "templates": 10,
+      "node_kinds": {
+        "1": 109,
+        "6": 10,
+        "2": 213,
+        "3": 68,
+        "4": 17
+      },
+      "nodes": 417,
+      "mesh_references": 213,
+      "collision_references": 119,
+      "hit_objects": 75,
+      "polygons": 1516,
+      "vertices": 4863
+    },
+    {
+      "file": "stg/s04/s04b.stg",
+      "templates": 10,
+      "node_kinds": {
+        "1": 113,
+        "2": 208,
+        "3": 25,
+        "4": 19
+      },
+      "nodes": 365,
+      "mesh_references": 208,
+      "collision_references": 31,
+      "hit_objects": 31,
+      "polygons": 708,
+      "vertices": 2187
+    },
+    {
+      "file": "stg/s05/s05a.stg",
+      "templates": 4,
+      "node_kinds": {
+        "1": 95,
+        "6": 70,
+        "2": 329,
+        "3": 143,
+        "4": 18
+      },
+      "nodes": 655,
+      "mesh_references": 329,
+      "collision_references": 381,
+      "hit_objects": 314,
+      "polygons": 2460,
+      "vertices": 7921
+    },
+    {
+      "file": "stg/s06/s06a.stg",
+      "templates": 21,
+      "node_kinds": {
+        "1": 142,
+        "6": 121,
+        "2": 638,
+        "3": 266,
+        "5": 102,
+        "4": 10
+      },
+      "nodes": 1279,
+      "mesh_references": 638,
+      "collision_references": 703,
+      "hit_objects": 270,
+      "polygons": 730,
+      "vertices": 2763
+    },
+    {
+      "file": "stg/s07/s07a.stg",
+      "templates": 19,
+      "node_kinds": {
+        "1": 119,
+        "6": 41,
+        "2": 329,
+        "3": 165,
+        "4": 17,
+        "5": 3
+      },
+      "nodes": 674,
+      "mesh_references": 329,
+      "collision_references": 260,
+      "hit_objects": 126,
+      "polygons": 1109,
+      "vertices": 3680
+    },
+    {
+      "file": "stg/s10/s10a.stg",
+      "templates": 12,
+      "node_kinds": {
+        "1": 107,
+        "6": 63,
+        "2": 153,
+        "3": 142
+      },
+      "nodes": 465,
+      "mesh_references": 153,
+      "collision_references": 329,
+      "hit_objects": 131,
+      "polygons": 837,
+      "vertices": 2948
+    },
+    {
+      "file": "stg/s11/s11a.stg",
+      "templates": 13,
+      "node_kinds": {
+        "1": 116,
+        "6": 99,
+        "2": 382,
+        "3": 198,
+        "5": 25,
+        "4": 19
+      },
+      "nodes": 839,
+      "mesh_references": 382,
+      "collision_references": 855,
+      "hit_objects": 653,
+      "polygons": 4199,
+      "vertices": 13258
+    },
+    {
+      "file": "stg/s12/s12a.stg",
+      "templates": 1,
+      "node_kinds": {
+        "1": 26,
+        "6": 19,
+        "2": 106,
+        "3": 55
+      },
+      "nodes": 206,
+      "mesh_references": 106,
+      "collision_references": 125,
+      "hit_objects": 89,
+      "polygons": 536,
+      "vertices": 1854
+    }
+  ],
+  "runtime_matches": [
+    {
+      "file": "s06a.hit",
+      "address": "0x1784c00",
+      "exact_bytes_matched": 89200
+    },
+    {
+      "file": "s06a.stg",
+      "address": "0x179ac00",
+      "names_and_tags_checked": 1279,
+      "scope": "Name table and original tag bits; runtime adds tag flags and modifies control payloads. No transform/behavior equivalence is asserted."
+    }
+  ],
+  "snapshot_sha256": "69ab980f08df3bfd928e0f0fdcd19d267600b9fa6d197f2dfe7038566beacce8",
+  "scope": "Corpus structure, exact mesh/collision names, rigid base-model scope and optional snapshot checks. STG forest/TRS preview semantics are inferred from authored data; runtime controls, visibility, destruction and scripts remain unresolved.",
+  "gltf_exports": [
+    {
+      "file": "stage_s00_scene.gltf",
+      "accessors_checked": 42,
+      "nodes_checked": 39,
+      "scene_names": [
+        "Stage",
+        "Effects",
+        "Collision",
+        "Stage + collision"
+      ],
+      "mesh_instances": 3,
+      "collision_instances": 17
+    },
+    {
+      "file": "stage_s01_scene.gltf",
+      "accessors_checked": 2832,
+      "nodes_checked": 2540,
+      "scene_names": [
+        "Stage",
+        "Effects",
+        "Templates",
+        "Collision",
+        "Stage + collision"
+      ],
+      "mesh_instances": 382,
+      "collision_instances": 862
+    }
+  ]
+}

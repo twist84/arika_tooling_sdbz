@@ -1,0 +1,76 @@
+{
+  "ase_banks": 290,
+  "ase_samples": 1332,
+  "ams_streams": 54,
+  "wav_files": 1386,
+  "errors": [],
+  "unit_tests_passed": 6,
+  "wav_headers_verified": 1386,
+  "ffmpeg_exact_comparisons": [
+    {
+      "source": "extracted/ply/p01/p01.ase",
+      "frames_compared": 24052,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p02/voi/122.ase",
+      "frames_compared": 89740,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p04/voi/112.ase",
+      "frames_compared": 57624,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p09/voi/112.ase",
+      "frames_compared": 82012,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p11/voi/111.ase",
+      "frames_compared": 96684,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p22/voi/117.ase",
+      "frames_compared": 71736,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p24/p24srn.ase",
+      "frames_compared": 67452,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p26/voi/111.ase",
+      "frames_compared": 33068,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p27/voi/125.ase",
+      "frames_compared": 27104,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/ply/p29/voi/122.ase",
+      "frames_compared": 61124,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/snd/comvoi_pd.ase",
+      "frames_compared": 17276,
+      "max_pcm_difference": 0
+    },
+    {
+      "source": "extracted/stg/s02/s02.ase",
+      "frames_compared": 7224,
+      "max_pcm_difference": 0
+    }
+  ],
+  "limitations": [
+    "No in-game playback verification",
+    "Intro/loop segments exported separately",
+    "No SPU2 effects, mixing or hardware interpolation"
+  ]
+}

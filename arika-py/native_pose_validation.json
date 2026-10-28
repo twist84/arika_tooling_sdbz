@@ -1,0 +1,79 @@
+{
+  "format": "ARIKA_NATIVE_POSE_VALIDATION",
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+  "bone_cases_checked": 3200,
+  "host_trig_calls": 98480,
+  "paired_bone_cases_checked": 25600,
+  "scope": "Original one-source paths 0x1B2E20/0x1B5C60 and two-source paths 0x1B1B00/0x1B3370/0x1B4450/0x1B63A0, constant tracks and missing nodes, interpreted with IEEE float32 accumulator arithmetic. Native sin/acos/memcpy calls are substituted with host functions. This is not hardware or native-libm bit equivalence; animated-track sampling and full action orchestration are separate.",
+  "gltf_exports": [
+    {
+      "file": "goku_native_pose_blend.gltf",
+      "accessors_checked": 338,
+      "animation_channels": 1421,
+      "motion_binding": {
+        "variant": 0,
+        "offset": 41916,
+        "name_index": 142,
+        "motion_name": "m01232m0a",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 40,
+        "package_motion": "m01232m0a.mot"
+      }
+    },
+    {
+      "file": "goku_native_pose_loop.gltf",
+      "accessors_checked": 338,
+      "animation_channels": 1421,
+      "motion_binding": {
+        "variant": 0,
+        "offset": 41916,
+        "name_index": 142,
+        "motion_name": "m01232m0a",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 40,
+        "package_motion": "m01232m0a.mot"
+      }
+    },
+    {
+      "file": "goku_native_pose_reverse_loop.gltf",
+      "accessors_checked": 338,
+      "animation_channels": 1421,
+      "motion_binding": {
+        "variant": 0,
+        "offset": 41916,
+        "name_index": 142,
+        "motion_name": "m01232m0a",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 40,
+        "package_motion": "m01232m0a.mot"
+      }
+    }
+  ]
+}

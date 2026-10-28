@@ -1,0 +1,137 @@
+{
+  "unit_tests": 58,
+  "characters": [
+    {
+      "character": "p01",
+      "source_sha256": "9d4be8afbe488c67ef87d8efe4a58834c7ee07896444a58ac77a9b0e67660ac5",
+      "program_references": 17,
+      "sample_count": 286
+    },
+    {
+      "character": "p02",
+      "source_sha256": "1ddc8430b09202e5f409e07d373901a5f8a0cca9b776d32a48208cf25ef281af",
+      "program_references": 19,
+      "sample_count": 316
+    },
+    {
+      "character": "p03",
+      "source_sha256": "29e43258ece7cf63b393b54e45f1df77fc4a918598fa7b2edfec92a1fc3317ce",
+      "program_references": 14,
+      "sample_count": 241
+    },
+    {
+      "character": "p04",
+      "source_sha256": "9c855919a2bff5acd67e54f601a8c6b1e7b0dcc9879d829d0f23d0c7ad2e6edd",
+      "program_references": 12,
+      "sample_count": 211
+    },
+    {
+      "character": "p05",
+      "source_sha256": "1c33959053e87a80e4be3cd090536b2e30e7651d203c6eafa728db10049fef91",
+      "program_references": 13,
+      "sample_count": 226
+    },
+    {
+      "character": "p09",
+      "source_sha256": "9f632f73f79ffaaa2a34b66e35fce158b6a53ce639bf13adac648066c9f10d49",
+      "program_references": 12,
+      "sample_count": 211
+    },
+    {
+      "character": "p10",
+      "source_sha256": "4405135790fd4acb06d5d4cafad087baf6ad8f045a7dbca983e5350f1a92d24f",
+      "program_references": 12,
+      "sample_count": 211
+    },
+    {
+      "character": "p11",
+      "source_sha256": "85c3be89591ae640fc33f2e9e12caab4b2e29a990c5e01736e3475b0e0458578",
+      "program_references": 6,
+      "sample_count": 121
+    },
+    {
+      "character": "p12",
+      "source_sha256": "b254d675efb180b64c099349853ffe1abb6d29208598d0c54cb73411490b0d4b",
+      "program_references": 9,
+      "sample_count": 166
+    },
+    {
+      "character": "p22",
+      "source_sha256": "a9d9f2f2a09d7a7a3ee32e6f92fd4ad2dd9b03a1b3a500ddadd7a9e0e3987af9",
+      "program_references": 24,
+      "sample_count": 391
+    },
+    {
+      "character": "p23",
+      "source_sha256": "861030ddd325c802cb51d499a1b3f7728641fede754dc8f19c78f42a1b231feb",
+      "program_references": 12,
+      "sample_count": 211
+    },
+    {
+      "character": "p24",
+      "source_sha256": "7c480920992b1404f75ed5cd76bd68e1907b3aaa67e93ab7682c6cb8dad97d0b",
+      "program_references": 11,
+      "sample_count": 196
+    },
+    {
+      "character": "p25",
+      "source_sha256": "3858431cf6a2521b73c51c448637fd3bc040ce733ebc3c6fbd8c27a155628bb3",
+      "program_references": 9,
+      "sample_count": 166
+    },
+    {
+      "character": "p26",
+      "source_sha256": "392234da08924205122a6fe1def0af582afa0dc872de28cda717295e08507c8a",
+      "program_references": 12,
+      "sample_count": 211
+    },
+    {
+      "character": "p27",
+      "source_sha256": "969ea27e5dcbb43202cced7bfb1a71d7a33d4de85caa7618fa28c7f49f0dbd83",
+      "program_references": 11,
+      "sample_count": 196
+    },
+    {
+      "character": "p28",
+      "source_sha256": "8af3b9b0400e5da311f4d3724307cad8ea286ac296636689e070c7ebdc9249d6",
+      "program_references": 10,
+      "sample_count": 181
+    },
+    {
+      "character": "p29",
+      "source_sha256": "308568178e2793198666e90a2e6cf7f745333e9630d734eb917472b4ec70b548",
+      "program_references": 17,
+      "sample_count": 286
+    },
+    {
+      "character": "p30",
+      "source_sha256": "df9d2be063ffc4a9293b057342a0c4ccc6ac9aa16bf05b97c5b123cab1438a70",
+      "program_references": 15,
+      "sample_count": 256
+    }
+  ],
+  "total_characters": 18,
+  "total_scheduled_starts": 235,
+  "total_samples": 4083,
+  "gltf": {
+    "file": "examples/goku_face_events.gltf",
+    "accessors_checked": 142,
+    "animation_channels": 355,
+    "events": [
+      {
+        "time": 0.3,
+        "sampled_time": 0.3,
+        "group": 0,
+        "program": 0
+      },
+      {
+        "time": 2.0,
+        "sampled_time": 2.0,
+        "group": 1,
+        "program": 0
+      }
+    ],
+    "body_motion": "m01210m0.mot"
+  },
+  "scope": "Synthetic explicit schedules exercise every program reference; they do not establish native gameplay timing. glTF buffer/accessor/hierarchy checks use the package reader, not the Khronos validator."
+}
