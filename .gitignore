@@ -1,13 +1,15 @@
 # AI
 /.kilo
 
-# python
-/arika-py/__pycache__
-
 # assets
 /source_data
+/exported
 
-# stupid javascript
-/arika-py/node_modules/
+# python
+/arika-py/__pycache__
+/arika-py/node_modules
 /arika-py/package-lock.json
 /arika-py/package.json
+
+# rust
+/arika-rs/target

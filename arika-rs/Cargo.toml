@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "arika_core",
+    "arika_cli",
+    "arika_editor",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Arika DAT Tools (Rust port)"]
+license = "MIT"
+description = "Rust rewrite of Super Dragon Ball Z INFO.DAT / GAME.DAT tools with egui GUI and Bevy editor"
+
+[workspace.dependencies]
+arika_core = { path = "arika_core" }
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+rfd = "0.15"
+egui_dock = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+byteorder = "1"
+encoding_rs = "0.8"
+glam = "0.29"
+bevy = { version = "0.15", default-features = false, features = [
+    "bevy_asset",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_scene",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_gizmos",
+    "tonemapping_luts",
+    "bevy_winit",
+    "bevy_window",
+    "png",
+    "multi_threaded",
+    "x11",
+    "wayland",
+] }
+bevy_egui = "0.31"
+egui = "0.29"
+egui_extras = "0.29"
+tracing = "0.1"
+tracing-subscriber = "0.3"
