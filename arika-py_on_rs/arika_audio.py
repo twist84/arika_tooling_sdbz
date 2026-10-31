@@ -2,11 +2,14 @@
 """Export Super Dragon Ball Z ASE banks and AMS streams to signed 16-bit WAV."""
 import argparse
 from array import array
+import base64
 import json
 from pathlib import Path
 import struct
 import sys
 import wave
+
+import arika_backend as backend
 
 HEADER = 0x800
 INTERLEAVE = 0x8000
@@ -14,9 +17,7 @@ COEFFICIENTS = ((0, 0), (60, 0), (115, -52), (98, -55), (122, -60))
 
 
 def sample_rate(pitch):
-    if not 0 < pitch <= 0x3FFF:
-        raise ValueError('invalid SPU2 pitch')
-    return pitch * 48000 // 4096
+    return backend.sample_rate(pitch)
 
 
 def decode_adpcm(data, history=(0, 0)):
@@ -71,13 +72,11 @@ def ams_channels(data):
         raise ValueError('invalid AMS audio length')
     # Physical stereo blocks: 0,2,4,... then ...,5,3,1 in playback order.
     order = list(range(0, pairs * 2, 2)) + list(range(pairs * 2 - 1, 0, -2))
-    left, right = bytearray(), bytearray()
-    for index in order:
-        at = HEADER + index * 0x10000
-        left.extend(data[at:at + INTERLEAVE])
-        right.extend(data[at + INTERLEAVE:at + 2 * INTERLEAVE])
-    # Trim each deinterleaved channel, including the partial final block.
-    return sample_rate(pitch), bytes(left[:channel_size]), bytes(right[:channel_size])
+    result = backend.ams_channels(data)
+    left = base64.b64decode(result['left'])
+    right = base64.b64decode(result['right'])
+    rate = result['sample_rate']
+    return rate, bytes(left[:channel_size]), bytes(right[:channel_size])
 
 
 def write_wave(path, rate, channels):

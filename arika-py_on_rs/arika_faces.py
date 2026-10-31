@@ -10,6 +10,7 @@ import struct
 import sys
 import arika_models as models
 import arika_import as importer
+import arika_backend as backend
 
 require = models.require
 # Tables in SLES_541.61 at EE 0x47C1D0 and 0x47C1F0.
@@ -57,48 +58,7 @@ def parse_face(data):
 
 
 def face_catalog(directory):
-    """Index per-character ANI groups; the first three are native player face slots."""
-    root = Path(directory)
-    files = sorted(root.glob('p*/p*.ani'))
-    require(bool(files), 'no p*/p*.ani character files found')
-    characters = []
-    for path in files:
-        source = parse_face(path.read_bytes())
-        programs = {program['offset']: program for program in source['programs']}
-        groups = []
-        for group in source['groups']:
-            entries = []
-            for index, offset in enumerate(group['program_offsets']):
-                program = programs[offset]
-                records = program['records']
-                entries.append(dict(index=index, offset=offset,
-                    duration=max((r['time'] for r in records), default=0.0),
-                    records=len(records), events=[dict(time=r['time'], expression=r['expression'],
-                        behavior=r['behavior']) for r in records if not r['flags'] & 0x1000]))
-            groups.append(dict(index=group['index'], native_player_slot=group['index'] if group['index'] < 3 else None,
-                               program_count=len(entries), programs=entries))
-        characters.append(dict(character=path.parent.name, file=path.as_posix(),
-                               source_sha256=source['source_sha256'], groups=groups))
-    return dict(format='ARIKA_FACE_CATALOG', native_slot_evidence={
-        'player_asset_loader': '0x1E8B98 resolves indexed ANI pointers into player asset slots +0x5C/+0x60/+0x64',
-        'player_binding': '0x1EB150 copies those pointers to player+0x7E4/+0x7F0/+0x7FC',
-        'slot_0': dict(player_face_handle='player+0x7E4', voice_handle='player+0x7E0',
-                       voice_event_action_slot=55,
-                       voice_event_motion_id=55, face_start_handler='0x1ECBC0'),
-        'slot_1': dict(player_face_handle='player+0x7F0', voice_handle='player+0x7EC',
-                       voice_event_action_slots=[232,233],
-                       voice_event_motion_ids=[232, 233], face_start_handler='0x1EC2C8'),
-        'slot_2': dict(player_face_handle='player+0x7FC', voice_handle='player+0x7F8',
-                       voice_event_action_slot=235,
-                       voice_event_motion_id=235, face_start_handler='0x1EC6B0'),
-        'selection': 'per-character asset loader indexes each ANI group and stores the program pointer on the player',
-        'legacy_motion_id_fields': 'voice_event_motion_id(s) are retained for compatibility; native handlers select action-table slots whose records resolve through CHT',
-        'voice_readiness': dict(wrapper='0x001F5810',query='0x002FBE30',channel=15,
-            audio_channel_table='0x005D2D00',channel_stride=40,state_offset=36,ready_states=[0,1],
-            note='incoming context argument is discarded; this gate queries channel 15'),
-        'timing': 'face program starts after channel 15 reports ready; elapsed wait varies at runtime',
-        'scope': 'native slots 0..2 only; additional ANI groups are retained with an unknown purpose'
-    }, characters=characters)
+    return backend.face_catalog(directory)
 
 
 def resolve_timeline(source, document):

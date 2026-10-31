@@ -10,6 +10,7 @@ import sys
 import tempfile
 import wave
 
+import arika_backend as backend
 from arika_audio import (HEADER, INTERLEAVE, COEFFICIENTS, ams_channels,
                          ase_samples, decode_adpcm, sample_rate)
 from arika_dat import asset_path
@@ -38,10 +39,10 @@ def pitch_for_rate(rate, original_pitch):
     # Exported integer-Hz rates must recover the original fractional SPU2 pitch.
     if rate == sample_rate(original_pitch):
         return original_pitch
-    pitch = (rate * 4096 + 24000) // 48000
-    if not 1 <= pitch <= 0x3FFF:
+    result = backend.pitch_for_rate(rate, original_pitch)
+    if result < 0:
         raise ValueError('WAV sample rate is outside the supported SPU2 pitch range')
-    return pitch
+    return result
 
 
 def predict(h1, h2, c1, c2):
@@ -54,51 +55,8 @@ def encode_adpcm(samples, first_flag=0, last_flag=0, minimum_frames=1):
     """Search five filters and nearby quantizer scales, retaining decoded history."""
     if not samples:
         raise ValueError('cannot encode empty audio')
-    frame_count = max(minimum_frames, (len(samples) + 27) // 28)
-    output = bytearray(frame_count * 16)
-    h1 = h2 = 0
-    for frame_index in range(frame_count):
-        block = list(samples[frame_index * 28:(frame_index + 1) * 28])
-        block += [0] * (28 - len(block))
-        best = None
-        for filter_index, (c1, c2) in enumerate(COEFFICIENTS):
-            # Estimate scale using the input signal, then test adjacent scales
-            # using actual quantized predictor feedback.
-            a, b = h1, h2
-            peak = 0
-            for target in block:
-                peak = max(peak, abs(target - predict(a, b, c1, c2)))
-                b, a = a, target
-            step = 1
-            while step < 4096 and peak > 7 * step:
-                step *= 2
-            shift = 12 - (step.bit_length() - 1)
-            for candidate_shift in range(max(0, shift - 1), min(12, shift + 1) + 1):
-                quantizer = 1 << (12 - candidate_shift)
-                a, b = h1, h2
-                error = 0
-                nibbles = []
-                for target in block:
-                    prediction = predict(a, b, c1, c2)
-                    delta = target - prediction
-                    nibble = (delta + quantizer // 2) // quantizer
-                    nibble = max(-8, min(7, nibble))
-                    decoded = prediction + nibble * quantizer
-                    audible = max(-32768, min(32767, decoded))
-                    error += (audible - target) ** 2
-                    nibbles.append(nibble & 15)
-                    b, a = a, decoded
-                if best is None or error < best[0]:
-                    best = (error, filter_index, candidate_shift, nibbles, a, b)
-        _, filter_index, shift, nibbles, h1, h2 = best
-        at = frame_index * 16
-        output[at] = filter_index * 16 + shift
-        output[at + 1] = first_flag if frame_index == 0 else 0
-        if frame_index == frame_count - 1:
-            output[at + 1] = last_flag
-        for index in range(14):
-            output[at + 2 + index] = nibbles[index * 2] | (nibbles[index * 2 + 1] << 4)
-    return bytes(output)
+    raw = backend.encode_adpcm(list(samples), first_flag, last_flag, minimum_frames)
+    return raw
 
 
 def validate_timing(rate, frames, original_pitch, original_bytes, allow_duration_change):
@@ -201,7 +159,6 @@ def main():
     if any(a == b or a in b.parents or b in a.parents for i, a in enumerate(roots) for b in roots[i + 1:]):
         parser.error('originals, wavs and output must be separate, non-overlapping directories')
     plan, errors = [], []
-    # Resolve from provided WAVs so misspelled paths cannot be silently ignored.
     for path in sorted(args.wavs.rglob('*')):
         if not path.is_file() or path.suffix.lower() != '.wav':
             continue

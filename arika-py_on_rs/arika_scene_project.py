@@ -362,7 +362,7 @@ class c_scene_project:
         self.m_document=gltf.to_document()
         self.m_history=[];self.m_future=[];self.m_changed=False
 
-    def snapshot(self):return (self.m_stage.m_data,copy.deepcopy(self.m_document))
+    def snapshot(self):return (self.m_stage.m_data if self.m_stage else b'',copy.deepcopy(self.m_document))
 
     def checkpoint(self):
         self.m_history.append(self.snapshot());self.m_history=self.m_history[-20:];self.m_future=[];self.m_changed=True

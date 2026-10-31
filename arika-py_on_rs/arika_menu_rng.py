@@ -1,12 +1,16 @@
 """Native menu RNG algorithm; callers supply the 64-bit context state explicitly."""
+import ctypes
+import arika_backend as backend
+
 MULTIPLIER=0x5851F42D4C957F2D
 MASK64=0xffffffffffffffff
 
 
 def next_rng(state):
     if not isinstance(state,int) or not 0<=state<=MASK64:raise ValueError('RNG state must be an unsigned 64-bit integer')
-    state=(state*MULTIPLIER+1)&MASK64
-    return state,(state>>32)&0x7fffffff
+    value = ctypes.c_uint(0)
+    next_state = backend._lib.arika_next_rng(state, ctypes.byref(value))
+    return next_state, value.value
 
 
 class c_native_rng:

@@ -949,7 +949,16 @@ class c_scene_editor(W.QMainWindow):
 
     def add_example_character(self):
         if not self.m_project:
-            self.statusBar().showMessage('Open a stage or editor project first.');return
+            self.m_project=c_scene_project.__new__(c_scene_project)
+            self.m_project.m_document={
+                'asset':{'version':'2.0','generator':'Arika Editor'},
+                'buffers':[],'bufferViews':[],'accessors':[],
+                'images':[],'textures':[],'samplers':[],
+                'materials':[],'meshes':[],'nodes':[],
+                'scenes':[{'nodes':[]}],'scene':0,
+            }
+            self.m_project.m_history=[];self.m_project.m_future=[];self.m_project.m_changed=False
+            self.m_project.m_stage=None
         path=Path(__file__).parent/'examples/goku_action_232_native_poses.gltf'
         self.import_character(path,name='Goku',choose=False)
 

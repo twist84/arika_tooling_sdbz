@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Trace the scalar native MOT2 clock, without the pose/callback backend."""
 import argparse
+import ctypes
 import json
 import math
 from pathlib import Path
@@ -10,6 +11,8 @@ from arika_models import require, parse_motions
 from arika_cht import parse_cht,load_banks,lookup,resolve
 from arika_face_player import f32
 from arika_import import write_output
+import arika_backend as backend
+from arika_backend import BackendError
 
 
 ACTIVE=0x01000000
@@ -20,6 +23,16 @@ REVERSE=0x00020000
 LOOP=0x00010000
 
 
+def _clock_params(fps, frame_count, start, end, speed, blend, reverse, loop,
+                  stop_after, scale_channels, inherited_blend):
+    return dict(
+        fps=fps, frame_count=frame_count, start_frame=start, end_frame=end,
+        speed=speed, blend=blend, reverse=reverse, loop=loop,
+        stop_after=stop_after, scale_channels=scale_channels,
+        inherited_blend=list(inherited_blend) if inherited_blend is not None else None,
+    )
+
+
 class c_native_clock:
     def __init__(self,fps,frame_count,start=0,end=-1,speed=1,blend=0,
                  reverse=False,loop=False,stop_after=-1,scale_channels=0,inherited_blend=None):
@@ -27,89 +40,112 @@ class c_native_clock:
         require(fps>0 and type(frame_count) is int and 0<frame_count<=65535,'invalid clock motion timing')
         native_fps=f32(fps)
         require(native_fps>0 and math.isfinite(native_fps),'invalid float32 fps')
-        self.m_frame_period=f32(1/native_fps)
-        require(self.m_frame_period>0 and math.isfinite(self.m_frame_period),'invalid float32 frame period')
+        frame_period=f32(1/native_fps)
+        require(frame_period>0 and math.isfinite(frame_period),'invalid float32 frame period')
         last=f32(frame_count-1)
         start=min(last,max(0,f32(start)))
         end=last if end<0 else min(last,f32(end))
         require(end>=start,'reversed frame range is unsupported')
-        self.m_start=f32(start*self.m_frame_period)
-        self.m_end=f32(end*self.m_frame_period)
-        self.m_speed=max(f32(.01),f32(speed))
-        self.m_baseline=f32(self.m_end+self.m_frame_period) if reverse else f32(self.m_start-self.m_frame_period)
-        self.m_position=self.m_baseline
-        self.m_blend_total=self.m_blend_remaining=max(0,f32(blend))
+        m_start=f32(start*frame_period)
+        m_end=f32(end*frame_period)
+        m_speed=max(f32(.01),f32(speed))
+        m_baseline=f32(m_end+frame_period) if reverse else f32(m_start-frame_period)
+        blend_total=blend_remaining=max(0,f32(blend))
         if blend<0 and inherited_blend is not None:
             total,remaining=inherited_blend
             require(all(math.isfinite(v) for v in (total,remaining)) and total>=0 and remaining<=total,'invalid inherited blend')
-            self.m_blend_total=f32(total);self.m_blend_remaining=f32(remaining)
-        self.m_stop_timer=f32(stop_after)
+            blend_total=f32(total);blend_remaining=f32(remaining)
+        m_stop_timer=f32(stop_after)
+        m_flags=ACTIVE|DIRTY|(REVERSE if reverse else 0)|(LOOP if loop else 0)|(0x100 if scale_channels else 0)
+        require(m_start!=m_baseline if not reverse else m_end!=m_baseline,'unrepresentable clock baseline')
+
+        buf = backend._lib.arika_clock_init(json.dumps(_clock_params(
+            fps, frame_count, start, end, speed, blend, reverse, loop,
+            stop_after, scale_channels, inherited_blend,
+        )).encode('utf-8'))
+        if not buf.ptr:
+            raise BackendError(f"clock_init: {backend._last_error()}")
+        try:
+            self._state = json.loads(ctypes.string_at(buf.ptr, buf.len).decode('utf-8'))
+        finally:
+            backend._lib.arika_free_buffer(buf)
+
+        self.m_frame_period=frame_period
+        self.m_start=m_start
+        self.m_end=m_end
+        self.m_speed=m_speed
+        self.m_baseline=m_baseline
+        self.m_position=m_baseline
+        self.m_blend_total=blend_total
+        self.m_blend_remaining=blend_remaining
+        self.m_stop_timer=m_stop_timer
         self.m_scale_channels=scale_channels
-        self.m_flags=ACTIVE|DIRTY|(REVERSE if reverse else 0)|(LOOP if loop else 0)|(0x100 if scale_channels else 0)
-        require(self.m_start!=self.m_baseline if not reverse else self.m_end!=self.m_baseline,'unrepresentable clock baseline')
+        self.m_flags=m_flags
+
         self.m_initialization_tick=None
         if self.m_stop_timer==0 or self.m_end<=self.m_start:
             self.m_initialization_tick=self.step(self.m_frame_period)
 
+    @property
+    def m_flags(self):
+        return self._state['flags']
+
+    @m_flags.setter
+    def m_flags(self, value):
+        self._state['flags'] = value
+
+    @property
+    def m_position(self):
+        return self._state['position']
+
+    @m_position.setter
+    def m_position(self, value):
+        self._state['position'] = value
+
+    @property
+    def m_blend_remaining(self):
+        return self._state['blend_remaining']
+
+    @m_blend_remaining.setter
+    def m_blend_remaining(self, value):
+        self._state['blend_remaining'] = value
+
+    @property
+    def m_stop_timer(self):
+        return self._state['stop_timer']
+
+    @m_stop_timer.setter
+    def m_stop_timer(self, value):
+        self._state['stop_timer'] = value
+
     def snapshot(self,carry=0,wrap_fraction=None,advanced=False):
-        weight=f32(1-f32(self.m_blend_remaining/self.m_blend_total)) if self.m_blend_remaining>0 else 1.0
-        return dict(position=self.m_position,sample_time=min(self.m_end,max(self.m_start,self.m_position)),
-            start_time=self.m_start,end_time=self.m_end,baseline=self.m_baseline,speed=self.m_speed,
-            stop_timer=self.m_stop_timer,blend_total=self.m_blend_total,blend_remaining=self.m_blend_remaining,
-            blend_weight=weight,carry=carry,wrap_fraction=wrap_fraction,active=bool(self.m_flags&ACTIVE),
-            flags=self.m_flags,advanced=advanced)
+        has_wrap = 1 if wrap_fraction is not None else 0
+        wrap = wrap_fraction if wrap_fraction is not None else 0
+        buf = backend._lib.arika_clock_snapshot(
+            json.dumps(self._state).encode('utf-8'),
+            carry, has_wrap, wrap, 1 if advanced else 0,
+        )
+        if not buf.ptr:
+            raise BackendError(f"clock_snapshot: {backend._last_error()}")
+        try:
+            return json.loads(ctypes.string_at(buf.ptr, buf.len).decode('utf-8'))
+        finally:
+            backend._lib.arika_free_buffer(buf)
 
     def step(self,delta):
         require(math.isfinite(delta),'nonfinite clock delta')
-        delta=f32(delta)
-        if not self.m_flags&ACTIVE:
-            return self.snapshot(carry=delta)
-        if self.m_flags&PAUSED or delta<=0:
-            return self.snapshot()
-        scaled=f32(delta*self.m_speed)
-        require(math.isfinite(scaled),'clock delta overflow')
-        carry=0.0;overshoot=0.0;finished=False;fraction=None
-        if self.m_stop_timer>0:
-            self.m_stop_timer=f32(self.m_stop_timer-scaled)
-            if self.m_stop_timer<=0:
-                overshoot=f32(-self.m_stop_timer)
-                carry=f32(overshoot/self.m_speed)
-                scaled=f32(scaled+self.m_stop_timer)
-                finished=True
-        if self.m_blend_remaining>0:
-            self.m_blend_remaining=f32(self.m_blend_remaining-scaled)
-            if self.m_blend_remaining<=0:
-                if self.m_scale_channels==0:self.m_flags&=~0x100
-                self.m_flags|=DIRTY
-        reverse=bool(self.m_flags&REVERSE)
-        self.m_position=f32(self.m_position-scaled) if reverse else f32(self.m_position+scaled)
-        if self.m_flags&LOOP:
-            period=f32(self.m_baseline-self.m_start) if reverse else f32(self.m_end-self.m_baseline)
-            require(period>0,'invalid native loop period')
-            for _ in range(100000):
-                outside=self.m_position<self.m_start if reverse else self.m_position>self.m_end
-                if not outside:break
-                self.m_flags|=WRAPPED
-                updated=f32(self.m_position+period) if reverse else f32(self.m_position-period)
-                require(updated!=self.m_position,'native loop subtraction cannot progress')
-                self.m_position=updated
-            else:raise ValueError('native loop iteration limit')
-        else:
-            at_end=self.m_position<=self.m_start if reverse else self.m_position>=self.m_end
-            if at_end:
-                extra=f32(self.m_start-self.m_position) if reverse else f32(self.m_position-self.m_end)
-                carry=f32(f32(overshoot+extra)/self.m_speed)
-                self.m_position=self.m_start if reverse else self.m_end
-                finished=True
-        if self.m_flags&WRAPPED:
-            if reverse and self.m_position>self.m_end:
-                fraction=f32(f32(self.m_position-self.m_end)/self.m_frame_period)
-            elif not reverse and self.m_position<self.m_start:
-                fraction=f32(1-f32(f32(self.m_start-self.m_position)/self.m_frame_period))
-        if finished:self.m_flags&=0xF
-        # Pose evaluation clears the one-shot dirty flag before terminal cleanup.
-        self.m_flags&=~DIRTY
-        return self.snapshot(carry,fraction,True)
+        buf = backend._lib.arika_clock_step(
+            json.dumps(self._state).encode('utf-8'),
+            f32(delta),
+        )
+        if not buf.ptr:
+            raise BackendError(f"clock_step: {backend._last_error()}")
+        try:
+            result = json.loads(ctypes.string_at(buf.ptr, buf.len).decode('utf-8'))
+        finally:
+            backend._lib.arika_free_buffer(buf)
+        self._state = result['state']
+        return result['snapshot']
 
 
 def main():
