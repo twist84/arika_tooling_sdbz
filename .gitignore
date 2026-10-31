@@ -13,3 +13,7 @@
 
 # rust
 /arika-rs/target
+
+# rust backend for python
+/arika-py_on_rs/__pycache__
+/arika-py_on_rs/target

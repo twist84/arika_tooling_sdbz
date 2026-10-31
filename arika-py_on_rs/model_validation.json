@@ -1,0 +1,16 @@
+{
+  "stats": {
+    "model_files": 476,
+    "meshes": 14800,
+    "bones": 31356,
+    "vertices": 4824347,
+    "triangles": 2425131,
+    "skinned_meshes": 5414,
+    "morph_meshes": 1552,
+    "motion_packages": 57,
+    "motions": 1399,
+    "motion_nodes": 64364
+  },
+  "unique_payloads": 256,
+  "errors": []
+}

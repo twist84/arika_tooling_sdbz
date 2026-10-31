@@ -1,0 +1,107 @@
+{
+  "format": "ARIKA_EXPLICIT_TRANSITION_CHECK",
+  "samples_checked": 601,
+  "events": [
+    {
+      "at": 0,
+      "segment": 0,
+      "outgoing_segment": null,
+      "outgoing_time": null,
+      "binding": {
+        "variant": 0,
+        "offset": 41916,
+        "name_index": 142,
+        "motion_name": "m01232m0a",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 40,
+        "package_motion": "m01232m0a.mot"
+      }
+    },
+    {
+      "at": 1.3333333333333333,
+      "segment": 1,
+      "outgoing_segment": 0,
+      "outgoing_time": 1.316665768623352,
+      "binding": {
+        "variant": 1,
+        "offset": 42052,
+        "name_index": 143,
+        "motion_name": "m01232m0l",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 39,
+        "package_motion": "m01232m0l.mot"
+      }
+    },
+    {
+      "at": 3.2,
+      "segment": 2,
+      "outgoing_segment": 1,
+      "outgoing_time": 0.18333207070827484,
+      "binding": {
+        "variant": 0,
+        "offset": 41916,
+        "name_index": 142,
+        "motion_name": "m01232m0a",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 40,
+        "package_motion": "m01232m0a.mot"
+      }
+    }
+  ],
+  "bridge_samples": [
+    {
+      "time": 1.3416666666666666,
+      "segment": 1,
+      "bridge": {
+        "outgoing_segment": 0,
+        "outgoing_time": 1.316665768623352,
+        "incoming_time": 0.0,
+        "fraction": 0.5
+      }
+    },
+    {
+      "time": 3.2083333333333335,
+      "segment": 2,
+      "bridge": {
+        "outgoing_segment": 1,
+        "outgoing_time": 0.18333207070827484,
+        "incoming_time": 1.3166667222976685,
+        "fraction": 0.5000004768371582
+      }
+    }
+  ],
+  "gltf": {
+    "file": "goku_explicit_transitions.gltf",
+    "accessors_checked": 338,
+    "animation_channels": 1421,
+    "motion_binding": null
+  },
+  "scope": "Integration checks on an authored three-segment Goku schedule. Does not validate native action orchestration; helper instruction checks are in native_pose_validation.json."
+}

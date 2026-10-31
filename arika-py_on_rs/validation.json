@@ -1,0 +1,26 @@
+{
+  "assets": 1934,
+  "chunk_counts": {
+    "XPIX": 3438,
+    "DMOD": 476,
+    "DMAT": 476,
+    "XTEX": 476,
+    "XMON": 476,
+    "XCUD": 476,
+    "XMTX": 412,
+    "DHIE": 412,
+    "XNON": 412,
+    "MOT2": 1399
+  },
+  "tim2_image_types": {
+    "5": 3431,
+    "4": 6,
+    "3": 1
+  },
+  "decoded_info_matches_ee_and_iop": true,
+  "unmodified_repack_bit_identical": true,
+  "sha256": {
+    "INFO.DAT": "dc9d943c26347b03a7944ef01a2cfd14b9635a3be8f392b48cfbc0ac1eb34f0c",
+    "GAME.DAT": "bb58addf9108d4c02585515a0d3c9a0ae09ba68964f1ccbdbf95f752ed2709bc"
+  }
+}

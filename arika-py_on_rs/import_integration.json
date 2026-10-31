@@ -1,0 +1,11 @@
+{
+  "modified_assets_roundtrip_through_dat": [
+    "ply/p01/p01.ani",
+    "ply/p01/p01a.mdl",
+    "ply/p01/p01sel.pmt"
+  ],
+  "untouched_assets_bit_identical": 1931,
+  "game_dat_original_size": 730050560,
+  "game_dat_rebuilt_size": 730050560,
+  "actual_gameplay_tested": false
+}

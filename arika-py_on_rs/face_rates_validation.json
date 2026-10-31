@@ -1,0 +1,10 @@
+{
+  "rates": [
+    50,
+    120
+  ],
+  "seed": 13,
+  "programs_per_rate": 325,
+  "compared_ticks": 78000,
+  "exact_float32_state_and_pose_match": true
+}

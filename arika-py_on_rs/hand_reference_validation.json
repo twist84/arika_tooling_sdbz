@@ -1,0 +1,8 @@
+{
+  "hand_motions": 1107,
+  "compared_samples": 70432,
+  "reference_routine": "0x1B7E30",
+  "interpolation": "STEP (caller t1=1)",
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+  "result": "exact requested left/right index matches"
+}

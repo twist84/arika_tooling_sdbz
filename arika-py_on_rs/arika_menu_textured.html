@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Super Dragon Ball Z — Textured Menu Lab</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10151c;color:#e8edf3;font:15px system-ui,sans-serif}header{padding:24px 32px;border-bottom:1px solid #2b3542;display:flex;align-items:center;justify-content:space-between;gap:20px}h1{font-size:22px;margin:4px 0}.eyebrow{font-size:11px;color:#ffb347;letter-spacing:2px;font-weight:700}.tag{font-size:12px;color:#a9b8ca}main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:24px;max-width:1320px;margin:auto;padding:26px}.stage{background:#080c10;border:1px solid #303c4c;border-radius:10px;padding:16px}canvas{width:100%;height:auto;display:block;image-rendering:pixelated;background:repeating-conic-gradient(#1b2531 0% 25%,#222f3d 0% 50%) 0/20px 20px}.toolbar{display:flex;align-items:center;gap:12px;margin-top:16px}input[type=range]{flex:1;accent-color:#ffb347}button,select{color:#e8edf3;background:#253344;border:1px solid #45566b;border-radius:6px;padding:9px}button{cursor:pointer}button:hover{background:#344963}aside{display:flex;flex-direction:column;gap:22px}label{display:block;color:#b9c8d9;font-size:13px;margin-bottom:9px}select{width:100%;margin-top:6px}input[type=checkbox]{accent-color:#ffb347;margin-right:9px}.group{border-bottom:1px solid #2b3542;padding-bottom:16px}.group h2{font-size:13px;letter-spacing:.8px;color:#fff;margin:0 0 14px}p{font-size:12px;color:#9aacc2;line-height:1.6}#status{color:#ffbf68;font-size:12px;min-width:85px}.hint{margin:12px 0 0}.footer{font-size:11px;color:#7f93ab;padding:0 32px 24px;max-width:1320px;margin:auto}@media(max-width:800px){main{grid-template-columns:1fr;padding:12px}aside{display:grid;grid-template-columns:1fr 1fr}header{padding:20px}.tag{display:none}}
+</style>
+<header><div><div class="eyebrow">RECOVERED GAME ASSETS</div><h1>Super Dragon Ball Z <span style="font-weight:400;color:#92a8c0">/ Menu Lab</span></h1></div><div class="tag">13 original atlases · offline preview</div></header>
+<main><section><div class="stage"><canvas id="screen" width="512" height="448"></canvas><div class="toolbar"><button id="play">Play</button><select id="rate" aria-label="Playback rate"><option value="0.01">0.01x</option><option value="0.05">0.05x</option><option value="0.10">0.10x</option><option value="0.15">0.15x</option><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option></select><input id="time" aria-label="Animation sample" type="range" min="0" max="139" value="70"><span id="status"></span></div></div><p class="hint">Shared, character and label motion follows recovered callbacks. Scrub from sample 0 to watch entry; exit is requested at sample 120.</p></section><aside>
+<div class="group"><h2>VIEW</h2><label>Composition<select id="view"><option value="composite">Shared + selected item</option><option value="item">Selected item only</option><option value="shared">Shared only</option><option value="atlas">Texture atlas</option></select></label><label>Menu item<select id="item"><option>0 · ORIGINAL</option><option>1 · Z SURVIVOR</option><option>2 · VERSUS</option><option>3 · DRAGON SUMMONING</option><option>4 · TRAINING</option><option>5 · CUSTOMIZE</option><option>6 · OPTIONS</option></select></label><label>Atlas entry<select id="atlas"></select></label></div>
+<div class="group"><h2>LAYERS</h2><label><input id="background" type="checkbox" checked>Background</label><label><input id="motion" type="checkbox" checked>Banner, tiles, small panels</label><label><input id="tint" type="checkbox" checked>Recovered overlay fade</label><label><input id="first" type="checkbox" checked>Item scenery</label><label><input id="middle" type="checkbox" checked>Character parts</label><label><input id="overlay" type="checkbox" checked>Item label</label><label><input id="emphasis" type="checkbox">Emphasis demo at sample 80</label><button id="shake">Play shake</button><label><input id="idle_motion" type="checkbox" checked>Part idle (all 7 items)</label><label><input id="character_motion" type="checkbox" checked>Recovered character entry/exit</label><label><input id="label_motion" type="checkbox" checked>Recovered label motion</label><label><input id="arrows" type="checkbox" checked>Navigation arrows</label><label><input id="bounds" type="checkbox">Quad outlines</label><label><input id="smooth" type="checkbox">Smooth sampling</label></div>
+<div><button id="export">Save PNG</button><p>Textured diagnostic reconstruction. Labels and whole characters have recovered entry/exit motion. Emphasis uses an authored sample-80 trigger; native selection timing remains pending. OPTIONS and DRAGON SUMMONING use host trigonometry. Animation display rate: authored 60 samples/s.</p></div></aside></main><div class="footer">Original FPIX / TIM2 textures. RGBA alpha expands the PS2 0–128 range. Canvas clipping and blending provide a preview, not PS2 GPU emulation.</div>
+<script>
+const DATA=/*PAYLOAD*/;
+const $=id=>document.getElementById(id),canvas=$('screen'),ctx=canvas.getContext('2d');
+let images=[],running=false,last=0,playTime=70,draw_queue=[];window.menu_lab_ready=false;
+DATA.textures.forEach(t=>{const o=document.createElement('option');o.value=t.index;o.textContent=`${t.index} · ${t.width} × ${t.height}`;$('atlas').append(o)});
+$('time').max=DATA.frames.length-1;
+function sprite(entry,g,alpha=1){
+ if(!g||alpha<=0)return;const im=images[entry];if(!im)throw Error('Missing texture '+entry);
+ const [u0,v0,u1,v1]=g.uv_endpoints,[p,q,r,s]=g.vertices,du=u1-u0,dv=v1-v0;if(!du||!dv)return;
+ const a=(q[0]-p[0])/du,b=(q[1]-p[1])/du,c=(r[0]-p[0])/dv,d=(r[1]-p[1])/dv;
+ ctx.save();ctx.globalAlpha=alpha;ctx.beginPath();ctx.moveTo(...p);ctx.lineTo(...q);ctx.lineTo(...s);ctx.lineTo(...r);ctx.closePath();ctx.clip();ctx.imageSmoothingEnabled=$('smooth').checked||(Math.abs(du)===1&&Math.abs(dv)>4)||(Math.abs(dv)===1&&Math.abs(du)>4);if(ctx.imageSmoothingEnabled)ctx.imageSmoothingQuality='high';ctx.transform(a,b,c,d,p[0]-u0*a-v0*c,p[1]-u0*b-v0*d);ctx.drawImage(im,0,0);ctx.restore();
+ if($('bounds').checked){ctx.save();ctx.strokeStyle='#ffb347';ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(...p);ctx.lineTo(...q);ctx.lineTo(...s);ctx.lineTo(...r);ctx.closePath();ctx.stroke();ctx.restore()}
+}
+function enqueue(entry,geometry,depth,alpha=1){if(geometry)draw_queue.push({entry,geometry,depth:geometry.depth??depth,alpha})}
+function flush(){draw_queue.sort((a,b)=>a.depth-b.depth);for(const q of draw_queue)sprite(q.entry,q.geometry,q.alpha)}
+function blend(a,b,t){if(typeof a==='number'&&typeof b==='number')return a+(b-a)*t;if(Array.isArray(a)&&Array.isArray(b)&&a.length===b.length){if(a.length&&typeof a[0]==='number'&&!Array.isArray(a[0]))return a.map((v,i)=>v+(b[i]-v)*t);return a.map((v,i)=>blend(v,b[i],t))}if(a&&typeof a==='object'&&b&&typeof b==='object'){const o={};for(const k in a){if(k in b){if(k==='texture_entry'||k==='depth'||k==='uv_endpoints'||k==='tick'||k==='entry')o[k]=a[k];else o[k]=blend(a[k],b[k],t)}else o[k]=a[k]}return o}return a}
+function blendFrames(a,b,t){if(t<=0)return a;if(t>=1)return b;return blend(a,b,t)}
+function render(){
+ draw_queue=[];
+ ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,512,448);ctx.imageSmoothingEnabled=$('smooth').checked;
+ const view=$('view').value,n=DATA.frames.length;if(!running)playTime=+$('time').value;const t=Math.max(0,Math.min(n-1,playTime));const i0=Math.floor(t),i1=Math.min(i0+1,n-1),frac=t-i0;const frame=blendFrames(DATA.frames[i0],DATA.frames[i1],frac),item=DATA.items[$('item').selectedIndex];
+ const demo=$('emphasis').checked&&frame.emphasis_characters!==null;
+ const active_labels=demo?frame.emphasis_labels:frame.labels;
+ const active_characters=demo?($('idle_motion').checked?frame.emphasis_idle_characters:frame.emphasis_characters):($('idle_motion').checked?frame.idle_characters:frame.characters);
+ $('status').textContent=`Sample ${frame.tick}`;
+ if(view==='atlas'){const im=images[+$('atlas').value],scale=Math.min(512/im.width,448/im.height);ctx.drawImage(im,0,0,im.width*scale,im.height*scale);return}
+ if(view!=='item'){
+  if($('background').checked)enqueue(1,DATA.background,0);
+  if($('motion').checked){enqueue(2,frame.banner,99);for(const t of frame.tiles)enqueue(2,t,85);for(const s of frame.small)enqueue(3,s,5)}
+  if($('tint').checked&&!frame.hidden)enqueue(8,DATA.tint,10,frame.alpha);
+ }
+ if(view!=='shared')for(const group of ['first','middle','overlay','arrows'])if($(group).checked)for(const p of (group==='middle'&&$('character_motion').checked?active_characters[$('item').selectedIndex]:item[group]))enqueue(p.texture_entry,group==='overlay'&&$('label_motion').checked?active_labels[$('item').selectedIndex]:p.geometry,group==='first'?47:group==='middle'?60:70);
+ if(view!=='shared'&&$('first').checked)for(const p of frame.strips[$('item').selectedIndex])enqueue(p.texture_entry,p.geometry,45);
+ flush();
+}
+$('time').addEventListener('input',()=>{playTime=+$('time').value});for(const el of document.querySelectorAll('select,input'))el.addEventListener('input',render);
+$('play').onclick=()=>{running=!running;$('play').textContent=running?'Pause':'Play';last=0};
+$('shake').onclick=()=>{$('emphasis').checked=true;$('time').value=80;playTime=80;running=true;last=0;$('play').textContent='Pause';render()};
+$('export').onclick=()=>{const a=document.createElement('a');a.download=`sdbz-menu-${$('item').selectedIndex}-${$('time').value}.png`;a.href=canvas.toDataURL();a.click()};
+function tick(t){if(running){if(last){const rate=+$('rate').value;playTime=(playTime+(t-last)/1000*60*rate)%DATA.frames.length;last=t;$('time').value=Math.round(playTime);render()}else last=t}requestAnimationFrame(tick)}
+Promise.all(DATA.textures.map(t=>new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=t.png}))).then(v=>{images=v;render();window.menu_lab_ready=true;requestAnimationFrame(tick)}).catch(e=>{$('status').textContent='Texture load failed';console.error(e)});
+window.menu_lab={render,data:DATA};
+</script></html>

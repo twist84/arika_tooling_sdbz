@@ -1,0 +1,94 @@
+{
+  "format": "ARIKA_ACTION_SEQUENCE",
+  "segments": [
+    {
+      "segment": 0,
+      "start_time": 0.0,
+      "end_time": 1.3333333333333333,
+      "start_frame": 0,
+      "end_frame": 79,
+      "effective_speed": 1.0,
+      "fps": 60.0,
+      "transition": "advance",
+      "next_segment": 1,
+      "record": {
+        "index": 0,
+        "address": 4839856,
+        "motion_id": 232,
+        "variant": 0,
+        "speed": 1.0,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "flags": 0,
+        "flags_hex": "0x00000000"
+      },
+      "binding": {
+        "variant": 0,
+        "offset": 41916,
+        "name_index": 142,
+        "motion_name": "m01232m0a",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 40,
+        "package_motion": "m01232m0a.mot"
+      }
+    },
+    {
+      "segment": 1,
+      "start_time": 1.3333333333333333,
+      "end_time": 3.0,
+      "start_frame": 0,
+      "end_frame": 99,
+      "effective_speed": 1.0,
+      "fps": 60.0,
+      "transition": "replay",
+      "next_segment": 1,
+      "record": {
+        "index": 1,
+        "address": 4839876,
+        "motion_id": 232,
+        "variant": 1,
+        "speed": 1.0,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "flags": 131072,
+        "flags_hex": "0x00020000"
+      },
+      "binding": {
+        "variant": 1,
+        "offset": 42052,
+        "name_index": 143,
+        "motion_name": "m01232m0l",
+        "resource_bank": 0,
+        "child_blocks": {
+          "type_68": 0,
+          "type_36": 0,
+          "type_32": 0,
+          "type_12": 0
+        },
+        "package": "mapping_assets/ply/p01/p01act.pmt",
+        "package_sha256": "a568b0367c66fb816b0196a543d2c68f5c866fe6033987b96d302e412a572315",
+        "status": "resolved",
+        "package_index": 39,
+        "package_motion": "m01232m0l.mot"
+      }
+    }
+  ],
+  "total_path_duration": 3.0,
+  "cycle_start": 1.3333333333333333,
+  "cycle_duration": 1.6666666666666667,
+  "timing_model": "Authored-frame preview: inclusive frame windows, positive speed floor 0.01; native tick carry/blending are not simulated.",
+  "action_slot": 232,
+  "table_address": 4839856,
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+  "cht_sha256": "1aa53138e20ccdfdcc3ce154692f97b0af402677095c0cb7840766de09bd3433",
+  "scope": "Reachable common defaults only. Native overrides, event-driven transitions, blending, root-motion accumulation and contextual CHT fallback are not simulated."
+}

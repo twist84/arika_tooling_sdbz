@@ -1,0 +1,15 @@
+{
+  "file": "goku_hand_motion.gltf",
+  "checked_vertex_poses": 7512,
+  "max_position_error": 0,
+  "visible": "matches original animated skeleton",
+  "hidden": "every vertex collapses to the same point",
+  "sample_times": [
+    0,
+    0.05,
+    0.1,
+    0.15,
+    0.3,
+    0.59
+  ]
+}
