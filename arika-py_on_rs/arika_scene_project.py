@@ -2,7 +2,7 @@
 import base64
 import copy
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from arika_stage_editor import c_stage_document
 from arika_stages import parse_stg,build_stage_gltf
 from arika_models import euler_radians,quaternion,require,local_matrix,multiply,identity
@@ -272,8 +272,8 @@ class c_scene_project:
     def set_parent(self,indices,parent):return self.reparent_nodes(indices,parent)
     def assign_parent(self,indices,parent):return self.reparent_nodes(indices,parent)
 
-    def add_character(self,character,name,mesh_indices=None,translation=(0,0,0)):
-        document,index=merge_character(self.m_document,character,name,mesh_indices,translation)
+    def add_character(self,character,name,mesh_indices=None,translation=(0,0,0),hidden_indices=None,skinned=False):
+        document,index=merge_character(self.m_document,character,name,mesh_indices,translation,hidden_indices,skinned)
         self.checkpoint();self.m_document=document
         return index
 
@@ -361,14 +361,54 @@ class c_scene_project:
         gltf,_report=build_stage_gltf(self.m_stage.m_path,scene=self.m_stage.m_scene)
         self.m_document=gltf.to_document()
         self.m_history=[];self.m_future=[];self.m_changed=False
+        self.m_virtual=False
         self._import_sibling_audio()
 
     def _import_sibling_audio(self):
+        if getattr(self,'m_virtual',False):return
         base=self.m_stage.m_path.parent
         for suffix in ('.ase','.ams'):
             for path in sorted(base.glob('*'+suffix)):
                 try:self.import_audio(path)
                 except Exception:pass
+
+    @classmethod
+    def _build(cls,stage,document,virtual=False):
+        obj=cls.__new__(cls);obj.m_stage=stage;obj.m_document=document
+        obj.m_history=[];obj.m_future=[];obj.m_changed=False
+        obj.m_virtual=virtual
+        return obj
+
+    @classmethod
+    def from_bytes(cls,stg_data,name=None,virtual_files=None,model_data=None,hit_data=None,texture_data=None):
+        stage=c_stage_document(data=stg_data,name=name,virtual_files=virtual_files)
+        stage.m_virtual=True
+        gltf,_report=build_stage_gltf(stage.m_path,scene=stage.m_scene,
+            model_data=model_data,hit_data=hit_data,texture_data=texture_data)
+        return cls._build(stage,gltf.to_document(),virtual=True)
+
+    @classmethod
+    def from_virtual(cls,stg_path,virtual_files):
+        data=virtual_files[stg_path]
+        p=PurePosixPath(stg_path);directory=str(p.parent);stem=p.stem
+        def sibling(suffix):
+            return '%s/%s%s'%(directory,stem,suffix) if directory else '%s%s'%(stem,suffix)
+        return cls.from_bytes(data,stg_path,virtual_files,
+            model_data=virtual_files.get(sibling('.mdl')),
+            hit_data=virtual_files.get(sibling('.hit')),
+            texture_data=virtual_files.get(sibling('.pix')))
+
+    @classmethod
+    def load_bytes(cls,data,name=None):
+        document=data if isinstance(data,dict) else json.loads(data)
+        require(document.get('format')=='ARIKA_SCENE_PROJECT' and document.get('version')==1,'unsupported editor project')
+        stage=c_stage_document.__new__(c_stage_document);stage.m_path=Path(document['source_stage'])
+        stage.m_original=base64.b64decode(document['original_stage'],validate=True);parse_stg(stage.m_original)
+        stage.m_data=base64.b64decode(document['edited_stage'],validate=True);stage.m_scene=parse_stg(stage.m_data);stage.m_undo=[];stage.m_redo=[]
+        stage.m_virtual_files={};stage.m_virtual=bool(name)
+        doc=document['gltf'];require(doc.get('asset',{}).get('version')=='2.0','invalid project glTF')
+        for item in doc.get('buffers',[])+doc.get('images',[]):require(item.get('uri','').startswith('data:'),'project assets must be embedded')
+        return cls._build(stage,doc,virtual=bool(name))
 
     def snapshot(self):return (self.m_stage.m_data if self.m_stage else b'',copy.deepcopy(self.m_document))
 
@@ -411,11 +451,44 @@ class c_scene_project:
     def import_texture(self,path):
         from PIL import Image
         import io
-        with Image.open(path) as image:
-            require(image.width<=16384 and image.height<=16384,'texture dimensions exceed 16384')
-            buffer=io.BytesIO();image.convert('RGBA').save(buffer,format='PNG')
+        import arika_dat as dat
+        path=Path(path)
+        data=None
+        try:
+            data=path.read_bytes()
+        except Exception:
+            pass
+        # Check if it's FPIX
+        if data and len(data)>=4 and data[:4]==b'FPIX':
+            try:
+                metadata=dat.container(data)
+                self.checkpoint()
+                images=self.m_document.setdefault('images',[])
+                textures=self.m_document.setdefault('textures',[])
+                added=0
+                for chunk in metadata['chunks']:
+                    if chunk['magic']!='XPIX':continue
+                    try:
+                        png=dat.tim2_png_bytes(data[chunk['offset']:chunk['offset']+chunk['size']])
+                        images.append(dict(name='%s_%04d.png'%(path.stem,chunk['index']),uri='data:image/png;base64,'+base64.b64encode(png).decode()))
+                        textures.append(dict(source=len(images)-1))
+                        added+=1
+                    except Exception:
+                        continue
+                if added==0:raise ValueError('FPIX contains no extractable textures')
+                return len(textures)-1
+            except Exception as e:
+                raise
+        try:
+            with Image.open(path) as image:
+                require(image.width<=16384 and image.height<=16384,'texture dimensions exceed 16384')
+                buffer=io.BytesIO();image.convert('RGBA').save(buffer,format='PNG')
+        except Exception:
+            if data is None:
+                data=path.read_bytes()
+            buffer=io.BytesIO();buffer.write(data)
         self.checkpoint();images=self.m_document.setdefault('images',[]);textures=self.m_document.setdefault('textures',[])
-        images.append(dict(name=Path(path).name,uri='data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode()))
+        images.append(dict(name=path.name,uri='data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode()))
         textures.append(dict(source=len(images)-1));return len(textures)-1
 
     def import_audio(self,path):
@@ -433,7 +506,7 @@ class c_scene_project:
             for s in samples:
                 rate=s['sample_rate'];payload=base64.b64decode(s['payload'])
                 pcm=backend.decode_adpcm(payload)['pcm']
-                entries.append(('%s_%03d'%(path.stem,s['index']),rate,[pcm]))
+                entries.append((s.get('name') or ('%s_%03d'%(path.stem,s['index'])),rate,[pcm]))
         elif suffix=='.ams':
             info=backend.ams_channels(data);rate=info['sample_rate']
             left=backend.decode_adpcm(base64.b64decode(info['left']))['pcm']

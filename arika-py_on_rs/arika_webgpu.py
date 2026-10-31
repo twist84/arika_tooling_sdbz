@@ -150,6 +150,7 @@ class c_webgpu_renderer:
         for instance in instances:
             resources=[instance.get('uniform')]
             resources.extend(binding[0] for binding in instance.get('bindings',{}).values())
+            resources.extend(instance.get('skinned_vbos',{}).values())
             for resource in resources:
                 if resource is not None and id(resource) not in destroyed:
                     destroyed.add(id(resource));self._destroy_resource(resource)
@@ -206,28 +207,44 @@ class c_webgpu_renderer:
                     parts=[];bounds=[]
                     for part in mesh['primitives']:
                         pos=part['attributes']['POSITION'];uv=part['attributes'].get('TEXCOORD_0');key=(pos,uv);positions=values(pos)
+                        uvs=values(uv) if uv is not None else np.zeros((len(positions),2),dtype='f4')
                         if key not in vbos:
-                            data=np.hstack((positions,values(uv) if uv is not None else np.zeros((len(positions),2)))).astype('f4')
-                            vbos[key]=d.create_buffer_with_data(data=data,usage=wgpu.BufferUsage.VERTEX)
+                            data=np.hstack((positions,uvs)).astype('f4')
+                            vbos[key]=d.create_buffer_with_data(data=data,usage=wgpu.BufferUsage.VERTEX|wgpu.BufferUsage.COPY_DST)
+                        joints=np.asarray(values(part['attributes']['JOINTS_0']),dtype='i4') if 'JOINTS_0' in part['attributes'] else None
+                        weights=np.asarray(values(part['attributes']['WEIGHTS_0']),dtype='f4') if 'WEIGHTS_0' in part['attributes'] else None
                         ids=values(part['indices']).astype('u4').reshape(-1);mode=part.get('mode',4)
                         edges=ids if mode==1 else ids.reshape(-1,3)[:,[0,1,1,2,2,0]].reshape(-1)
                         ibo=d.create_buffer_with_data(data=ids,usage=wgpu.BufferUsage.INDEX);edge=d.create_buffer_with_data(data=edges,usage=wgpu.BufferUsage.INDEX)
-                        parts.append(dict(vbo=vbos[key],ibo=ibo,count=len(ids),edge=edge,edge_count=len(edges),mode=mode,material=part.get('material',-1)))
+                        parts.append(dict(vbo=vbos[key],ibo=ibo,count=len(ids),edge=edge,edge_count=len(edges),mode=mode,material=part.get('material',-1),positions=positions,uvs=uvs,joints=joints,weights=weights))
                         bounds.extend((positions.min(axis=0),positions.max(axis=0)))
                     self.m_meshes[mi]=parts;self.m_bounds[mi]=(np.min(bounds,axis=0),np.max(bounds,axis=0))
         world_bounds=[]
+        self.m_node_worlds={}
         def walk(index,parent,collision=False):
             node=doc['nodes'][index];local=local_matrix(dict(translation=node.get('translation',[0,0,0]),rotation=node.get('rotation',[0,0,0,1]),scale=node.get('scale',[1,1,1])));matrix=multiply(parent,local)
+            self.m_node_worlds[index]=matrix
             if 'mesh'in node:
                 mesh=node['mesh'];key=(index,mesh,collision);instance=previous_instances.pop(key,None)
                 if instance is None:
                     # Per-material uniforms are allocated lazily in render(); a separate
                     # per-instance uniform was never bound and only consumed GPU memory.
-                    instance=dict(index=index,mesh=mesh,matrix=matrix,collision=collision,bindings={})
+                    instance=dict(index=index,mesh=mesh,matrix=matrix,collision=collision,bindings={},skinned=False)
                 else:
                     instance['matrix']=matrix
                 self.m_instances.append(instance)
-                if not collision and index not in self.m_hidden:
+            if 'skin' in node:
+                skin=doc['skins'][node['skin']]
+                instance['skinned']=True
+                instance['joint_nodes']=[int(j) for j in skin['joints']]
+                instance['bind_accessor']=skin.get('inverseBindMatrices')
+                if rebuild_geometry:
+                    instance['skinned_vbos']={}
+                    for pi,part in enumerate(self.m_meshes[mesh]):
+                        if part.get('joints') is not None:
+                            template=np.hstack((part['positions'],part['uvs'])).astype('f4')
+                            instance['skinned_vbos'][pi]=d.create_buffer_with_data(data=template,usage=wgpu.BufferUsage.VERTEX|wgpu.BufferUsage.COPY_DST)
+                if not collision and index not in self.m_hidden and mesh in self.m_bounds:
                     lo,hi=self.m_bounds[mesh]
                     for x in (lo[0],hi[0]):
                         for y in (lo[1],hi[1]):
@@ -237,10 +254,46 @@ class c_webgpu_renderer:
         for scene in doc['scenes']:
             if scene.get('name')=='Collision':
                 for root in scene['nodes']:walk(root,identity(),True)
+        for instance in self.m_instances:
+            if instance.get('skinned'):
+                self._apply_skinning(instance)
         if previous_instances:self._destroy_instance_resources(previous_instances.values())
         if fit and world_bounds:
             lo=np.min(world_bounds,axis=0);hi=np.max(world_bounds,axis=0);self.m_center=((lo+hi)/2).tolist();self.m_distance=max(1,float(np.linalg.norm(hi-lo))*1.05)
         self.m_dirty=True
+
+    def _apply_skinning(self,instance):
+        """CPU-skinned vertex deformation for the current pose, uploaded to the instance VBO."""
+        if 'inverse_binds' not in instance:
+            bind=instance.get('bind_accessor')
+            if bind is not None:
+                from arika_import import c_gltf_reader
+                import json
+                with tempfile.TemporaryDirectory() as _tmp:
+                    _p=Path(_tmp)/'scene.gltf'; _p.write_text(json.dumps(self.m_project.m_document))
+                    _r=c_gltf_reader(_p)
+                    instance['inverse_binds']=[np.asarray(m,dtype='f4').reshape(4,4).T for m in _r.accessor(bind)]
+            else:
+                instance['inverse_binds']=[np.eye(4,dtype='f4') for _ in instance['joint_nodes']]
+        doc=self.m_project.m_document
+        mesh=instance['mesh']
+        mesh_world_inv=np.linalg.inv(np.asarray(instance['matrix'],dtype=float))
+        joint_matrices=[mesh_world_inv@self.m_node_worlds[j]@instance['inverse_binds'][i] for i,j in enumerate(instance['joint_nodes'])]
+        if not joint_matrices:return
+        all_jmats=np.stack(joint_matrices)
+        for pi,part in enumerate(self.m_meshes[mesh]):
+            vbo=instance.get('skinned_vbos',{}).get(pi)
+            if vbo is None or part.get('joints') is None:continue
+            positions=part['positions'];joints=part['joints'];weights=part['weights']
+            homogeneous=np.column_stack((positions,np.ones(len(positions),dtype='f4')))
+            skinned=np.zeros((len(positions),3),dtype='f4')
+            for k in range(4):
+                wk=weights[:,k:k+1]
+                jmats=all_jmats[joints[:,k]]
+                transformed=np.einsum('nij,nj->ni',jmats,homogeneous)[:,:3]
+                skinned+=wk*transformed
+            data=np.hstack((skinned,part['uvs'])).astype('f4')
+            self.m_device.queue.write_buffer(vbo,0,data.tobytes())
 
     def draw_guides(self,render,center,distance,options):
         guides=viewport_guides(center,distance,options.get('grid',False),options.get('axes',False))
@@ -316,10 +369,11 @@ class c_webgpu_renderer:
         if self.m_project:
             doc=self.m_project.m_document
             for instance in self.m_instances:
+                if instance['mesh'] not in self.m_bounds:continue
                 if instance['index'] in hidden:continue
                 if scope is not None and instance['index'] not in scope:continue
                 if instance['collision'] and not collision:continue
-                for part in self.m_meshes[instance['mesh']]:
+                for pi,part in enumerate(self.m_meshes[instance['mesh']]):
                     mi=part['material'];material=doc['materials'][mi] if mi>=0 else {};pbr=material.get('pbrMetallicRoughness',{});textured=mode=='Textured' and not instance['collision'];ti=pbr.get('baseColorTexture',{}).get('index',-1)
                     texture=self.m_textures[ti] if textured and 0<=ti<len(self.m_textures) else self.m_white
                     color=pbr.get('baseColorFactor',[1,1,1,1]) if mode=='Textured' else [.55,.65,.75,1]
@@ -341,7 +395,8 @@ class c_webgpu_renderer:
                     if body!=old:d.queue.write_buffer(uniform,0,body);instance['bindings'][key]=(uniform,group,body)
                     wire=mode=='Wireframe' or part['mode']==1;topology='line-list' if wire else 'triangle-list'
                     render.set_pipeline(self.pipeline(topology,material.get('alphaMode')=='BLEND',options.get('cull',False) or not material.get('doubleSided',True)))
-                    render.set_bind_group(1,group);render.set_vertex_buffer(0,part['vbo']);render.set_index_buffer(part['edge'] if wire else part['ibo'],'uint32');render.draw_indexed(part['edge_count'] if wire else part['count'])
+                    vertex_buffer=instance.get('skinned_vbos',{}).get(pi,part['vbo']) if instance.get('skinned') else part['vbo']
+                    render.set_bind_group(1,group);render.set_vertex_buffer(0,vertex_buffer);render.set_index_buffer(part['edge'] if wire else part['ibo'],'uint32');render.draw_indexed(part['edge_count'] if wire else part['count'])
         self.draw_guides(render,center,distance,options)
         self.draw_gizmo(render,gizmo)
         render.end();d.queue.submit([encoder.finish()])

@@ -33,9 +33,20 @@ def moved_translation(scene,index,dx,dy,plane):
 
 
 class c_stage_document:
-    def __init__(self,path):
-        self.m_path=Path(path);self.m_original=self.m_path.read_bytes();self.m_data=self.m_original
-        self.m_scene=parse_stg(self.m_data);self.m_undo=[];self.m_redo=[]
+    def __init__(self,path=None,data=None,name=None,virtual_files=None):
+        if data is not None:
+            self.m_path=Path(name) if name else None
+            self.m_original=data
+            self.m_data=data
+            self.m_scene=parse_stg(data)
+            self.m_virtual_files=dict(virtual_files or {})
+            self.m_virtual=True
+        else:
+            self.m_path=Path(path);self.m_original=self.m_path.read_bytes();self.m_data=self.m_original
+            self.m_scene=parse_stg(self.m_data)
+            self.m_virtual_files={}
+            self.m_virtual=False
+        self.m_undo=[];self.m_redo=[]
 
     def set_transform(self,index,values):
         node=self.m_scene['nodes'][index]

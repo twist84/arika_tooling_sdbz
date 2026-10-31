@@ -8,7 +8,7 @@ from urllib.parse import unquote
 import numpy as np
 from PIL import Image
 from arika_import import c_gltf_reader
-from arika_models import c_gltf,parse_model,export_gltf,require
+from arika_models import c_gltf,parse_model,export_gltf,build_gltf,require
 
 
 def embedded_image(reader,image):
@@ -108,9 +108,31 @@ def load_character(path,texture_path=None):
     return result
 
 
-def merge_character(document,character,name,mesh_indices=None,translation=(0,0,0)):
+def load_skinned_character(path,texture_path=None):
+    """Load a character without baking: keep nodes, skins, joints and skin attributes."""
+    path=Path(path);sources=[str(path.resolve())]
+    if path.suffix.lower() in ('.gltf','.glb'):
+        doc=c_gltf_reader(path).m_document
+    else:
+        model=parse_model(path.read_bytes())
+        if texture_path is None:
+            candidate=path.with_suffix('.pix')
+            texture_path=candidate if candidate.exists() else None
+        if texture_path:sources.append(str(Path(texture_path).resolve()))
+        doc=build_gltf(model,motions=(),texture_path=texture_path,clamp_skin_weights=True).to_document()
+    extras=doc.setdefault('extras',{})
+    extras['skinned_character']=True
+    extras['source_paths']=sources
+    for node in doc.get('nodes',[]):
+        if 'skin' in node:
+            node.setdefault('extras',{})['skinned_preview']=True
+    return doc
+
+
+def merge_character(document,character,name,mesh_indices=None,translation=(0,0,0),hidden_indices=None,skinned=False):
     """Return a merged document; caller commits once after complete validation."""
     selected=set(range(len(character['meshes']))) if mesh_indices is None else set(mesh_indices)
+    hidden=set(hidden_indices or ())
     require(selected and all(type(i)is int and 0<=i<len(character['meshes']) for i in selected),'select at least one valid character mesh')
     require(len(translation)==3 and all(np.isfinite(v) for v in translation),'invalid character position')
     doc=copy.deepcopy(document);source=copy.deepcopy(character)
@@ -131,12 +153,55 @@ def merge_character(document,character,name,mesh_indices=None,translation=(0,0,0
             primitive['indices']+=offsets['accessors']
             if 'material' in primitive:primitive['material']+=offsets['materials']
         mesh_mapping[index]=len(doc.setdefault('meshes',[]));doc['meshes'].append(mesh)
-    actor=offsets['nodes'];children=[]
-    root=dict(name=name,translation=list(translation),rotation=[0,0,0,1],scale=[1,1,1],children=children,extras=dict(character_preview=dict(rotation_radians=[0,0,0],source_paths=source.get('extras',{}).get('source_paths',[]))))
+    actor=offsets['nodes']
+    root_extras=dict(character_preview=dict(rotation_radians=[0,0,0],source_paths=source.get('extras',{}).get('source_paths',[])),skinned=bool(skinned))
+    root=dict(name=name,translation=list(translation),rotation=[0,0,0,1],scale=[1,1,1],children=[],extras=root_extras)
     doc['nodes'].append(root)
-    for node in source['nodes']:
-        if node['mesh'] in selected:
-            node['mesh']=mesh_mapping[node['mesh']];children.append(len(doc['nodes']));doc['nodes'].append(node)
+    skin_offset=len(doc.get('skins',[]))
+    node_mapping={}
+    if skinned:
+        # Preserve the skeleton hierarchy: add every source node, remap meshes,
+        # skin joints and children so bones and skinned meshes stay valid.
+        for i,node in enumerate(source['nodes']):
+            if 'mesh' in node and node['mesh'] not in mesh_mapping:
+                node_mapping[i]=None
+                continue
+            new_node=copy.deepcopy(node)
+            if 'mesh' in new_node:
+                new_node['mesh']=mesh_mapping[new_node['mesh']]
+            if 'skin' in new_node:
+                new_node.setdefault('extras',{})['skinned_preview']=True
+            node_mapping[i]=len(doc['nodes'])
+            doc['nodes'].append(new_node)
+        for new_node in doc['nodes'][actor+1:]:
+            if 'children' in new_node:
+                new_node['children']=[node_mapping[c] for c in new_node.get('children',[]) if node_mapping.get(c) is not None]
+            if 'skin' in new_node:
+                new_node['skin']+=skin_offset
+        for skin in source.get('skins',[]):
+            new_skin=copy.deepcopy(skin)
+            new_skin['joints']=[node_mapping[j] for j in new_skin.get('joints',[]) if node_mapping.get(j) is not None]
+            if 'inverseBindMatrices' in new_skin:
+                new_skin['inverseBindMatrices']+=offsets['accessors']
+            if 'skeleton' in new_skin:
+                if new_skin['skeleton'] in node_mapping and node_mapping[new_skin['skeleton']] is not None:
+                    new_skin['skeleton']=node_mapping[new_skin['skeleton']]
+                else:new_skin.pop('skeleton')
+            doc.setdefault('skins',[]).append(new_skin)
+        scene_index=source.get('scene',0)
+        scene_roots=source['scenes'][scene_index]['nodes'] if 0<=scene_index<len(source.get('scenes',[])) else []
+        root['children']=[node_mapping[i] for i in scene_roots if node_mapping.get(i) is not None]
+    else:
+        children=[]
+        for node in source['nodes']:
+            if node['mesh'] in selected:
+                orig_mesh=node['mesh']
+                node['mesh']=mesh_mapping[node['mesh']]
+                if orig_mesh in hidden:
+                    node.setdefault('extras',{}).setdefault('arika_editor',{})['hidden']=True
+                children.append(len(doc['nodes']))
+                doc['nodes'].append(node)
+        root['children']=children
     doc['scenes'][doc.get('scene',0)]['nodes'].append(actor)
     for key in ('buffers','bufferViews','accessors','images','textures','samplers','materials'):doc.setdefault(key,[]).extend(source.get(key,[]))
     return doc,actor

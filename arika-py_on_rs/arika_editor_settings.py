@@ -45,7 +45,7 @@ class c_editor_settings:
             if not isinstance(entry, dict):
                 continue
             kind, raw_path = entry.get('type'), entry.get('path')
-            if kind not in ('stage', 'project') or not isinstance(raw_path, str) or not raw_path.strip():
+            if kind not in ('stage', 'project', 'model', 'archive', 'texture', 'sound', 'motion') or not isinstance(raw_path, str) or not raw_path.strip():
                 continue
             path = str(Path(raw_path).expanduser())
             key = os.path.normcase(os.path.abspath(path))
@@ -91,8 +91,6 @@ class c_editor_settings:
         return [dict(item) for item in entries if kind is None or item['type'] == kind]
 
     def add_recent_file(self, path, kind):
-        if kind not in ('stage', 'project'):
-            raise ValueError('recent file type must be stage or project')
         path = str(Path(path).expanduser().resolve())
         key = os.path.normcase(os.path.abspath(path))
         recent = [item for item in self.m_data['recent_files']
@@ -101,17 +99,13 @@ class c_editor_settings:
         self.m_data['recent_files'] = self.m_data['recent_files'][:self.k_recent_limit]
 
     def set_last_directory(self, kind, path):
-        if kind not in ('stage', 'project'):
-            raise ValueError('directory type must be stage or project')
         directory = Path(path).expanduser()
         if directory.is_file():
             directory = directory.parent
         self.m_data['last_%s_directory' % kind] = str(directory.resolve())
 
     def last_directory(self, kind):
-        if kind not in ('stage', 'project'):
-            raise ValueError('directory type must be stage or project')
-        value = self.m_data['last_%s_directory' % kind]
+        value = self.m_data.get('last_%s_directory' % kind, '')
         return value if value and Path(value).is_dir() else str(Path.home())
 
     def set_window_bytes(self, geometry, state):

@@ -175,7 +175,11 @@ class c_viewport(QRenderWidget):
         except Exception as error:
             self.m_error=str(error)
             if hasattr(self.window(),'statusBar'):self.window().statusBar().showMessage('WebGPU error: '+self.m_error)
-            print('WebGPU error:',error,file=sys.stderr)
+            try:
+                import traceback
+                with open('C:/Dev/arika/.kilo/webgpu_traceback.txt','w') as f:
+                    traceback.print_exc(file=f)
+            except Exception:pass
 
     def showEvent(self,event):
         super().showEvent(event);self.request_draw()

@@ -188,16 +188,32 @@ def assemble_document(scene,model,base_document,hit=None):
     doc['extras']=report;return gltf,report
 
 
-def build_stage_gltf(stg_path,model_path=None,hit_path=None,texture_path=None,scene=None,scene_data=None):
-    """Build a stage glTF entirely in memory; no temporary files or JSON round-trip."""
+def build_stage_gltf(stg_path,model_path=None,hit_path=None,texture_path=None,scene=None,scene_data=None,
+    model_data=None,hit_data=None,texture_data=None):
+    """Build a stage glTF entirely in memory; optional byte payloads avoid disk reads."""
+    import os,tempfile
     stg_path=Path(stg_path);model_path=Path(model_path) if model_path else stg_path.with_suffix('.mdl')
     hit_path=Path(hit_path) if hit_path else stg_path.with_suffix('.hit')
     texture_path=Path(texture_path) if texture_path else model_path.with_suffix('.pix')
     if scene is None:
         scene=parse_stg(scene_data if scene_data is not None else stg_path.read_bytes())
-    model=parse_model(model_path.read_bytes())
-    hit=parse_hit(hit_path.read_bytes()) if hit_path.exists() else None
-    base=build_gltf(model,texture_path=texture_path if texture_path.exists() else None)
+    model=parse_model(model_data if model_data is not None else model_path.read_bytes())
+    hit=parse_hit(hit_data) if hit_data is not None else (parse_hit(hit_path.read_bytes()) if hit_path.exists() else None)
+    texture_arg=None
+    if texture_data is not None:
+        handle,texture_arg=tempfile.mkstemp(suffix='.pix')
+        try:
+            with os.fdopen(handle,'wb') as handle_file:handle_file.write(texture_data)
+        except Exception:
+            os.close(handle);raise
+    else:
+        texture_arg=texture_path if texture_path.exists() else None
+    try:
+        base=build_gltf(model,texture_path=texture_arg)
+    finally:
+        if texture_data is not None:
+            try:os.unlink(texture_arg)
+            except OSError:pass
     return assemble_document(scene,model,base,hit)
 
 
