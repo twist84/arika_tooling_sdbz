@@ -361,6 +361,14 @@ class c_scene_project:
         gltf,_report=build_stage_gltf(self.m_stage.m_path,scene=self.m_stage.m_scene)
         self.m_document=gltf.to_document()
         self.m_history=[];self.m_future=[];self.m_changed=False
+        self._import_sibling_audio()
+
+    def _import_sibling_audio(self):
+        base=self.m_stage.m_path.parent
+        for suffix in ('.ase','.ams'):
+            for path in sorted(base.glob('*'+suffix)):
+                try:self.import_audio(path)
+                except Exception:pass
 
     def snapshot(self):return (self.m_stage.m_data if self.m_stage else b'',copy.deepcopy(self.m_document))
 
@@ -409,6 +417,40 @@ class c_scene_project:
         self.checkpoint();images=self.m_document.setdefault('images',[]);textures=self.m_document.setdefault('textures',[])
         images.append(dict(name=Path(path).name,uri='data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode()))
         textures.append(dict(source=len(images)-1));return len(textures)-1
+
+    def import_audio(self,path):
+        import arika_backend as backend
+        import base64
+        path=Path(path);suffix=path.suffix.lower();data=path.read_bytes()
+        entries=[]  # (name, sample_rate, channels[list of int lists])
+        if suffix=='.wav':
+            info=backend.read_wav(data);rate=info['sample_rate'];channels=info['channels']
+            if not channels or not channels[0]:
+                raise ValueError('WAV contains no audio frames')
+            entries.append((path.name,rate,channels))
+        elif suffix=='.ase':
+            samples=backend.ase_samples(data)
+            for s in samples:
+                rate=s['sample_rate'];payload=base64.b64decode(s['payload'])
+                pcm=backend.decode_adpcm(payload)['pcm']
+                entries.append(('%s_%03d'%(path.stem,s['index']),rate,[pcm]))
+        elif suffix=='.ams':
+            info=backend.ams_channels(data);rate=info['sample_rate']
+            left=backend.decode_adpcm(base64.b64decode(info['left']))['pcm']
+            right=backend.decode_adpcm(base64.b64decode(info['right']))['pcm']
+            entries.append((path.stem,rate,[left,right]))
+        else:
+            raise ValueError('expected .wav, .ase or .ams audio file')
+        self.checkpoint();audios=self.m_document.setdefault('audios',[])
+        first_index=len(audios);added=0
+        for name,rate,channels in entries:
+            if not channels or not channels[0]:continue
+            wav=backend.write_wav(channels,rate)
+            audios.append(dict(name=name,uri='data:audio/wav;base64,'+base64.b64encode(wav).decode(),
+                sampleRate=rate,channels=len(channels),frames=len(channels[0])))
+            added+=1
+        if added==0:raise ValueError('audio file contains no decodable audio')
+        return first_index
 
     def save(self,path):
         payload=dict(format='ARIKA_SCENE_PROJECT',version=1,source_stage=str(self.m_stage.m_path),

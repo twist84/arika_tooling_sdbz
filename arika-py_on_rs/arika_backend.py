@@ -286,8 +286,14 @@ def read_wav(data):
 
 
 def write_wav(channels, sample_rate):
-    payload = json.dumps({"channels": channels}).encode("utf-8")
-    return _call_buffer(_lib.arika_write_wav, payload, sample_rate)
+    payload = json.dumps(channels).encode("utf-8")
+    buf = _lib.arika_write_wav(payload, sample_rate)
+    if not buf.ptr:
+        raise BackendError(f"write_wav: {_last_error()}")
+    try:
+        return ctypes.string_at(buf.ptr, buf.len)
+    finally:
+        _lib.arika_free_buffer(buf)
 
 
 def pitch_for_rate(rate, original_pitch):

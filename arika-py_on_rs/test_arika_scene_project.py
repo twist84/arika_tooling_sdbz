@@ -141,6 +141,44 @@ class SceneProjectTests(unittest.TestCase):
             data=base64.b64decode(obj.m_document['images'][1]['uri'].split(',')[1]);self.assertTrue(data.startswith(b'\x89PNG'))
             obj.undo();self.assertEqual(len(obj.m_document['textures']),1)
 
+    def test_audio_import_embeds_wav_and_is_undoable(self):
+        import arika_audio
+        from array import array
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);obj=self.project(root);path=root/'test.wav'
+            arika_audio.write_wave(path,18000,[array('h',[0]*280)])
+            index=obj.import_audio(path);self.assertEqual(index,0)
+            a=obj.m_document['audios'][0]
+            self.assertEqual(a['name'],'test.wav')
+            self.assertTrue(a['uri'].startswith('data:audio/wav;base64,'))
+            self.assertEqual(a['sampleRate'],18000)
+            self.assertEqual(a['channels'],1)
+            self.assertEqual(a['frames'],280)
+            obj.undo();self.assertEqual(len(obj.m_document.get('audios',[])),0)
+
+    def test_audio_import_ase_and_ams(self):
+        import struct
+        from array import array
+        import arika_audio as audio
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);obj=self.project(root)
+            # ASE bank with one sample
+            payload=bytes([12,4])+bytes(14)+bytes([12,3])+bytes(14)
+            header=struct.pack('<5I',100,1,32,1536,0).ljust(2048,b'\0')
+            ase=root/'test.ase';ase.write_bytes(header+payload)
+            idx=obj.import_audio(ase);self.assertEqual(idx,0)
+            a=obj.m_document['audios'][0]
+            self.assertEqual(a['name'],'test_000');self.assertEqual(a['sampleRate'],18000);self.assertEqual(a['channels'],1);self.assertEqual(a['frames'],56)
+            # AMS stereo stream
+            hdr=struct.pack('<4I',120,4096,(3*32768+16),2).ljust(2048,b'\0')
+            body=b''.join(bytes([i*2])*32768+bytes([i*2+1])*32768 for i in range(4))
+            ams=root/'test.ams';ams.write_bytes(hdr+body)
+            idx=obj.import_audio(ams);self.assertEqual(idx,1)
+            a=obj.m_document['audios'][1]
+            self.assertEqual(a['name'],'test');self.assertEqual(a['sampleRate'],48000);self.assertEqual(a['channels'],2);self.assertEqual(a['frames'],172060)
+            obj.undo();self.assertEqual(len(obj.m_document.get('audios',[])),1)
+            obj.undo();self.assertEqual(len(obj.m_document.get('audios',[])),0)
+
     def test_invalid_material_has_no_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             obj=self.project(Path(tmp))

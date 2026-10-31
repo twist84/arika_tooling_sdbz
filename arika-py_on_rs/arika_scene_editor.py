@@ -7,7 +7,6 @@ import json
 import math
 from pathlib import Path
 import sys
-import tempfile
 from PIL import Image
 from PySide6 import QtCore as C,QtGui as G,QtWidgets as W
 from rendercanvas.qt import QRenderWidget
@@ -781,8 +780,9 @@ class c_outliner_tree(W.QTreeWidget):
 
 class c_scene_editor(W.QMainWindow):
     def __init__(self):
-        super().__init__();self.m_settings=c_editor_settings();self.m_project=None;self.m_project_path=None;self.m_index=None;self.m_material=-1;self.m_items={};self.m_color=[1,1,1,1]
+        super().__init__();self.m_settings=c_editor_settings();self.m_project=None;self.m_project_path=None;self.m_index=None;self.m_material=-1;self.m_items={};self.m_color=[1,1,1,1];self.m_audio=-1
         self.m_transform_orientation='local';self.m_pivot_mode='median';self.m_cursor_location=[0.0,0.0,0.0];self.m_cursor_axes=[[1.,0.,0.],[0.,1.,0.],[0.,0.,1.]];self.m_custom_orientation_axes=None;self.m_snap_steps={'move':1.0,'rotate':15.0,'scale':0.1}
+        self.m_audio_buffer=None;self.m_audio_playing=False;self.m_audio_timer=None;self.m_audio_duration_ms=0
         self.setWindowTitle('Arika WebGPU scene editor');self.resize(1400,900);self.m_view=c_viewport();self.m_view.selection_requested.connect(self.select_view);self.m_view.selection_all.connect(self.select_all);self.m_view.delete_requested.connect(self.delete_selected);self.m_view.transform_changed.connect(self.sync_selection);self.m_view.gizmo_mode_requested.connect(self.set_gizmo_mode)
         self.m_views=W.QStackedWidget();self.m_views.addWidget(self.m_view);self.m_material_view=c_viewport();self.m_material_view.m_show_gizmo=False;self.m_material_view.m_options.update(grid=False,axes=False);self.m_views.addWidget(self.m_material_view)
         texture_panel=W.QWidget();texture_layout=W.QVBoxLayout(texture_panel);self.m_texture_info=W.QLabel('Choose a texture');texture_layout.addWidget(self.m_texture_info);self.m_texture_view=c_texture_view();texture_layout.addWidget(self.m_texture_view);self.m_views.addWidget(texture_panel)
@@ -797,12 +797,25 @@ class c_scene_editor(W.QMainWindow):
             menu_layout.addWidget(self.m_menu_view,1)
         self.m_object_view=c_viewport();self.m_object_view.m_isolated=set();self.m_object_view.selection_requested.connect(self.select_view);self.m_object_view.selection_all.connect(self.select_all);self.m_object_view.delete_requested.connect(self.delete_selected);self.m_object_view.transform_changed.connect(self.sync_selection);self.m_object_view.gizmo_mode_requested.connect(self.set_gizmo_mode);self.m_views.addWidget(self.m_object_view)
         self.m_views.addWidget(menu_panel)
+        audio_panel=W.QWidget();al=W.QVBoxLayout(audio_panel);al.setContentsMargins(8,8,8,8);al.setSpacing(6)
+        self.m_audio_name=W.QLabel('No audio selected');self.m_audio_name.setObjectName('editor_heading');al.addWidget(self.m_audio_name)
+        self.m_audio_info=W.QLabel('');al.addWidget(self.m_audio_info)
+        ctrl=W.QWidget();cl=W.QHBoxLayout(ctrl);cl.setContentsMargins(0,0,0,0);cl.setSpacing(4)
+        self.m_audio_play_btn=W.QPushButton('▶ Play');self.m_audio_play_btn.clicked.connect(self.play_audio);self.m_audio_play_btn.setEnabled(False);cl.addWidget(self.m_audio_play_btn)
+        self.m_audio_stop_btn=W.QPushButton('■ Stop');self.m_audio_stop_btn.clicked.connect(self.stop_audio);self.m_audio_stop_btn.setEnabled(False);cl.addWidget(self.m_audio_stop_btn)
+        cl.addStretch()
+        cl.addWidget(W.QLabel('Volume:'));self.m_audio_vol=W.QSlider(C.Qt.Orientation.Horizontal);self.m_audio_vol.setRange(0,100);self.m_audio_vol.setValue(80);self.m_audio_vol.setFixedWidth(120);self.m_audio_vol.valueChanged.connect(self.set_audio_volume);cl.addWidget(self.m_audio_vol)
+        al.addWidget(ctrl)
+        bar2=W.QWidget();bl=W.QHBoxLayout(bar2);bl.setContentsMargins(0,0,0,0);bl.setSpacing(4)
+        self.m_audio_pos=W.QLabel('0:00');bl.addWidget(self.m_audio_pos);self.m_audio_slider=W.QSlider(C.Qt.Orientation.Horizontal);self.m_audio_slider.setRange(0,1000);self.m_audio_slider.setValue(0);self.m_audio_slider.setEnabled(False);self.m_audio_slider.sliderReleased.connect(self.seek_audio);bl.addWidget(self.m_audio_slider);self.m_audio_dur=W.QLabel('0:00');bl.addWidget(self.m_audio_dur);al.addWidget(bar2)
+        note=W.QLabel('Audio plays from embedded project WAV; no temp files written.');note.setWordWrap(True);note.setStyleSheet('color:#888888;');al.addWidget(note);al.addStretch()
+        self.m_views.addWidget(audio_panel)
         for view in (self.m_view,self.m_object_view):
             view.m_transform_orientation=self.m_transform_orientation;view.m_pivot_mode=self.m_pivot_mode;view.m_cursor_location=list(self.m_cursor_location);view.m_cursor_axes=[list(a) for a in self.m_cursor_axes];view.m_custom_orientation_axes=self.m_custom_orientation_axes;view.m_snap_steps=dict(self.m_snap_steps)
         self.setStyleSheet(EDITOR_STYLE)
         bar=W.QToolBar('Viewport');bar.setObjectName('viewport_header');bar.setMovable(False)
         self.m_editor_heading=W.QLabel('3D Viewport');self.m_editor_heading.setObjectName('editor_heading');bar.addWidget(self.m_editor_heading)
-        view_mode=W.QComboBox();view_mode.addItems(['World','Material Preview','Texture Browser','Object View','Menu Editor']);view_mode.currentIndexChanged.connect(self.change_view);bar.addWidget(view_mode);self.m_view_mode=view_mode
+        view_mode=W.QComboBox();view_mode.addItems(['World','Material Preview','Texture Browser','Object View','Menu Editor','Audio']);view_mode.currentIndexChanged.connect(self.change_view);bar.addWidget(view_mode);self.m_view_mode=view_mode
         view_menu=W.QMenu('View',self)
         for title,callback in [('Frame all',self.fit),('Frame selected',lambda:self.active_view().frame(True)),('Toggle Local View (Numpad /)',lambda:self.active_view().toggle_local_view()),('Set 3D Cursor to Active',self.set_cursor_to_active),('Align 3D Cursor Orientation to Active',self.align_cursor_to_active),('Create Custom Orientation from Active',self.create_custom_orientation_from_active),('Clear Custom Orientation',self.clear_custom_orientation),('Reset 3D Cursor',self.reset_cursor)]:view_menu.addAction(title).triggered.connect(callback)
         view_menu.addSeparator()
@@ -893,12 +906,17 @@ class c_scene_editor(W.QMainWindow):
         dock=W.QDockWidget('Properties',self);dock.setObjectName('scene_properties');dock.setWidget(tabs);self.addDockWidget(C.Qt.DockWidgetArea.RightDockWidgetArea,dock);self.m_properties_dock=dock
         self.splitDockWidget(self.m_outliner_dock,dock,C.Qt.Orientation.Vertical)
         self.m_assets_dock=W.QDockWidget('Asset Browser — Textures',self);self.m_assets_dock.setObjectName('scene_assets');self.m_assets_dock.setWidget(self.m_texture_browser);self.addDockWidget(C.Qt.DockWidgetArea.BottomDockWidgetArea,self.m_assets_dock)
+        self.m_audio_browser=W.QListWidget();self.m_audio_browser.setViewMode(W.QListView.ViewMode.IconMode);self.m_audio_browser.setIconSize(C.QSize(48,48));self.m_audio_browser.setGridSize(C.QSize(150,70));self.m_audio_browser.setResizeMode(W.QListView.ResizeMode.Adjust);self.m_audio_browser.currentRowChanged.connect(self.select_audio)
+        self.m_audio_browser_info=W.QLabel('No audio');self.m_audio_browser_info.setWordWrap(True)
+        self.m_audio_play=W.QPushButton('Play');self.m_audio_play.clicked.connect(self.play_audio);self.m_audio_play.setEnabled(False)
+        audio_panel=W.QWidget();ap=W.QVBoxLayout(audio_panel);ap.setContentsMargins(0,0,0,0);ap.addWidget(self.m_audio_browser);ap.addWidget(self.m_audio_browser_info);ap.addWidget(self.m_audio_play)
+        self.m_audio_dock=W.QDockWidget('Asset Browser — Audio',self);self.m_audio_dock.setObjectName('scene_audio');self.m_audio_dock.setWidget(audio_panel);self.addDockWidget(C.Qt.DockWidgetArea.BottomDockWidgetArea,self.m_audio_dock)
         self.setCorner(C.Qt.Corner.BottomRightCorner,C.Qt.DockWidgetArea.RightDockWidgetArea)
         self.build_menus()
         workspaces=self.addToolBar('Workspaces');workspaces.setObjectName('workspace_header');workspaces.setMovable(False)
         brand=W.QLabel('  ARIKA  ');brand.setObjectName('editor_heading');workspaces.addWidget(brand)
         self.m_workspaces=W.QTabBar();self.m_workspaces.setExpanding(False)
-        for name in ('Layout','Shading','Textures','Object','Menu'):self.m_workspaces.addTab(name)
+        for name in ('Layout','Shading','Textures','Object','Menu','Audio'):self.m_workspaces.addTab(name)
         self.m_workspaces.currentChanged.connect(self.workspace);workspaces.addWidget(self.m_workspaces)
         self.statusBar().setSizeGripEnabled(True);self.statusBar().showMessage('MMB orbit  |  Shift+MMB pan  |  Wheel zoom  |  Home frame all  |  Numpad . frame selected')
         self.m_selection_status=W.QLabel('0 selected');self.statusBar().addPermanentWidget(self.m_selection_status)
@@ -923,6 +941,7 @@ class c_scene_editor(W.QMainWindow):
         self.m_clear_recent_action.triggered.connect(self.clear_recent_files)
         self.m_recent_menu.aboutToShow.connect(self.refresh_recent_menu)
         file_menu.addSeparator()
+        file_menu.addAction('Import audio…').triggered.connect(self.import_audio)
         for title,shortcut,callback in [('Save project…','Ctrl+S',self.save_project),('Save STG copy…','',self.save_stage),('Export glTF…','Ctrl+E',self.export),('Exit','Alt+F4',self.close)]:
             action=file_menu.addAction(title);action.triggered.connect(callback)
             if shortcut:action.setShortcut(shortcut)
@@ -1074,7 +1093,7 @@ class c_scene_editor(W.QMainWindow):
     def populate(self,fit=False):
         previous=set(self.m_view.m_selection) if not fit else set();active=self.m_index
         self.m_tree.blockSignals(True);self.m_tree.clear();self.m_items={};doc=self.m_project.m_document
-        self.m_scene_status.setText('%d objects | %d materials | %d textures'%(len(doc.get('nodes',[])),len(doc.get('materials',[])),len(doc.get('textures',[]))))
+        self.m_scene_status.setText('%d objects | %d materials | %d textures | %d audio'%(len(doc.get('nodes',[])),len(doc.get('materials',[])),len(doc.get('textures',[])),len(doc.get('audios',[]))))
         def item(index,parent):
             node=doc['nodes'][index];out=W.QTreeWidgetItem(parent,[node.get('name','Node %d'%index)]);out.setData(0,C.Qt.ItemDataRole.UserRole,index);self.m_items[index]=out
             state=node_state(doc,index);out.setCheckState(1,C.Qt.CheckState.Unchecked if state['hidden'] else C.Qt.CheckState.Checked);out.setCheckState(2,C.Qt.CheckState.Checked if state['locked'] else C.Qt.CheckState.Unchecked)
@@ -1089,7 +1108,7 @@ class c_scene_editor(W.QMainWindow):
         if hasattr(self,'m_tree_toggle_button'):self.m_tree_toggle_button.setText('+')
         self.m_materials.blockSignals(True);self.m_materials.clear()
         for i,m in enumerate(doc['materials']):self.m_materials.addItem('%d — %s'%(i,m.get('name','Material')))
-        self.m_materials.blockSignals(False);self.m_view.set_project(self.m_project,fit);self.m_object_view.set_project(self.m_project,True);self.m_index=None;self.m_material=-1;self.refresh_texture_browser()
+        self.m_materials.blockSignals(False);self.m_view.set_project(self.m_project,fit);self.m_object_view.set_project(self.m_project,True);self.m_index=None;self.m_material=-1;self.m_audio=-1;self.refresh_texture_browser();self.refresh_audio_browser()
         if fit:self.m_view.m_isolated=None
         if doc['materials']:self.m_materials.setCurrentRow(0)
         self.sync_selection()
@@ -1275,6 +1294,132 @@ class c_scene_editor(W.QMainWindow):
         if path:
             try:index=self.m_project.import_texture(path);self.m_view.set_project(self.m_project);self.m_object_view.set_project(self.m_project);self.textures();self.m_texture.setCurrentIndex(index+1);self.show_texture();self.refresh_texture_browser()
             except Exception as e:self.fail(e)
+    def import_audio(self):
+        path,_=W.QFileDialog.getOpenFileName(self,'Import audio','','Audio (*.wav *.ase *.ams)')
+        if not path:return
+        try:
+            if not self.m_project:
+                self.m_project=c_scene_project.__new__(c_scene_project)
+                self.m_project.m_document={
+                    'asset':{'version':'2.0','generator':'Arika Editor'},
+                    'buffers':[],'bufferViews':[],'accessors':[],
+                    'images':[],'textures':[],'samplers':[],
+                    'materials':[],'meshes':[],'nodes':[],
+                    'scenes':[{'nodes':[]}],'scene':0,
+                }
+                self.m_project.m_history=[];self.m_project.m_future=[];self.m_project.m_changed=False
+                self.m_project.m_stage=None
+                self.m_project_path=None
+            index=self.m_project.import_audio(path);self.refresh_audio_browser();self.m_audio_browser.setCurrentRow(index)
+            self.statusBar().showMessage('Imported audio %s'%Path(path).name)
+        except Exception as e:self.fail(e)
+    def refresh_audio_browser(self):
+        self.m_audio_browser.blockSignals(True);self.m_audio_browser.clear()
+        for i,a in enumerate(self.m_project.m_document.get('audios',[])):
+            item=W.QListWidgetItem('%s\n%d Hz · %dch · %d frames'%(a.get('name','Audio'),a.get('sampleRate',0),a.get('channels',0),a.get('frames',0)));item.setData(C.Qt.ItemDataRole.UserRole,i);self.m_audio_browser.addItem(item)
+        self.m_audio_browser.blockSignals(False)
+    def select_audio(self,index):
+        item=self.m_audio_browser.item(index) if index>=0 else None
+        self.m_audio=item.data(C.Qt.ItemDataRole.UserRole) if item is not None else -1
+        if not self.m_project or self.m_audio<0:
+            self.m_audio_browser_info.setText('No audio');self.m_audio_play.setEnabled(False);return
+        a=self.m_project.m_document['audios'][self.m_audio]
+        self.m_audio_browser_info.setText('%s\n%d Hz · %d channel(s) · %d frames (%.2f s)'%(a.get('name','Audio'),a.get('sampleRate',0),a.get('channels',0),a.get('frames',0),a.get('frames',0)/max(1,a.get('sampleRate',1))))
+        self.m_audio_play.setEnabled(True)
+    def play_audio(self):
+        if self.m_audio<0 or not self.m_project:return
+        a=self.m_project.m_document['audios'][self.m_audio]
+        import base64
+        from PySide6 import QtCore,QtMultimedia
+        data=base64.b64decode(a['uri'].split(',',1)[1])
+        self.stop_audio()
+        buffer=QtCore.QBuffer();buffer.setData(data);buffer.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
+        self.m_audio_buffer=buffer
+        player=QtMultimedia.QMediaPlayer();self.m_audio_player=player
+        audio_output=QtMultimedia.QAudioOutput();self.m_audio_output=audio_output
+        player.setAudioOutput(audio_output)
+        player.setSourceDevice(buffer,'audio/wav')
+        player.play()
+        self.m_audio_playing=True;self.m_audio_duration_ms=int(a.get('frames',0)/max(1,a.get('sampleRate',1))*1000)
+        self.m_audio_play_btn.setText('|| Pause')
+        try:self.m_audio_play_btn.clicked.disconnect()
+        except RuntimeError:pass
+        self.m_audio_play_btn.clicked.connect(self.pause_audio)
+        self.m_audio_stop_btn.setEnabled(True);self.m_audio_slider.setEnabled(True)
+        self.m_audio_dur.setText('%d:%02d'%(self.m_audio_duration_ms//60000,(self.m_audio_duration_ms%60000)//1000))
+        self.m_audio_timer=QtCore.QTimer();self.m_audio_timer.timeout.connect(self._audio_tick);self.m_audio_timer.start(200)
+        self.statusBar().showMessage('Playing %s'%a.get('name','Audio'))
+    def pause_audio(self):
+        player=getattr(self,'m_audio_player',None)
+        if player is not None:
+            try:player.pause()
+            except Exception:pass
+        self.m_audio_playing=False
+        self.m_audio_play_btn.setText(chr(9654)+' Play')
+        try:self.m_audio_play_btn.clicked.disconnect()
+        except RuntimeError:pass
+        self.m_audio_play_btn.clicked.connect(self.resume_audio)
+        if self.m_audio_timer:self.m_audio_timer.stop()
+    def resume_audio(self):
+        player=getattr(self,'m_audio_player',None)
+        if player is not None:
+            try:player.play()
+            except Exception:pass
+        self.m_audio_playing=True
+        self.m_audio_play_btn.setText('|| Pause')
+        try:self.m_audio_play_btn.clicked.disconnect()
+        except RuntimeError:pass
+        self.m_audio_play_btn.clicked.connect(self.pause_audio)
+        if self.m_audio_timer:self.m_audio_timer.start(200)
+    def stop_audio(self):
+        player=getattr(self,'m_audio_player',None)
+        if player is not None:
+            try:player.stop()
+            except Exception:pass
+        self.m_audio_player=None;self.m_audio_output=None;self.m_audio_buffer=None;self.m_audio_playing=False
+        if self.m_audio_timer:self.m_audio_timer.stop();self.m_audio_timer=None
+        self.m_audio_play_btn.setText(chr(9654)+' Play')
+        try:self.m_audio_play_btn.clicked.disconnect()
+        except RuntimeError:pass
+        self.m_audio_play_btn.clicked.connect(self.play_audio)
+        self.m_audio_stop_btn.setEnabled(False);self.m_audio_slider.setEnabled(False);self.m_audio_slider.setValue(0)
+        self.m_audio_pos.setText('0:00')
+    def _audio_tick(self):
+        if not self.m_audio_playing:return
+        player=getattr(self,'m_audio_player',None)
+        if player is None:return
+        ms=player.position()
+        self.m_audio_slider.setValue(int(ms/max(1,self.m_audio_duration_ms)*1000) if self.m_audio_duration_ms>0 else 0)
+        self.m_audio_pos.setText('%d:%02d'%(ms//60000,(ms%60000)//1000))
+        if ms>=self.m_audio_duration_ms:self.stop_audio()
+    def set_audio_volume(self,value):
+        output=getattr(self,'m_audio_output',None)
+        if output is not None:
+            try:output.setVolume(value/100.0)
+            except Exception:pass
+    def seek_audio(self):
+        value=self.m_audio_slider.value()
+        if self.m_audio<0 or not self.m_project or self.m_audio_duration_ms<=0:return
+        ms=int(value/1000.0*self.m_audio_duration_ms)
+        self.m_audio_pos.setText('%d:%02d'%(ms//60000,(ms%60000)//1000))
+        player=getattr(self,'m_audio_player',None)
+        if player is not None:
+            try:player.setPosition(ms)
+            except Exception:pass
+
+    def select_audio_view(self):
+        if not self.m_project:self.m_audio_name.setText('No project');return
+        audios=self.m_project.m_document.get('audios',[])
+        if not audios:self.m_audio_name.setText('No audio imported');return
+        if self.m_audio<0 or self.m_audio>=len(audios):self.m_audio=0
+        a=audios[self.m_audio]
+        self.m_audio_name.setText(a.get('name','Audio'))
+        self.m_audio_info.setText('%d Hz · %d channel(s) · %d frames (%.2f s)'%(a.get('sampleRate',0),a.get('channels',0),a.get('frames',0),a.get('frames',0)/max(1,a.get('sampleRate',1))))
+        self.m_audio_dur.setText('%d:%02d'%(int(a.get('frames',0)/max(1,a.get('sampleRate',1))*1000)//60000,(int(a.get('frames',0)/max(1,a.get('sampleRate',1))*1000)%60000)//1000))
+        self.m_audio_duration_ms=int(a.get('frames',0)/max(1,a.get('sampleRate',1))*1000)
+        self.m_audio_play_btn.setEnabled(True);self.m_audio_stop_btn.setEnabled(False);self.m_audio_slider.setEnabled(False);self.m_audio_slider.setValue(0);self.m_audio_pos.setText('0:00')
+        try:self.m_audio_play_btn.clicked.disconnect()
+        except RuntimeError:pass;self.m_audio_play_btn.clicked.connect(self.play_audio)
     def save_project(self):
         if not self.m_project:return
         path,_=W.QFileDialog.getSaveFileName(self,'Save project',self.m_project_path or 'scene.arika-scene.json','Arika project (*.arika-scene.json)')
@@ -1318,7 +1463,7 @@ class c_scene_editor(W.QMainWindow):
     def change_view(self,index):
         self.m_views.setCurrentIndex(index)
         self.m_workspaces.blockSignals(True);self.m_workspaces.setCurrentIndex(index);self.m_workspaces.blockSignals(False)
-        self.m_editor_heading.setText(('3D Viewport','Material Preview','Image Editor','Object View','Menu Editor')[index])
+        self.m_editor_heading.setText(('3D Viewport','Material Preview','Image Editor','Object View','Menu Editor','Audio')[index])
         if index==1:self.m_properties_tabs.setCurrentIndex(1)
         if index==1:self.refresh_material_preview()
         elif index==2 and self.m_project and self.m_texture_browser.count():
@@ -1331,6 +1476,8 @@ class c_scene_editor(W.QMainWindow):
             if not self.m_view.m_selection:self.statusBar().showMessage('Object View: select an object or group in the Outliner.')
         elif index==4:
             self.statusBar().showMessage('Menu editor: recovered 2D menu preview.')
+        elif index==5:
+            self.select_audio_view()
         self.sync_view_controls()
 
     def active_view(self):
