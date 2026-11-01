@@ -43,7 +43,7 @@ class c_menu_canvas(W.QWidget):
     def __init__(self, editor):
         super().__init__()
         self.m_editor = editor
-        self.setMinimumSize(512, 448)
+        self.setMinimumSize(0, 0)
         self.setSizePolicy(W.QSizePolicy.Policy.Expanding, W.QSizePolicy.Policy.Expanding)
 
     def paintEvent(self, event):

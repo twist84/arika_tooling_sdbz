@@ -19,7 +19,7 @@ fn swap_nibbles(value: u8) -> u8 {
 
 /// Decode an encoded INFO.DAT buffer.
 pub fn decode_info(data: &[u8]) -> Result<Vec<u8>> {
-    if data.len() < HEADER || &data[1..16] != &MAGIC[1..] {
+    if data.len() < HEADER {
         return Err(ArikaError::InvalidInfoMagic);
     }
     let key = &data[..16];
@@ -34,7 +34,7 @@ pub fn decode_info(data: &[u8]) -> Result<Vec<u8>> {
 
 /// Encode a decoded INFO buffer back to the on-disk form.
 pub fn encode_info(data: &[u8]) -> Result<Vec<u8>> {
-    if data.len() < HEADER || &data[1..16] != &MAGIC[1..] {
+    if data.len() < HEADER {
         return Err(ArikaError::InvalidDecodedHeader);
     }
     let key = &data[..16];

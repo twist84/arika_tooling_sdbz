@@ -136,7 +136,7 @@ class c_viewport(QRenderWidget):
         self.m_snap_steps={'move':1.0,'rotate':15.0,'scale':0.1}
         self.setToolTip(NAVIGATION_HELP+' · T combined transform / G move / R rotate / S scale · drag gizmo handles · X/Y/Z axis constraint · numeric entry · Shift precision · Ctrl snap · Esc/right-click cancel')
         self.setMouseTracking(True)
-        self.setMinimumSize(400,350)
+        self.setMinimumSize(0, 0)
         # rendercanvas skips callbacks until a context exists. Creating it in
         # draw_frame would leave both world and material views blank forever.
         self.get_wgpu_context()
@@ -876,7 +876,7 @@ class c_scene_editor(W.QMainWindow):
         self.m_tree_toggle_button=W.QPushButton('+');self.m_tree_toggle_button.setToolTip('Expand or collapse all objects');self.m_tree_toggle_button.clicked.connect(self.toggle_tree_expand)
         filter_row=W.QWidget();filter_layout=W.QHBoxLayout(filter_row);filter_layout.setContentsMargins(0,0,0,0);filter_layout.addWidget(search,1);filter_layout.addWidget(self.m_tree_toggle_button)
         outliner=W.QWidget();layout=W.QVBoxLayout(outliner);layout.setContentsMargins(5,5,5,5);layout.addWidget(filter_row);layout.addWidget(self.m_tree)
-        dock=W.QDockWidget('Scene Collection — Outliner',self);dock.setObjectName('scene_outliner');dock.setWidget(outliner);dock.setMinimumWidth(300);self.addDockWidget(C.Qt.DockWidgetArea.RightDockWidgetArea,dock);self.m_outliner_dock=dock
+        dock=W.QDockWidget('Scene Collection — Outliner',self);dock.setObjectName('scene_outliner');dock.setWidget(outliner);self.addDockWidget(C.Qt.DockWidgetArea.RightDockWidgetArea,dock);self.m_outliner_dock=dock
         tabs=W.QTabWidget();self.m_object=W.QWidget();object_layout=W.QVBoxLayout(self.m_object);self.m_label=W.QLabel('Select an object');object_layout.addWidget(self.m_label);self.m_fields=[]
         transform=W.QGroupBox('Transform');form=W.QFormLayout(transform);form.setContentsMargins(8,12,8,8);form.setHorizontalSpacing(5);form.setLabelAlignment(C.Qt.AlignmentFlag.AlignTop);object_layout.addWidget(transform)
         self.m_axis_lock_checks={}
@@ -928,6 +928,7 @@ class c_scene_editor(W.QMainWindow):
         self.reset_layout()
         self.m_settings.restore_window(self)
         self.refresh_recent_menu()
+        self.setMinimumSize(0, 0)
 
     def build_menus(self):
         file_menu=self.menuBar().addMenu('File')

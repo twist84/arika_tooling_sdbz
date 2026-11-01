@@ -16,6 +16,7 @@ from PySide6 import QtCore as C,QtGui as G,QtWidgets as W
 from rendercanvas.qt import QRenderWidget
 import arika_backend as backend
 import arika_dat as dat
+import arika_ffon
 from arika_webgpu import c_webgpu_renderer,DEFAULT_BACKGROUND,camera_matrix
 from arika_gizmo import (gizmo_geometry,rotate_euler_local_axis,
     quaternion_from_axis_angle,quaternion_from_matrix,quaternion_inverse,
@@ -132,6 +133,8 @@ def detect_format(data, name):
         return 'model'
     if magic[:4]==b'FPIX':
         return 'texture'
+    if magic[:4]==b'FFON':
+        return 'font'
     if magic[:8]==b'\0\0\x02\0HIT ':
         return 'hit'
     if magic[:4]==b'MOT2':
@@ -255,7 +258,7 @@ class c_viewport(QRenderWidget):
         self.m_snap_steps={'move':1.0,'rotate':15.0,'scale':0.1}
         self.setToolTip(NAVIGATION_HELP+' · T combined transform / G move / R rotate / S scale · drag gizmo handles · X/Y/Z axis constraint · numeric entry · Shift precision · Ctrl snap · Esc/right-click cancel')
         self.setMouseTracking(True)
-        self.setMinimumSize(400,350)
+        self.setMinimumSize(0, 0)
         # rendercanvas skips callbacks until a context exists. Creating it in
         # draw_frame would leave both world and material views blank forever.
         self.get_wgpu_context()
@@ -882,6 +885,76 @@ class c_texture_view(W.QGraphicsView):
     def wheelEvent(self,event):self.scale(1.2 if event.angleDelta().y()>0 else 1/1.2,1.2 if event.angleDelta().y()>0 else 1/1.2)
 
 
+class c_font_panel(W.QWidget):
+    """Text input + glyph output for a loaded FFON font."""
+    def __init__(self,editor):
+        super().__init__();self.m_editor=editor
+        self.m_img=None
+        layout=W.QVBoxLayout(self);layout.setContentsMargins(8,8,8,8);layout.setSpacing(6)
+        layout.addWidget(W.QLabel('Text (ASCII 0x20-0x7E rendered as glyphs):'))
+        self.m_input=W.QTextEdit();self.m_input.setPlaceholderText('Type text to render as glyphs…')
+        self.m_input.setMaximumHeight(100);self.m_input.textChanged.connect(self._render)
+        layout.addWidget(self.m_input)
+        bar=W.QHBoxLayout();bar.setContentsMargins(0,4,0,0);bar.setSpacing(4)
+        self.m_export_btn=W.QPushButton('Export PNG…');self.m_export_btn.clicked.connect(self.export_png);self.m_export_btn.setEnabled(False);bar.addWidget(self.m_export_btn)
+        bar.addWidget(W.QLabel('Margin L:'));self.m_margin_l=W.QSpinBox();self.m_margin_l.setRange(0,512);self.m_margin_l.setValue(16);self.m_margin_l.setToolTip('Left');self.m_margin_l.valueChanged.connect(lambda *_:self._render());bar.addWidget(self.m_margin_l)
+        bar.addWidget(W.QLabel('R:'));self.m_margin_r=W.QSpinBox();self.m_margin_r.setRange(0,512);self.m_margin_r.setValue(16);self.m_margin_r.setToolTip('Right');self.m_margin_r.valueChanged.connect(lambda *_:self._render());bar.addWidget(self.m_margin_r)
+        bar.addWidget(W.QLabel('T:'));self.m_margin_t=W.QSpinBox();self.m_margin_t.setRange(0,512);self.m_margin_t.setValue(16);self.m_margin_t.setToolTip('Top');self.m_margin_t.valueChanged.connect(lambda *_:self._render());bar.addWidget(self.m_margin_t)
+        bar.addWidget(W.QLabel('B:'));self.m_margin_b=W.QSpinBox();self.m_margin_b.setRange(0,512);self.m_margin_b.setValue(16);self.m_margin_b.setToolTip('Bottom');self.m_margin_b.valueChanged.connect(lambda *_:self._render());bar.addWidget(self.m_margin_b)
+        bar.addStretch(1);layout.addLayout(bar)
+        bar.addStretch(1);layout.addLayout(bar)
+        self.m_output=W.QLabel('No font loaded.');self.m_output.setAlignment(C.Qt.AlignmentFlag.AlignCenter)
+        self.m_output.setStyleSheet('QLabel { background:#282828; color:#dedede; }')
+        self.m_output.setSizePolicy(W.QSizePolicy.Policy.Expanding,W.QSizePolicy.Policy.Expanding)
+        self.m_scroll=W.QScrollArea();self.m_scroll.setWidgetResizable(True);self.m_scroll.setWidget(self.m_output)
+        self.m_scroll.setSizePolicy(W.QSizePolicy.Policy.Expanding,W.QSizePolicy.Policy.Expanding)
+        layout.addWidget(W.QLabel('Glyph output:'))
+        layout.addWidget(self.m_scroll,1)
+        self._render()
+
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        self._render()
+
+    def _output_width(self):
+        try:
+            return max(1,self.m_scroll.viewport().width()-8)
+        except Exception:
+            return None
+
+    def _render(self):
+        text=self.m_input.toPlainText()
+        font=getattr(self.m_editor,'m_font_font',None);data=getattr(self.m_editor,'m_font_data',None)
+        if font is None or data is None:
+            self.m_output.setPixmap(G.QPixmap());self.m_output.setText('No font loaded.');self.m_img=None;self.m_export_btn.setEnabled(False);return
+        try:
+            margin_l=self.m_margin_l.value();margin_r=self.m_margin_r.value()
+            margin_t=self.m_margin_t.value();margin_b=self.m_margin_b.value()
+            panel_w=self.m_scroll.viewport().width()
+            max_width=panel_w-margin_l-margin_r
+            img=arika_ffon.render_text(font,data,text,max_width=max_width)
+        except Exception as error:
+            self.m_output.setPixmap(G.QPixmap());self.m_output.setText('Render error: '+str(error));self.m_img=None;self.m_export_btn.setEnabled(False);return
+        # Position the rendered glyph block inside the margin rect; the rest is
+        # transparent panel background (no padding around the glyphs themselves).
+        canvas_w=max(panel_w,margin_l+img.width+margin_r)
+        canvas=Image.new('RGBA',(canvas_w,img.height+margin_t+margin_b),(0,0,0,0))
+        canvas.paste(img,(margin_l,margin_t))
+        self.m_img=canvas
+        pix=arika_ffon.image_to_qpixmap(img)
+        self.m_output.setPixmap(pix);self.m_output.setText('')
+        self.m_export_btn.setEnabled(True)
+
+    def export_png(self):
+        if self.m_img is None:return
+        path,_=W.QFileDialog.getSaveFileName(self,'Export glyph output as PNG','','PNG (*.png)')
+        if not path:return
+        try:
+            self.m_img.save(path,'PNG')
+            self.m_editor.statusBar().showMessage('Exported glyph output to %s'%path,0)
+        except Exception as error:
+            self.m_editor.fail(error)
+
 class c_outliner_pinned_columns(W.QWidget):
     """Fixed Show/Lock controls painted over the right side of the tree."""
     COLUMN_WIDTH=44
@@ -1074,6 +1147,7 @@ class c_scene_editor(W.QMainWindow):
         self.m_motion=None;self.m_motion_nodes=[];self.m_motion_node_map={};self.m_bind_pose={}
         self.m_motion_time=0.0;self.m_motion_duration=0.0;self.m_motion_playing=False;self.m_motion_timer=None
         self.m_virtual=False;self.m_virtual_files={};self.m_modified_files=set();self.m_loaded_models=set()
+        self.m_font_font=None;self.m_font_data=None
         self.setWindowTitle('Arika Editor');self.resize(1400,900);self.m_view=c_viewport();self.m_view.selection_requested.connect(self.select_view);self.m_view.selection_all.connect(self.select_all);self.m_view.delete_requested.connect(self.delete_selected);self.m_view.transform_changed.connect(self.sync_selection);self.m_view.gizmo_mode_requested.connect(self.set_gizmo_mode)
         self.m_views=W.QStackedWidget();self.m_views.addWidget(self.m_view);self.m_material_view=c_viewport();self.m_material_view.m_show_gizmo=False;self.m_material_view.m_options.update(grid=False,axes=False);self.m_views.addWidget(self.m_material_view)
         texture_panel=W.QWidget();texture_layout=W.QVBoxLayout(texture_panel);self.m_texture_info=W.QLabel('Choose a texture');texture_layout.addWidget(self.m_texture_info);self.m_texture_view=c_texture_view();texture_layout.addWidget(self.m_texture_view);self.m_views.addWidget(texture_panel)
@@ -1101,12 +1175,13 @@ class c_scene_editor(W.QMainWindow):
         self.m_audio_pos=W.QLabel('0:00');bl.addWidget(self.m_audio_pos);self.m_audio_slider=W.QSlider(C.Qt.Orientation.Horizontal);self.m_audio_slider.setRange(0,1000);self.m_audio_slider.setValue(0);self.m_audio_slider.setEnabled(False);self.m_audio_slider.sliderReleased.connect(self.seek_audio);bl.addWidget(self.m_audio_slider);self.m_audio_dur=W.QLabel('0:00');bl.addWidget(self.m_audio_dur);al.addWidget(bar2)
         note=W.QLabel('Audio plays from embedded project WAV; no temp files written.');note.setWordWrap(True);note.setStyleSheet('color:#888888;');al.addWidget(note);al.addStretch()
         self.m_views.addWidget(audio_panel)
+        self.m_font_panel=c_font_panel(self);self.m_views.addWidget(self.m_font_panel)
         for view in (self.m_view,self.m_object_view):
             view.m_transform_orientation=self.m_transform_orientation;view.m_pivot_mode=self.m_pivot_mode;view.m_cursor_location=list(self.m_cursor_location);view.m_cursor_axes=[list(a) for a in self.m_cursor_axes];view.m_custom_orientation_axes=self.m_custom_orientation_axes;view.m_snap_steps=dict(self.m_snap_steps)
         self.setStyleSheet(EDITOR_STYLE)
         bar=W.QToolBar('Viewport');bar.setObjectName('viewport_header');bar.setMovable(False)
         self.m_editor_heading=W.QLabel('3D Viewport');self.m_editor_heading.setObjectName('editor_heading');bar.addWidget(self.m_editor_heading)
-        view_mode=W.QComboBox();view_mode.addItems(['World','Material Preview','Texture Browser','Object View','Menu Editor','Audio']);view_mode.currentIndexChanged.connect(self.change_view);bar.addWidget(view_mode);self.m_view_mode=view_mode
+        view_mode=W.QComboBox();view_mode.addItems(['World','Material Preview','Texture Browser','Object View','Menu Editor','Audio','Fonts']);view_mode.currentIndexChanged.connect(self.change_view);bar.addWidget(view_mode);self.m_view_mode=view_mode
         view_menu=W.QMenu('View',self)
         for title,callback in [('Frame all',self.fit),('Frame selected',lambda:self.active_view().frame(True)),('Toggle Local View (Numpad /)',lambda:self.active_view().toggle_local_view()),('Set 3D Cursor to Active',self.set_cursor_to_active),('Align 3D Cursor Orientation to Active',self.align_cursor_to_active),('Create Custom Orientation from Active',self.create_custom_orientation_from_active),('Clear Custom Orientation',self.clear_custom_orientation),('Reset 3D Cursor',self.reset_cursor)]:view_menu.addAction(title).triggered.connect(callback)
         view_menu.addSeparator()
@@ -1181,7 +1256,7 @@ class c_scene_editor(W.QMainWindow):
         native_hscroll.rangeChanged.connect(lambda *_:self.sync_outliner_scrollbar())
         self.m_tree_hscroll.valueChanged.connect(native_hscroll.setValue)
         outliner=W.QWidget();layout=W.QVBoxLayout(outliner);layout.setContentsMargins(5,5,5,5);layout.addWidget(filter_row);layout.addWidget(tree_panel)
-        dock=W.QDockWidget('Scene Collection — Outliner',self);dock.setObjectName('scene_outliner');dock.setWidget(outliner);dock.setMinimumWidth(300);self.addDockWidget(C.Qt.DockWidgetArea.RightDockWidgetArea,dock);self.m_outliner_dock=dock
+        dock=W.QDockWidget('Scene Collection — Outliner',self);dock.setObjectName('scene_outliner');dock.setWidget(outliner);self.addDockWidget(C.Qt.DockWidgetArea.RightDockWidgetArea,dock);self.m_outliner_dock=dock
         tabs=W.QTabWidget();self.m_object=W.QWidget();object_layout=W.QVBoxLayout(self.m_object);self.m_label=W.QLabel('Select an object');object_layout.addWidget(self.m_label);self.m_fields=[]
         transform=W.QGroupBox('Transform');form=W.QFormLayout(transform);form.setContentsMargins(8,12,8,8);form.setHorizontalSpacing(5);form.setLabelAlignment(C.Qt.AlignmentFlag.AlignTop);object_layout.addWidget(transform)
         self.m_axis_lock_checks={}
@@ -1255,6 +1330,7 @@ class c_scene_editor(W.QMainWindow):
         self.reset_layout()
         self.m_settings.restore_window(self)
         self.refresh_recent_menu()
+        self.setMinimumSize(0, 0)
 
     def build_menus(self):
         file_menu=self.menuBar().addMenu('File')
@@ -1294,7 +1370,7 @@ class c_scene_editor(W.QMainWindow):
     def add_character(self):
         if not self.m_project:
             self.statusBar().showMessage('Open a stage or editor project, then add a character.');return
-        path,_=W.QFileDialog.getOpenFileName(self,'Add character model','','Character models (*.mdl *.gltf *.glb)')
+        path,_=W.QFileDialog.getOpenFileName(self,'Add character model','','Character models (*.mdl *.mdt *.gltf *.glb)')
         if not path:return
         texture=None
         pix=Path(path).with_suffix('.pix')
@@ -1580,6 +1656,8 @@ class c_scene_editor(W.QMainWindow):
             return self.load_scene_file(str(path),'project')
         if kind=='stage':
             return self.load_scene_file(str(path),'stage')
+        if kind=='font':
+            return self.preview_font(str(path),data)
         if kind=='motion':
             return self._open_motion(str(path),data,remember=True)
         self.preview_virtual(str(path),data,kind)
@@ -1601,12 +1679,12 @@ class c_scene_editor(W.QMainWindow):
             self.m_tree.clear();self.m_items={}
         except Exception:pass
         try:
-            archive=dat.Archive(str(info_path),str(game_path) if game_path else None)
-            va=VirtualArchive(archive)
+            archive = dat.Archive(str(info_path), str(game_path) if game_path else None)
+            va = VirtualArchive(archive)
             va.load()
-            self.m_virtual_files=va.files or {}
+            self.m_virtual_files = va.files or {}
         except Exception as error:
-            self.fail(error);return
+            self.fail(error); return
         try:
             self.m_file_tree.blockSignals(True);self.m_file_tree.clear()
             for name in sorted(self.m_virtual_files):
@@ -1975,6 +2053,9 @@ class c_scene_editor(W.QMainWindow):
                 pass
             self.preview_virtual(path,data,kind)
             return
+        if kind=='font':
+            self.preview_font(path,data)
+            return
         self.preview_virtual(path,data,kind)
 
     def _import_virtual_audio(self,stage_path):
@@ -2082,6 +2163,27 @@ class c_scene_editor(W.QMainWindow):
             if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
         except Exception as error:
             self.statusBar().showMessage(str(error))
+
+    def preview_font(self,path,data):
+        try:
+            font=arika_ffon.parse_ffon(data)
+        except Exception as error:
+            self.fail(error);return
+        self.m_font_font=font;self.m_font_data=data
+        try:
+            self.m_font_panel._render()
+        except Exception:pass
+        try:
+            idx=self.m_views.indexOf(self.m_font_panel)
+            if idx>=0:self.m_views.setCurrentIndex(idx)
+            if hasattr(self,'m_view_mode'):self.m_view_mode.setCurrentIndex(idx)
+        except Exception:pass
+        info=arika_ffon.font_info_text(path,font,len(data))
+        if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
+        self.statusBar().showMessage('FFON font: %d glyphs, %dx%d @%dbpp, %d pages x %d cols, %d mapped'%(
+            font.glyph_count,font.width,font.height,font.bits_per_pixel,
+            font.page_count,font.columns_per_page,
+            len(font.mapped_cells())),0)
 
     def load_scene_file(self,path,kind,remember=True):
         try:
@@ -2750,7 +2852,7 @@ class c_scene_editor(W.QMainWindow):
     def change_view(self,index):
         self.m_views.setCurrentIndex(index)
         self.m_workspaces.blockSignals(True);self.m_workspaces.setCurrentIndex(index);self.m_workspaces.blockSignals(False)
-        self.m_editor_heading.setText(('3D Viewport','Material Preview','Image Editor','Object View','Menu Editor','Audio')[index])
+        self.m_editor_heading.setText(('3D Viewport','Material Preview','Image Editor','Object View','Menu Editor','Audio','Fonts')[index])
         if index==1:self.m_properties_tabs.setCurrentIndex(1)
         if index==1:self.refresh_material_preview()
         elif index==2 and self.m_project and self.m_texture_browser.count():
