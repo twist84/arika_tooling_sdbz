@@ -1,0 +1,77 @@
+{
+  "elf_file": "SLUS_214.42",
+  "menu_files": {
+    "dis/main_menu": {
+      "vaddr": 3993080,
+      "type": "stage"
+    },
+    "dis/result": {
+      "vaddr": 3990496,
+      "type": "stage"
+    },
+    "sqm/menu_in.ams": {
+      "vaddr": 3782784,
+      "type": "audio"
+    },
+    "sqm/menu_lp.ams": {
+      "vaddr": 3782820,
+      "type": "audio"
+    }
+  },
+  "menu_classes": [
+    "CEffectMgr",
+    "CMenuFuncMgr",
+    "CMenuFuncBase",
+    "CMenuKeyConfig",
+    "CMenuOption",
+    "CMenuSelBase",
+    "CMenuPause",
+    "CMenuListBase",
+    "CMenuGameOption",
+    "CMenuSoundSet",
+    "CMenuMsgBase",
+    "CMenuCommandL",
+    "CMenuPauseTra",
+    "CMenuObst",
+    "CMenuVsStatus",
+    "CMenuDisplayS",
+    "CMenuContinue",
+    "CMenuMemoryCa",
+    "CMenuPauseCon",
+    "CMenuVsResult",
+    "CMenuSurvBoss",
+    "CMenuShenCate",
+    "CMenuTextBase",
+    "CMenuShenMain",
+    "CMenuShenNewW",
+    "CMenuShenWish",
+    "CMenuMainMenu",
+    "CAppTitleMain",
+    "CAppMenuMain"
+  ],
+  "interaction_chains": {
+    "STG_menu -> .ebz_effect": {
+      "path": "STG stage -> EFFECT root -> efXX node -> CEffectMgr -> CEBZData -> .ebz file",
+      "key_code": "0x003301E0-0x00330300 (CEBZ loading)",
+      "key_data": "0x004FE628 (CEBZ class info block), 0x004CEF28 (%s.ebz format)"
+    },
+    "STG_menu -> .pix_texture": {
+      "path": "STG stage -> texture nodes -> .pix file",
+      "key_code": "0x003A4160 (%s.pix format ref)",
+      "key_data": "0x004CC5B0 (%s.pix format string)"
+    },
+    "STG_menu -> .ase/.ams_audio": {
+      "path": "STG stage -> audio nodes -> .ase/.ams files",
+      "key_code": "0x00340AC4 (enter.ase), 0x003A39BC (ending.ase)",
+      "key_data": "0x0039B880 (sqm/menu_in.ams), 0x0039B8A4 (sqm/menu_lp.ams)"
+    }
+  },
+  "runtime_object_model": {
+    "CEffectMgr": "Effect manager - loads .ebz files, creates CEBZEffectObj instances",
+    "CEBZData": "Parsed .ebz file data",
+    "CEBZEffectObj": "Runtime effect instance",
+    "CMenuFuncMgr": "Menu function manager",
+    "CMenuMainMenu": "Main menu manager",
+    "CAppMenuMain": "App menu main state"
+  }
+}

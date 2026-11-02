@@ -17,6 +17,13 @@ from rendercanvas.qt import QRenderWidget
 import arika_backend as backend
 import arika_dat as dat
 import arika_ffon
+import arika_pix
+import arika_ani
+import arika_pas
+import arika_ebz
+import arika_cht
+import arika_stages
+import arika_scripts as arika_spt
 from arika_webgpu import c_webgpu_renderer,DEFAULT_BACKGROUND,camera_matrix
 from arika_gizmo import (gizmo_geometry,rotate_euler_local_axis,
     quaternion_from_axis_angle,quaternion_from_matrix,quaternion_inverse,
@@ -135,6 +142,10 @@ def detect_format(data, name):
         return 'texture'
     if magic[:4]==b'FFON':
         return 'font'
+    if data[4:8]==b'CHT ':
+        return 'facial'
+    if lower.endswith('.cht'):
+        return 'facial'
     if magic[:8]==b'\0\0\x02\0HIT ':
         return 'hit'
     if magic[:4]==b'MOT2':
@@ -161,6 +172,14 @@ def detect_format(data, name):
         return 'gltf'
     if lower.endswith('.mdl'):
         return 'model'
+    if lower.endswith('.ebz'):
+        return 'effect'
+    if lower.endswith('.ani'):
+        return 'animation'
+    if lower.endswith('.pas'):
+        return 'pose'
+    if lower.endswith('.spt'):
+        return 'script'
     if (name or '').upper() in ('INFO.DAT','GAME.DAT'):
         return 'archive'
     if magic[:7]==b'\x7fwww.ar':
@@ -1310,14 +1329,35 @@ class c_scene_editor(W.QMainWindow):
         audio_panel=W.QWidget();ap=W.QVBoxLayout(audio_panel);ap.setContentsMargins(0,0,0,0);ap.addWidget(self.m_audio_browser);ap.addWidget(self.m_audio_browser_info);ap.addWidget(self.m_audio_play)
         self.m_audio_dock=W.QDockWidget('Asset Browser — Audio',self);self.m_audio_dock.setObjectName('scene_audio');self.m_audio_dock.setWidget(audio_panel);self.addDockWidget(C.Qt.DockWidgetArea.BottomDockWidgetArea,self.m_audio_dock)
         self.setCorner(C.Qt.Corner.BottomRightCorner,C.Qt.DockWidgetArea.RightDockWidgetArea)
-        self.m_file_tree=W.QTreeWidget();self.m_file_tree.setHeaderLabels(['Archive entry','Size']);self.m_file_tree.setSelectionMode(W.QAbstractItemView.SelectionMode.SingleSelection)
+        self.m_file_tree=W.QTreeWidget();self.m_file_tree.setHeaderLabels(['Archive entry','Size','Format']);self.m_file_tree.setSelectionMode(W.QAbstractItemView.SelectionMode.SingleSelection)
         self.m_file_tree.itemActivated.connect(lambda item,*_a:self.open_virtual(item.data(0,C.Qt.ItemDataRole.UserRole)))
-        self.m_file_tree.header().setSectionResizeMode(0,W.QHeaderView.ResizeMode.Stretch);self.m_file_tree.header().setSectionResizeMode(1,W.QHeaderView.ResizeMode.Fixed);self.m_file_tree.setColumnWidth(1,90)
+        self.m_file_tree.header().setSectionResizeMode(0,W.QHeaderView.ResizeMode.Stretch);self.m_file_tree.header().setSectionResizeMode(1,W.QHeaderView.ResizeMode.Fixed);self.m_file_tree.header().setSectionResizeMode(2,W.QHeaderView.ResizeMode.Fixed);self.m_file_tree.setColumnWidth(1,90);self.m_file_tree.setColumnWidth(2,80)
         dock=W.QDockWidget('Archive Browser',self);dock.setObjectName('archive_browser');dock.setWidget(self.m_file_tree);self.addDockWidget(C.Qt.DockWidgetArea.LeftDockWidgetArea,dock);self.m_files_dock=dock;self.m_archive_dock=dock
         self.m_preview=W.QTextEdit();self.m_preview.setReadOnly(True);self.m_preview.setLineWrapMode(W.QTextEdit.LineWrapMode.NoWrap);self.m_preview.setFont(G.QFont('Consolas',10))
         self.m_preview_image=W.QLabel('No preview');self.m_preview_image.setAlignment(C.Qt.AlignmentFlag.AlignCenter)
         self.m_preview_stack=W.QStackedWidget();self.m_preview_stack.addWidget(self.m_preview);self.m_preview_stack.addWidget(self.m_preview_image)
         dockp=W.QDockWidget('Preview',self);dockp.setObjectName('preview_dock');dockp.setWidget(self.m_preview_stack);self.addDockWidget(C.Qt.DockWidgetArea.BottomDockWidgetArea,dockp);self.m_preview_dock=dockp
+        # --- Script Viewer dock ---
+        self.m_script_list=W.QListWidget();self.m_script_list.setSelectionMode(W.QAbstractItemView.SelectionMode.SingleSelection)
+        self.m_script_list.currentItemChanged.connect(self._script_selected)
+        self.m_script_text=W.QTextEdit();self.m_script_text.setReadOnly(True);self.m_script_text.setLineWrapMode(W.QTextEdit.LineWrapMode.NoWrap);self.m_script_text.setFont(G.QFont('Consolas',10))
+        self.m_script_decompile_cb=W.QCheckBox('Pseudocode');self.m_script_decompile_cb.setChecked(False);self.m_script_decompile_cb.stateChanged.connect(self._script_selected)
+        self.m_script_edit_btn=W.QPushButton('Edit selected token');self.m_script_edit_btn.setEnabled(False);self.m_script_edit_btn.clicked.connect(self._edit_selected_token)
+        self.m_script_save_btn=W.QPushButton('Save changes');self.m_script_save_btn.setEnabled(False);self.m_script_save_btn.clicked.connect(self._save_script_changes)
+        script_panel=W.QWidget();sp=W.QVBoxLayout(script_panel);sp.setContentsMargins(4,4,4,4);sp.setSpacing(4)
+        sp.addWidget(W.QLabel('Scripts:'));sp.addWidget(self.m_script_list,1)
+        btnrow=W.QWidget();br=W.QHBoxLayout(btnrow);br.setContentsMargins(0,0,0,0);br.setSpacing(4)
+        br.addWidget(self.m_script_edit_btn);br.addWidget(self.m_script_save_btn);br.addWidget(self.m_script_decompile_cb);br.addStretch()
+        sp.addWidget(btnrow)
+        sp.addWidget(W.QLabel('Tokens:'));sp.addWidget(self.m_script_text,2)
+        docks=W.QDockWidget('Script Viewer',self);docks.setObjectName('script_viewer');docks.setWidget(script_panel);self.addDockWidget(C.Qt.DockWidgetArea.RightDockWidgetArea,docks);self.m_script_dock=docks
+        # split with properties dock
+        self.splitDockWidget(self.m_properties_dock,docks,C.Qt.Orientation.Vertical)
+        # script state
+        self.m_scripts={}   # name -> parsed SPT document
+        self.m_script_text_data={}  # name -> raw text representation
+        self.m_current_script=None
+        self.m_current_token_path=None  # (program_idx, token_idx)
         self.build_menus()
         workspaces=self.addToolBar('Workspaces');workspaces.setObjectName('workspace_header');workspaces.setMovable(False)
         brand=W.QLabel('  ARIKA  ');brand.setObjectName('editor_heading');workspaces.addWidget(brand)
@@ -1363,9 +1403,9 @@ class c_scene_editor(W.QMainWindow):
         for title,shortcut,callback in [('Undo','Ctrl+Z',lambda:self.history(False)),('Redo','Ctrl+Shift+Z',lambda:self.history(True))]:
             action=edit.addAction(title);action.setShortcut(shortcut);action.triggered.connect(callback)
         window=self.menuBar().addMenu('Window')
-        for dock in (self.m_outliner_dock,self.m_properties_dock,self.m_assets_dock):window.addAction(dock.toggleViewAction())
+        for dock in (self.m_outliner_dock,self.m_properties_dock,self.m_assets_dock,self.m_script_dock):window.addAction(dock.toggleViewAction())
         window.addSeparator();window.addAction('Reset layout').triggered.connect(self.reset_layout)
-        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Viewport controls').triggered.connect(lambda:W.QMessageBox.information(self,'Viewport controls',self.m_view.toolTip().replace(' · ','\n')))
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Viewport controls').triggered.connect(lambda:W.QMessageBox.information(self,'Viewport controls',self.m_view.toolTip().replace(' · ','\n')));help_menu.addAction('Format interaction map').triggered.connect(self._show_format_map)
 
     def add_character(self):
         if not self.m_project:
@@ -1689,7 +1729,8 @@ class c_scene_editor(W.QMainWindow):
             self.m_file_tree.blockSignals(True);self.m_file_tree.clear()
             for name in sorted(self.m_virtual_files):
                 data=self.m_virtual_files[name]
-                item=W.QTreeWidgetItem([name,'%d'%len(data)]);item.setData(0,C.Qt.ItemDataRole.UserRole,name)
+                kind=detect_format(data,name)
+                item=W.QTreeWidgetItem([name,'%d'%len(data),kind]);item.setData(0,C.Qt.ItemDataRole.UserRole,name)
                 self.m_file_tree.addTopLevelItem(item)
             self.m_file_tree.blockSignals(False)
         except Exception:pass
@@ -1697,6 +1738,10 @@ class c_scene_editor(W.QMainWindow):
         self.m_scene_status.setText('Archive: %d entries'%len(self.m_virtual_files))
         self.remember_file(str(info_path),'archive')
         self.clear_motion()
+        try:
+            self._populate_scripts()
+        except Exception:
+            pass
 
     def open_virtual(self,path):
         if not self.m_virtual_files:return
@@ -1717,36 +1762,10 @@ class c_scene_editor(W.QMainWindow):
             self.populate(True)
             self.clear_motion()
             self.statusBar().showMessage('Opened virtual stage %s'%path)
-            return
-        if kind=='project':
             try:
-                project=c_scene_project.load_bytes(data,path)
-            except Exception as error:
-                self.fail(error);return
-            self.m_project=project;self.m_project_path=None;self.m_virtual=True
-            self.populate(True)
-            self.clear_motion()
-            self.statusBar().showMessage('Opened virtual project %s'%path)
-            return
-    def open_virtual(self,path):
-        if not self.m_virtual_files:return
-        data=self.m_virtual_files.get(path)
-        if data is None:
-            self.statusBar().showMessage('Virtual entry not found: '+str(path));return
-        kind=detect_format(data,path)
-        if kind=='stage':
-            try:
-                project=c_scene_project.from_virtual(path,self.m_virtual_files)
-            except Exception as error:
-                self.fail(error);return
-            self.m_project=project;self.m_project_path=None;self.m_virtual=True
-            try:
-                self._import_virtual_audio(path)
+                self._show_stage_xrefs(path,data)
             except Exception:
                 pass
-            self.populate(True)
-            self.clear_motion()
-            self.statusBar().showMessage('Opened virtual stage %s'%path)
             return
         if kind=='project':
             try:
@@ -1760,6 +1779,21 @@ class c_scene_editor(W.QMainWindow):
             return
         if kind=='motion':
             self._open_motion(path,data,remember=False)
+            return
+        if kind=='effect':
+            self._preview_effect(path,data)
+            return
+        if kind=='animation':
+            self._preview_animation(path,data)
+            return
+        if kind=='pose':
+            self._preview_pose(path,data)
+            return
+        if kind=='facial':
+            self._preview_facial(path,data)
+            return
+        if kind=='script':
+            self._preview_script(path,data)
             return
         if kind=='hit':
             try:
@@ -2152,6 +2186,16 @@ class c_scene_editor(W.QMainWindow):
                     self.m_preview.setPlainText('\n'.join(lines)+'\n\n'+text)
                 except Exception:
                     self.m_preview.setPlainText('\n'.join(lines)+'\n\n'+data[:256].hex())
+            elif kind=='facial':
+                self._preview_facial(path,data)
+            elif kind=='effect':
+                self._preview_effect(path,data)
+            elif kind=='animation':
+                self._preview_animation(path,data)
+            elif kind=='pose':
+                self._preview_pose(path,data)
+            elif kind=='script':
+                self._preview_script(path,data)
             else:
                 # show hex + metadata
                 try:
@@ -2185,6 +2229,328 @@ class c_scene_editor(W.QMainWindow):
             font.page_count,font.columns_per_page,
             len(font.mapped_cells())),0)
 
+    def _preview_effect(self,path,data):
+        try:
+            doc=arika_ebz.parse_ebz(data)
+        except Exception as error:
+            self.fail(error);return
+        self.m_preview_stack.setCurrentIndex(0)
+        self.m_preview.clear()
+        lines=['Entry: %s'%path,'Kind: effect','Size: %d bytes'%len(data)]
+        h=doc['header']
+        lines.append('Magic: %s  Version: %d  Type: %d'%(h['magic'],h['version'],h['type']))
+        lines.append('Param0: %.4f  Size field: 0x%08X'%(h['param0'],h['size_field']))
+        lines.append('Count: %d'%h['count'])
+        lines.append('')
+        lines.append('Ref table (%d entries):'%len(doc['refs']))
+        for r in doc['refs'][:32]:
+            lines.append('  [%d] %s = 0x%016X'%(r['index'],r['name'],r['value']))
+        if len(doc['refs'])>32:lines.append('  ... and %d more'%(len(doc['refs'])-32))
+        lines.append('')
+        lines.append('Entries (%d):'%len(doc['entries']))
+        for e in doc['entries'][:16]:
+            nz=[(i,f) for i,f in enumerate(e['fields']) if f!=0]
+            if nz:
+                lines.append('  Entry %d (%d nonzero):'%(e['index'],len(nz)))
+                for i,f in nz[:8]:
+                    fl=e['floats'][i]
+                    lines.append('    f[%d]=%d (0x%08X)%s'%(i,f,f,' (%.4f)'%fl if fl is not None else ' (NaN)'))
+                if len(nz)>8:lines.append('    ... and %d more'%(len(nz)-8))
+        if len(doc['entries'])>16:lines.append('  ... and %d more entries'%(len(doc['entries'])-16))
+        lines.append('')
+        lines.append('Entries end at 0x%08X, %d trailing bytes'%(doc['entries_end'],doc['remaining']))
+        self.m_preview.setPlainText('\n'.join(lines))
+        if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
+        self.statusBar().showMessage('EBZ effect: %d refs, %d entries'%(len(doc['refs']),len(doc['entries'])),0)
+
+    def _preview_animation(self,path,data):
+        try:
+            doc=arika_ani.parse_ani(data)
+        except Exception as error:
+            self.fail(error);return
+        self.m_preview_stack.setCurrentIndex(0)
+        self.m_preview.clear()
+        lines=['Entry: %s'%path,'Kind: animation','Size: %d bytes'%doc['byte_size']]
+        lines.append('Tracks: %d'%doc['track_count'])
+        total=sum(len(t['frames']) for t in doc['tracks'])
+        lines.append('Total frames: %d'%total)
+        lines.append('')
+        for t in doc['tracks']:
+            bones=sorted(set(f['bone_index'] for f in t['frames'] if 'bone_index' in f))
+            chans=sorted(set(f['channel_count'] for f in t['frames'] if 'channel_count' in f))
+            lines.append('Track %d: %d frames, offset=0x%06X, bones=%s, chans=%s'%(
+                t['index'],t['frame_count'],t['offset'],bones,chans))
+        self.m_preview.setPlainText('\n'.join(lines))
+        if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
+        self.statusBar().showMessage('ANI animation: %d tracks, %d frames'%(doc['track_count'],total),0)
+
+    def _preview_pose(self,path,data):
+        try:
+            doc=arika_pas.parse_pas(data)
+        except Exception as error:
+            self.fail(error);return
+        self.m_preview_stack.setCurrentIndex(0)
+        self.m_preview.clear()
+        lines=['Entry: %s'%path,'Kind: pose','Size: %d bytes'%doc['byte_size']]
+        lines.append('Entries: %d'%doc['entry_count'])
+        total_refs=sum(len(e['references']) for e in doc['entries'])
+        lines.append('Total cross-refs: %d'%total_refs)
+        lines.append('')
+        for e in doc['entries'][:32]:
+            if e['size']==0:
+                lines.append('Entry %d: null'%e['index'])
+            else:
+                refs=[r['target_index'] for r in e['references']]
+                lines.append('Entry %d: offset=0x%04X size=%d refs=%s'%(e['index'],e['file_offset'],e['size'],refs[:16]))
+        if len(doc['entries'])>32:lines.append('... and %d more entries'%(len(doc['entries'])-32))
+        self.m_preview.setPlainText('\n'.join(lines))
+        if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
+        self.statusBar().showMessage('PAS pose: %d entries, %d refs'%(doc['entry_count'],total_refs),0)
+
+    def _preview_script(self,path,data):
+        try:
+            doc=arika_spt.parse(data)
+        except Exception as error:
+            self.fail(error);return
+        self.m_preview_stack.setCurrentIndex(0)
+        self.m_preview.clear()
+        lines=['Entry: %s'%path,'Kind: script','Size: %d bytes'%len(data)]
+        lines.append('Programs: %d'%len(doc['programs']))
+        lines.append('')
+        for p in doc['programs'][:16]:
+            lines.append('Program %d: size=%d vars=%d entry_points=%s tokens=%d'%(
+                p['index'],p['size'],p['variable_count'],p['entry_points'],len(p['tokens'])))
+            for tok in p['tokens'][:6]:
+                if tok['type']==0:desc='float 0x%08X'%tok['payload']
+                elif tok['type']==1:desc='string '+repr(tok.get('text',''))
+                elif tok['type']==2:desc='cmd 0x%04X'%(tok.get('command_id',0))
+                elif tok['type']==3:desc='var idx=%d type=%d'%(tok.get('variable_index',0),tok.get('variable_type',0))
+                elif tok['type']==4:desc='sym %r'%tok.get('symbol',None)
+                else:desc='type %d'%tok['type']
+                lines.append('  [0x%04X] type=%d %s'%(tok['offset'],tok['type'],desc))
+            if len(p['tokens'])>6:lines.append('    ... and %d more tokens'%(len(p['tokens'])-6))
+        if len(doc['programs'])>16:lines.append('... and %d more programs'%(len(doc['programs'])-16))
+        self.m_preview.setPlainText('\n'.join(lines))
+        if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
+        self.statusBar().showMessage('SPT script: %d programs'%len(doc['programs']),0)
+
+    def _preview_facial(self,path,data):
+        try:
+            doc=arika_cht.parse_cht(data)
+        except Exception as error:
+            self.fail(error);return
+        self.m_preview_stack.setCurrentIndex(0)
+        self.m_preview.clear()
+        lines=['Entry: %s'%path,'Kind: facial','Size: %d bytes'%doc['byte_size']]
+        if 'entries' in doc:
+            lines.append('Entries: %d'%len(doc['entries']))
+            total_frames=sum(len(e.get('frames',[])) for e in doc['entries'])
+            lines.append('Total frames: %d'%total_frames)
+        self.m_preview.setPlainText('\n'.join(lines))
+        if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
+        self.statusBar().showMessage('CHT facial: %d bytes'%(doc['byte_size']),0)
+
+    def _show_stage_xrefs(self,path,data):
+        """Show which other format files a STG stage references."""
+        try:
+            doc=arika_stages.parse_stg(data)
+        except Exception as error:
+            self.fail(error);return
+        self.m_preview_stack.setCurrentIndex(0)
+        self.m_preview.clear()
+        lines=['Entry: %s'%path,'Kind: stage','Size: %d bytes'%len(data)]
+        lines.append('Nodes: %d  Roots: %d'%(len(doc['nodes']),len(doc['roots'])))
+        lines.append('Effect root node index: %d  Stage root node index: %d'%(doc['effect_root'],doc['stage_root']))
+        lines.append('')
+        # Find effect nodes under EFFECT root
+        effect_nodes=[n for n in doc['nodes'] if n['name'].startswith('ef') and n['kind']==1]
+        if effect_nodes:
+            lines.append('Effect placement nodes (%d):'%len(effect_nodes))
+            for n in effect_nodes:
+                lines.append('  %s  TRS=(%.1f,%.1f,%.1f)  links=0x%02X'%(
+                    n['name'],n['translation'][0],n['translation'][1],n['translation'][2],n['links']))
+            lines.append('')
+        # Find HIT references (kind=3 nodes with references)
+        hit_refs=[n for n in doc['nodes'] if n.get('references')]
+        if hit_refs:
+            lines.append('HIT collision references (%d nodes):'%len(hit_refs))
+            for n in hit_refs:
+                ref_names=[r['name'] for r in n['references']]
+                lines.append('  %s -> %s'%(n['name'],ref_names))
+            lines.append('')
+        # Find state control nodes (kind=6) - reference other named nodes
+        state_nodes=[n for n in doc['nodes'] if 'state_control' in n]
+        if state_nodes:
+            lines.append('State control nodes (%d):'%len(state_nodes))
+            for n in state_nodes:
+                sc=n['state_control']
+                lines.append('  %s -> primary=%s secondary=%s handler=%d'%(
+                    n['name'],sc['primary_name'],sc['secondary_name'],sc['handler_index']))
+            lines.append('')
+        lines.append('Format interaction map:')
+        lines.append('  STG -> .ebz (effects under EFFECT root)')
+        lines.append('  STG -> .hit (collision via kind=3 nodes)')
+        lines.append('  STG -> .mdl (stage geometry under STAGE root)')
+        lines.append('  STG -> .spt (stage scripts via state_control handlers)')
+        lines.append('  STG -> .ams (stage music/audio)')
+        self.m_preview.setPlainText('\n'.join(lines))
+        if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
+        self.statusBar().showMessage('STG stage: %d nodes, %d effect nodes'%(len(doc['nodes']),len(effect_nodes)),0)
+
+    def _show_format_map(self):
+        """Show how all file formats interact with each other."""
+        self.m_preview_stack.setCurrentIndex(0)
+        self.m_preview.clear()
+        lines=['=== SUPER DRAGON BALL Z — Format Interaction Map ===']
+        lines.append('')
+        lines.append('ARCHIVE CONTAINERS:')
+        lines.append('  GAME.DAT — main game data (FPIX container)')
+        lines.append('  INFO.DAT — metadata/index archive')
+        lines.append('')
+        lines.append('STAGE (STG):')
+        lines.append('  .stg — scene graph with EFFECT and STAGE roots')
+        lines.append('    -> .ebz  effect instances (efXX nodes under EFFECT root)')
+        lines.append('    -> .hit  collision geometry (kind=3 node references)')
+        lines.append('    -> .mdl  stage geometry (under STAGE root)')
+        lines.append('    -> .spt  stage scripts (state_control handlers)')
+        lines.append('    -> .ams  stage music/audio')
+        lines.append('')
+        lines.append('MODEL (MDL/FMDL):')
+        lines.append('  .mdl — vertex buffers, indices, materials, skeletons')
+        lines.append('    -> .pix  textures (via material slots)')
+        lines.append('    -> .pmt  material definitions (RFSML3 motion archives)')
+        lines.append('    -> .ani  skeletal animation tracks')
+        lines.append('    -> .cht  facial animation data')
+        lines.append('    -> .ase  character voice/sound banks')
+        lines.append('    -> .pas  pose data')
+        lines.append('')
+        lines.append('EFFECT (EBZ):')
+        lines.append('  .ebz — effect/trajectory archives')
+        lines.append('    Ref table: named effect entries (e00006p0, se00028b, etc.)')
+        lines.append('    Entries: per-instance transform data (TRS, scale, angles)')
+        lines.append('    Referenced by: STG effect nodes (efXX)')
+        lines.append('')
+        lines.append('TEXTURE (PIX/FPIX):')
+        lines.append('  .pix — FPIX container with XPIX/TIM2 texture chunks')
+        lines.append('    Referenced by: MDL materials, stage geometry')
+        lines.append('')
+        lines.append('AUDIO:')
+        lines.append('  .ase — ADPCM sound banks (character voices, effects)')
+        lines.append('  .ams — sound sequence/music tracks')
+        lines.append('    Referenced by: MDL characters (.ase), STG stages (.ams)')
+        lines.append('')
+        lines.append('SCRIPT (SPT):')
+        lines.append('  .spt — tokenized bytecode programs')
+        lines.append('    Referenced by: STG stage scripts (state_control handlers)')
+        lines.append('')
+        lines.append('POSE (PAS):')
+        lines.append('  .pas — pose data with cross-references')
+        lines.append('    Referenced by: MDL characters, STG stages')
+        lines.append('')
+        lines.append('FACIAL (CHT):')
+        lines.append('  .cht — facial animation/track data')
+        lines.append('    Referenced by: MDL characters')
+        lines.append('')
+        lines.append('FONT (FFON):')
+        lines.append('  .fon — glyph atlas, character maps, font metrics')
+        lines.append('')
+        self.m_preview.setPlainText('\n'.join(lines))
+        if hasattr(self,'m_preview_dock') and self.m_preview_dock.isHidden():self.m_preview_dock.show()
+        self.statusBar().showMessage('Format interaction map shown',0)
+
+    # ----- Script Viewer methods -----
+    def _populate_scripts(self):
+        """Fill the script list from the archive or project."""
+        self.m_script_list.clear()
+        self.m_scripts={}
+        if self.m_virtual_files:
+            for name in sorted(self.m_virtual_files):
+                if name.lower().endswith('.spt'):
+                    data=self.m_virtual_files[name]
+                    try:
+                        doc=arika_spt.parse(data)
+                        self.m_scripts[name]=doc
+                        item=W.QListWidgetItem(name)
+                        item.setData(C.Qt.ItemDataRole.UserRole,name)
+                        self.m_script_list.addItem(item)
+                    except Exception:
+                        pass
+        elif self.m_project:
+            # scripts embedded in project are not separately tracked; skip
+            pass
+        if self.m_script_list.count()>0:
+            self.m_script_list.setCurrentRow(0)
+
+    def _script_selected(self,current=None,previous=None):
+        """Show token details for the selected script."""
+        self.m_script_text.clear()
+        self.m_script_edit_btn.setEnabled(False)
+        self.m_script_save_btn.setEnabled(False)
+        self.m_current_script=None
+        self.m_current_token_path=None
+        if not isinstance(current, W.QListWidgetItem):
+            current=self.m_script_list.currentItem()
+        if not current:
+            return
+        name=current.data(C.Qt.ItemDataRole.UserRole)
+        doc=self.m_scripts.get(name)
+        if not doc:
+            return
+        self.m_current_script=name
+        self.m_script_edit_btn.setEnabled(True)
+        if self.m_script_decompile_cb.isChecked():
+            # Show decompiled pseudocode
+            try:
+                pseudo=arika_spt.decompile(Path(name).read_bytes() if Path(name).is_file() else self.m_virtual_files.get(name,b''))
+            except Exception:
+                # Try reading from virtual files
+                data=self.m_virtual_files.get(name,b'') if self.m_virtual_files else b''
+                try:
+                    pseudo=arika_spt.decompile(data)
+                except Exception as e2:
+                    self.m_script_text.setPlainText('Decompile error: %s'%e2)
+                    return
+            lines=['Script: %s'%name,'Pseudocode decompilation']
+            lines.append('')
+            for p in pseudo.get('programs',[]):
+                lines.append('// Program %d (vars=%d, entries=%s)'%(
+                    p['index'],p['variable_count'],p['entry_points']))
+                for line in p['lines']:
+                    lines.append(line)
+                lines.append('')
+            self.m_script_text.setPlainText('\n'.join(lines))
+        else:
+            # Show raw tokens
+            lines=['Script: %s'%name,'Format: %s'%doc.get('format','ARIKA_SPT'),'Programs: %d'%len(doc.get('programs',[]))]
+            lines.append('')
+            for p in doc.get('programs',[]):
+                lines.append('Program %d:'%p['index'])
+                lines.append('  size=%d  reserved=%d  vars=%d  bytecode_size=%d  entry_points=%s'%(
+                    p['size'],p['reserved'],p['variable_count'],p['bytecode_size'],p['entry_points']))
+                lines.append('  Tokens (%d):'%len(p.get('tokens',[])))
+                for ti,tok in enumerate(p.get('tokens',[])):
+                    desc=self._token_desc(tok)
+                    lines.append('    [%d] off=0x%04X type=%d %s'%(ti,tok['offset'],tok['type'],desc))
+                lines.append('')
+            self.m_script_text.setPlainText('\n'.join(lines))
+
+    def _token_desc(self,tok):
+        t=tok['type']
+        if t==0: return 'float 0x%08X'%tok['payload']
+        if t==1: return 'string %r'%tok.get('text','')
+        if t==2: return 'cmd 0x%04X extra=%s'%(tok.get('command_id',0),tok.get('extra_hex',''))
+        if t==3: return 'var idx=%d type=%d'%(tok.get('variable_index',0),tok.get('variable_type',0))
+        if t==4: return 'sym %r'%tok.get('symbol',None)
+        return 'type %d payload 0x%08X'%(t,tok['payload'])
+
+    def _edit_selected_token(self):
+        """Placeholder for token editing - opens a dialog to modify a token value."""
+        W.QMessageBox.information(self,'Script Editor','Token editing is not yet implemented.\nUse the SPT rebuild tool (arika_scripts.py import-json) to modify scripts externally.')
+
+    def _save_script_changes(self):
+        """Placeholder for saving modified script."""
+        W.QMessageBox.information(self,'Script Editor','Save is not yet implemented.\nUse the SPT rebuild tool (arika_scripts.py import-json) to modify scripts externally.')
+
     def load_scene_file(self,path,kind,remember=True):
         try:
             absolute=str(Path(path).expanduser().resolve())
@@ -2201,6 +2567,11 @@ class c_scene_editor(W.QMainWindow):
             self.clear_motion()
             if remember:self.remember_file(absolute,kind)
             self.statusBar().showMessage('Opened '+absolute)
+            if kind=='stage':
+                try:
+                    self._show_stage_xrefs(str(path),data)
+                except Exception:
+                    pass
         except Exception as error:
             self.fail(error)
         try:
@@ -2983,14 +3354,6 @@ def main():
             except Exception:
                 pass
     return app.exec()
-
-
-c_arika_editor=c_scene_editor
-c_editor=c_scene_editor
-
-
-if __name__=='__main__':sys.exit(main())
-pp.exec()
 
 
 c_arika_editor=c_scene_editor

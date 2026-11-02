@@ -1,6 +1,10 @@
 //! Arika Editor — Bevy + egui: load FMDL / STG, simple translate gizmo.
 
+use arika_core::ani::parse_ani;
+use arika_core::ebz::parse_ebz;
 use arika_core::models::{attach_textures, parse_fmdl, Mesh as ArikaMesh};
+use arika_core::pas::parse_pas;
+use arika_core::spt::parse_spt;
 use arika_core::stages::{
     parse_stg, stage_instances_filtered, stage_world_matrices, Stage, StageInstance, StageNode, parse_hit,
 };
@@ -26,6 +30,14 @@ struct Args {
     mdl: Option<PathBuf>,
     #[arg(long, short = 'p')]
     pix: Option<PathBuf>,
+    #[arg(long)]
+    ani: Option<PathBuf>,
+    #[arg(long)]
+    pas: Option<PathBuf>,
+    #[arg(long)]
+    ebz: Option<PathBuf>,
+    #[arg(long)]
+    spt: Option<PathBuf>,
     #[arg(long)]
     model_only: bool,
 }
@@ -141,6 +153,26 @@ fn handle_file_drop(
                     path.display()
                 );
             }
+            "ebz" => {
+                state.ebz_path = path.to_string_lossy().into_owned();
+                state.pending_load_ebz = true;
+                state.status = format!("Dropped EBZ {}", path.display());
+            }
+            "ani" => {
+                state.ani_path = path.to_string_lossy().into_owned();
+                state.pending_load_ani = true;
+                state.status = format!("Dropped ANI {}", path.display());
+            }
+            "pas" => {
+                state.pas_path = path.to_string_lossy().into_owned();
+                state.pending_load_pas = true;
+                state.status = format!("Dropped PAS {}", path.display());
+            }
+            "spt" => {
+                state.spt_path = path.to_string_lossy().into_owned();
+                state.pending_load_spt = true;
+                state.status = format!("Dropped SPT {}", path.display());
+            }
             other => {
                 state.status = format!("Ignored drop (.{other}): {}", path.display());
             }
@@ -175,6 +207,26 @@ fn apply_cli_args(mut state: ResMut<EditorState>) {
         }
         state.pending_load_mdl = true;
         state.status = format!("CLI: loading model {}", state.mdl_path);
+    }
+    if let Some(ani) = args.ani {
+        state.ani_path = ani.to_string_lossy().into_owned();
+        state.pending_load_ani = true;
+        state.status = format!("CLI: loading ANI {}", state.ani_path);
+    }
+    if let Some(pas) = args.pas {
+        state.pas_path = pas.to_string_lossy().into_owned();
+        state.pending_load_pas = true;
+        state.status = format!("CLI: loading PAS {}", state.pas_path);
+    }
+    if let Some(ebz) = args.ebz {
+        state.ebz_path = ebz.to_string_lossy().into_owned();
+        state.pending_load_ebz = true;
+        state.status = format!("CLI: loading EBZ {}", state.ebz_path);
+    }
+    if let Some(spt) = args.spt {
+        state.spt_path = spt.to_string_lossy().into_owned();
+        state.pending_load_spt = true;
+        state.status = format!("CLI: loading SPT {}", state.spt_path);
     }
 }
 
@@ -242,6 +294,20 @@ struct EditorState {
     meshes: Vec<(String, usize, usize)>,
     texture_previews: Vec<Option<egui::TextureHandle>>,
     dock_state: Option<egui_dock::DockState<DockTab>>,
+
+    // New format support
+    ani_path: String,
+    pas_path: String,
+    ebz_path: String,
+    spt_path: String,
+    pending_load_ani: bool,
+    pending_load_pas: bool,
+    pending_load_ebz: bool,
+    pending_load_spt: bool,
+    ani_doc: Option<arika_core::ani::AniDocument>,
+    pas_doc: Option<arika_core::pas::PasDocument>,
+    ebz_doc: Option<arika_core::ebz::EbzDocument>,
+    spt_doc: Option<arika_core::spt::SptDocument>,
 }
 
 impl Default for EditorState {
@@ -313,6 +379,18 @@ impl Default for EditorState {
                 let [_o, _below] = ds.main_surface_mut().split_below(egui_dock::NodeIndex::root(), 0.55, vec![DockTab::Properties, DockTab::Materials, DockTab::Console]);
                 Some(ds)
             },
+            ani_path: String::new(),
+            pas_path: String::new(),
+            ebz_path: String::new(),
+            spt_path: String::new(),
+            pending_load_ani: false,
+            pending_load_pas: false,
+            pending_load_ebz: false,
+            pending_load_spt: false,
+            ani_doc: None,
+            pas_doc: None,
+            ebz_doc: None,
+            spt_doc: None,
         }
     }
 }
@@ -324,6 +402,10 @@ enum DockTab {
     Materials,
     Console,
     AssetBrowser,
+    Ebz,
+    Ani,
+    Pas,
+    Spt,
 }
 
 struct DockTabViewer<'a> {
@@ -340,6 +422,10 @@ impl<'a> egui_dock::TabViewer for DockTabViewer<'a> {
             DockTab::Materials => "Materials".into(),
             DockTab::Console => "Console".into(),
             DockTab::AssetBrowser => "Assets".into(),
+            DockTab::Ebz => "EBZ Effects".into(),
+            DockTab::Ani => "ANI Animation".into(),
+            DockTab::Pas => "PAS Pose".into(),
+            DockTab::Spt => "SPT Scripts".into(),
         }
     }
 
@@ -528,6 +614,151 @@ impl<'a> egui_dock::TabViewer for DockTabViewer<'a> {
                             ui.label(format!("{} — {} vertices / {} triangles", name, vc, tc));
                         }
                     });
+            }
+            DockTab::Ebz => {
+                ui.heading("EBZ Effect Archive");
+                ui.separator();
+                match &state.ebz_doc {
+                    Some(doc) => {
+                        ui.label(format!("Version: {}  Type: {}  Count: {}", doc.version, doc.etype, doc.count));
+                        ui.label(format!("Param0: {:.4}  Size field: 0x{:08X}", doc.param0, doc.size_field));
+                        ui.label(format!("P0: {}  P1: {}  P2: {}", doc.p0, doc.p1, doc.p2));
+                        ui.separator();
+                        egui::CollapsingHeader::new(format!("Refs ({})", doc.refs.len()))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    for r in &doc.refs {
+                                        ui.label(format!("[{}] {} = 0x{:016X} (lo=0x{:08X} hi=0x{:08X})", r.index, r.name, r.value, r.value_lo, r.value_hi));
+                                    }
+                                });
+                            });
+                        egui::CollapsingHeader::new(format!("Entries ({})", doc.entries.len()))
+                            .show(ui, |ui| {
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    for e in &doc.entries {
+                                        let nz: Vec<(usize, u32, Option<f32>)> = e.fields.iter().enumerate()
+                                            .filter(|(_, &v)| v != 0)
+                                            .map(|(i, &v)| (i, v, e.floats[i]))
+                                            .collect();
+                                        if !nz.is_empty() {
+                                            ui.label(format!("Entry {} ({} nonzero fields):", e.index, nz.len()));
+                                            for (idx, val, flt) in nz.iter().take(12) {
+                                                let flt_str = match flt {
+                                                    Some(f) => format!(" ({f:.4})"),
+                                                    None => " (NaN)".to_string(),
+                                                };
+                                                ui.label(format!("  f[{idx}] = {val} (0x{val:08X}){flt_str}"));
+                                            }
+                                            if nz.len() > 12 {
+                                                ui.label(format!("  ... and {} more", nz.len() - 12));
+                                            }
+                                        }
+                                    }
+                                });
+                            });
+                        ui.label(format!("Entries end at 0x{:08X}, {} trailing bytes", doc.entries_end, doc.remaining));
+                    }
+                    None => ui.label("No EBZ loaded. Drop a .ebz file."),
+                }
+            }
+            DockTab::Ani => {
+                ui.heading("ANI Animation");
+                ui.separator();
+                match &state.ani_doc {
+                    Some(doc) => {
+                        ui.label(format!("Tracks: {}  Size: {} bytes", doc.track_count, doc.byte_size));
+                        let total_frames: usize = doc.tracks.iter().map(|t| t.frames.len()).sum();
+                        ui.label(format!("Total frames: {total_frames}"));
+                        egui::CollapsingHeader::new(format!("Tracks ({})", doc.tracks.len()))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    for t in &doc.tracks {
+                                        let bones: Vec<u8> = t.frames.iter().map(|f| f.bone_index).collect();
+                                        let chans: Vec<u8> = t.frames.iter().map(|f| f.channel_count).collect();
+                                        ui.label(format!(
+                                            "Track {}: {} frames, offset=0x{:06X}, bones={:?}, chans={:?}",
+                                            t.index, t.frame_count, t.offset, bones, chans
+                                        ));
+                                    }
+                                });
+                            });
+                    }
+                    None => ui.label("No ANI loaded. Drop a .ani file."),
+                }
+            }
+            DockTab::Pas => {
+                ui.heading("PAS Pose Data");
+                ui.separator();
+                match &state.pas_doc {
+                    Some(doc) => {
+                        ui.label(format!("Entries: {}  Size: {} bytes", doc.entry_count, doc.byte_size));
+                        let total_refs: usize = doc.entries.iter().map(|e| e.references.len()).sum();
+                        ui.label(format!("Total cross-refs: {total_refs}"));
+                        egui::CollapsingHeader::new(format!("Entries ({})", doc.entry_count))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    for e in &doc.entries.iter().take(30) {
+                                        if e.size == 0 {
+                                            ui.label(format!("Entry {}: null", e.index));
+                                        } else {
+                                            let refs: Vec<usize> = e.references.iter().map(|r| r.target_index).collect();
+                                            ui.label(format!(
+                                                "Entry {}: offset=0x{:04X} size={} refs={:?}",
+                                                e.index, e.file_offset, e.size, refs
+                                            ));
+                                        }
+                                    }
+                                    if doc.entry_count > 30 {
+                                        ui.label(format!("... and {} more entries", doc.entry_count - 30));
+                                    }
+                                });
+                            });
+                    }
+                    None => ui.label("No PAS loaded. Drop a .pas file."),
+                }
+            }
+            DockTab::Spt => {
+                ui.heading("SPT Script Bundle");
+                ui.separator();
+                match &state.spt_doc {
+                    Some(doc) => {
+                        ui.label(format!("Programs: {}  Trailing hex: {} chars", doc.programs.len(), doc.trailing_hex.len()));
+                        egui::CollapsingHeader::new(format!("Programs ({})", doc.programs.len()))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    for p in &doc.programs.iter().take(10) {
+                                        ui.label(format!(
+                                            "Program {}: size={} reserved={} vars={} entry_points={:?}",
+                                            p.index, p.size, p.reserved, p.variable_count, p.entry_points
+                                        ));
+                                        ui.label(format!("  Tokens: {}", p.tokens.len()));
+                                        for tok in p.tokens.iter().take(8) {
+                                            let desc = match tok.r#type {
+                                                0 => format!("float 0x{:08X}", tok.payload),
+                                                1 => tok.text.as_deref().unwrap_or("(string)").to_string(),
+                                                2 => format!("cmd 0x{:04X}", tok.command_id.unwrap_or(0)),
+                                                3 => format!("var idx={} type={}", tok.variable_index.unwrap_or(0), tok.variable_type.unwrap_or(0)),
+                                                4 => format!("sym {:?}", tok.symbol),
+                                                _ => format!("type {} payload 0x{:08X}", tok.r#type, tok.payload),
+                                            };
+                                            ui.label(format!("    [0x{:04X}] type={} {}", tok.offset, tok.r#type, desc));
+                                        }
+                                        if p.tokens.len() > 8 {
+                                            ui.label(format!("    ... and {} more tokens", p.tokens.len() - 8));
+                                        }
+                                    }
+                                    if doc.programs.len() > 10 {
+                                        ui.label(format!("... and {} more programs", doc.programs.len() - 10));
+                                    }
+                                });
+                            });
+                    }
+                    None => ui.label("No SPT loaded. Drop a .spt file."),
+                }
             }
         }
     }
@@ -1386,6 +1617,82 @@ fn apply_load_request(
                 );
             }
             Err(e) => state.status = e,
+        }
+    }
+
+    if state.pending_load_ebz {
+        state.pending_load_ebz = false;
+        let path = state.ebz_path.trim().to_string();
+        if path.is_empty() {
+            state.status = "No EBZ path".into();
+            return;
+        }
+        match std::fs::read(&path) {
+            Ok(data) => match parse_ebz(&data) {
+                Ok(doc) => {
+                    state.ebz_doc = Some(doc);
+                    state.status = format!("Loaded EBZ: {} refs, {} entries", state.ebz_doc.as_ref().unwrap().refs.len(), state.ebz_doc.as_ref().unwrap().entries.len());
+                }
+                Err(e) => state.status = format!("EBZ parse: {e}"),
+            },
+            Err(e) => state.status = format!("EBZ read: {e}"),
+        }
+    }
+
+    if state.pending_load_ani {
+        state.pending_load_ani = false;
+        let path = state.ani_path.trim().to_string();
+        if path.is_empty() {
+            state.status = "No ANI path".into();
+            return;
+        }
+        match std::fs::read(&path) {
+            Ok(data) => match parse_ani(&data) {
+                Ok(doc) => {
+                    state.ani_doc = Some(doc);
+                    state.status = format!("Loaded ANI: {} tracks", state.ani_doc.as_ref().unwrap().track_count);
+                }
+                Err(e) => state.status = format!("ANI parse: {e}"),
+            },
+            Err(e) => state.status = format!("ANI read: {e}"),
+        }
+    }
+
+    if state.pending_load_pas {
+        state.pending_load_pas = false;
+        let path = state.pas_path.trim().to_string();
+        if path.is_empty() {
+            state.status = "No PAS path".into();
+            return;
+        }
+        match std::fs::read(&path) {
+            Ok(data) => match parse_pas(&data) {
+                Ok(doc) => {
+                    state.pas_doc = Some(doc);
+                    state.status = format!("Loaded PAS: {} entries", state.pas_doc.as_ref().unwrap().entry_count);
+                }
+                Err(e) => state.status = format!("PAS parse: {e}"),
+            },
+            Err(e) => state.status = format!("PAS read: {e}"),
+        }
+    }
+
+    if state.pending_load_spt {
+        state.pending_load_spt = false;
+        let path = state.spt_path.trim().to_string();
+        if path.is_empty() {
+            state.status = "No SPT path".into();
+            return;
+        }
+        match std::fs::read(&path) {
+            Ok(data) => match parse_spt(&data) {
+                Ok(doc) => {
+                    state.spt_doc = Some(doc);
+                    state.status = format!("Loaded SPT: {} programs", state.spt_doc.as_ref().unwrap().programs.len());
+                }
+                Err(e) => state.status = format!("SPT parse: {e}"),
+            },
+            Err(e) => state.status = format!("SPT read: {e}"),
         }
     }
 }
