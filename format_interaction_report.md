@@ -4,7 +4,7 @@
 
 This document provides a complete analysis of how all file formats in Super Dragon Ball Z (SLUS_214.42) interact with each other at runtime. All findings were derived from static analysis of the PS2 ELF executable using custom MIPS R5900 disassembly tooling, without Ghidra or IDA.
 
-## Format Inventory (1,934 extracted files across 12 directories)
+## Format Inventory (1,944 extracted files across 14 directories)
 
 | Format | Extension | Count | Primary Loader |
 |--------|-----------|-------|---------------|
@@ -16,11 +16,14 @@ This document provides a complete analysis of how all file formats in Super Drag
 | Animation | .ani | 20 | ANI parser |
 | Pose | .pas | 7 | PAS parser |
 | Facial | .cht | 43 | CHT parser |
-| Font | .fon | 1 | FFON parser |
+| Font | .fon | 1 | FFON tracer |
+| Icon | .ico | 2 | ICO tracer |
+| Message | .txt | 1 | MSG tracer |
 | Sound Bank | .ase | 27 | ASE parser |
 | Sound Sequence | .ams | 54 | AMS parser |
 | Script | .spt | 77 | SPT parser |
 | Hitbox | .hit | 14 | HIT parser |
+| Archive Index | .sqm | 54 | AMS parser |
 
 ---
 
@@ -277,9 +280,148 @@ MDL file → material definitions → .pmt files
 
 ### 9. Other Formats
 
-**CHT Facial** (%s.cht): vaddr 0x004CA6B8 - CEffectMgr facial animation
-**PAS Pose** (%s.pas): vaddr 0x004CFAC8 - STG stage effect placement  
-**FON Font** (font/5-24-2.fon): vaddr 0x004CD460 - UI system font rendering
+**CHT Facial** (%s.cht): vaddr 0x004CA6B8 - CEffectMgr facial animation  
+**PAS Pose** (%s.pas): vaddr 0x004CFACA - STG stage effect placement  
+**FON Font** (font/5-24-2.fon): vaddr 0x004CD460 - UI system font rendering  
+**ICO Icon** (icon/memo.ico, icon/view.ico): vaddr 0x004CDD98, 0x004CDD8C - 8 gp-relative refs in code at 0x002B112C-0x002B6598  
+**MSG Text** (msg/key.txt): vaddr 0x004CE34F - Shift-JIS encoded message text
+
+**9a. FON Font (.fon)**  
+- File: extracted/font/5-24-2.fon (340,192 bytes)  
+- Magic: `FFON` (0x46464F4E)  
+- Format string: `font/5-24-2.fon` at ELF vaddr 0x004CD460 (file 0x3CD4E0)  
+- Code references: 0 direct references (constructed at runtime via pointer table)  
+- The font is loaded and used by the UI system for text rendering  
+
+**9b. ICO Icon (.ico)**  
+- Files: extracted/icon/csmemo.ico (44,368 bytes), memo.ico (87,664 bytes)  
+- Format: Standard Windows ICO (starts with 00 00 01 00)  
+- Format strings: `icon/memo.ico` at vaddr 0x004CDD98, `view.ico` at vaddr 0x004CDD8C  
+- Code references: 8 gp-relative references found:  
+  - `lw` at vaddr 0x002B112C (file 0x1B11AC)  
+  - `sw` at vaddr 0x002B1158 (file 0x1B11D8)  
+  - `lw` at vaddr 0x002B1308 (file 0x1B1388)  
+  - `lw` at vaddr 0x002B1314 (file 0x1B1394)  
+  - `lw` at vaddr 0x002B142C (file 0x1B14AC)  
+  - `lw` at vaddr 0x002B2EC0 (file 0x1B2F40)  
+  - `lw` at vaddr 0x002B4D0C (file 0x1B4D8C)  
+  - `lw` at vaddr 0x002B6598 (file 0x1B6618)  
+- The code at 0x002B10CC-0x002B6598 does COP1 float setup (`mtc1`, `MOV.S`) and calls `0x0019FF80` / `0x001A0C70` — this is the icon loading/rendering pipeline  
+
+**9c. MSG Text (.txt)**  
+- File: extracted/msg/key.txt (15,703 bytes)  
+- Encoding: Shift-JIS (0x82 A0 82 A2 ...)  
+- Format string: `msg/key.txt` at ELF vaddr 0x004CE34F (file 0x3CE3CF)  
+- Message key strings: `msgmkXXXX` at vaddr 0x004C5F88+  
+- Code references: 0 direct references (loaded dynamically via message key system)  
+
+---
+
+## 10. CEBZ Virtual Function Tables
+
+**CEBZEffect** class (object at vaddr 0x004CF030):  
+- VTable at vaddr 0x004CF060 (file 0x3CF0E0), 4 entries  
+- Object layout: starts with `"CEBZEffectEle"` magic string at offset 0, vtable pointer at offset +0x30  
+
+| vfunc | Address | File Offset | Behavior |
+|-------|---------|-------------|----------|
+| vfunc[0] | 0x0038DFCC | 0x28E04C | `LUI s7,0x0039; ADDIU s7,s7,0xFEC0` → base 0x0039FEC0 |
+| vfunc[1] | 0x0038DFD8 | 0x28E058 | `LUI s7,0x0039; ADDIU s7,s7,0xFDE0` → base 0x0039FDE0 |
+| vfunc[2] | 0x0038DFE4 | 0x28E064 | `LUI s7,0x0039; ADDIU s7,s7,0xFD00` → base 0x0039FD00 |
+| vfunc[3] | 0x0038DFF0 | 0x28E070 | `LUI s7,0x0039; ADDIU s7,s7,0xFB60` → base 0x0039FB60 |
+
+All 4 vfuncs fall through to common dispatch at **0x0038E07C**:  
+- Loads `object+0x30` value, compares against 5  
+- Switch-style dispatch to functions at offsets from the base address  
+
+**Other CEBZ classes** with name strings at object base:  
+- `CEBZBase` at 0x004CEF40 (magic: `"CEBZBase"`)  
+- `CEBZEffectObj` at 0x004CEF50 (magic: `"CEBZEffectObj"`)  
+- `CEffectMgr` at 0x004CA870 (magic: `"CEffectMgr"`)  
+- `CEBZObject` at 0x004C3C08 (magic: `"CEBZObject"`, contains `"CPlayer"` and `"Creator"` strings)  
+- `CEBZHandle` at 0x004CEF30  
+- `CEBZData` at 0x004CEF18  
+
+**Class instance table** at vaddr 0x004FE628 (file 0x3FE6A8):  
+Contains CEBZData, CEBZEffectObj, and CEBZEffect object pointers with float/integer parameters
+
+---
+
+## 11. Syscall Dispatch Table
+
+**PS2 EE Syscall Convention (non-standard):**  
+- Syscall number is passed in **$v1** (not $v0)  
+- 16-byte wrapper functions at `0x00174880 + N*0x10`:  
+  ```
+  ADDIU v1,zero,N   # syscall number
+  SYSCALL
+  JR ra
+  SLL zero,zero,0   # delay slot
+  ```
+
+**11 unique syscalls actually called via JAL** (all multiples of 16):
+
+| Syscall # | Wrapper Address | Call Count |
+|-----------|----------------|------------|
+| 112 | 0x00174B80 | 4 |
+| 208 | 0x00174D80 | 4 |
+| 224 | 0x00174E00 | ? |
+| 256 | 0x00174F00 | ? |
+| 272 | 0x00174F80 | ? |
+| 288 | 0x00175000 | 4 |
+| 304 | 0x00175080 | ? |
+| 320 | 0x00175100 | ? |
+| 336 | 0x00175180 | 3 |
+| 352 | 0x00175200 | ? |
+| 368 | 0x00175280 | ? |
+
+**888 total `syscall` instructions** found in code section  
+**20 identified syscalls across 8 numbers**: ExitDeleteThread (×6), Breakpoint (×6), DebugBreak, COP2/VU0 syscalls  
+**868 register-based syscalls** (dispatch table pattern - number comes from register, not immediate)
+
+---
+
+## 12. Entry Point / Main Loop
+
+**Entry Point** at vaddr 0x00100008 (file 0x000088):  
+- MMI code (op 0x1C), not standard MIPS  
+- Initializes FPU: zeroes all $f0-$f31 via `mtc1`, sets FCR31=0  
+- Clears BSS in two passes: 0x00500680→0x00640380, then 0x00640380→0x00644380  
+- Sets **gp = 0x00503070** (runtime BSS, NOT in ELF file)  
+- Syscall 60 → stack pointer; syscall 61 → unknown  
+
+**Entry Point JAL chain:**  
+`0x0017F018` → `0x00174F20` → `0x00422630` → **J 0x0018C518** (main loop)
+
+**Main Loop** at vaddr 0x0018C518:  
+- Uses **vtable dispatch**: iterates CEBZ object chain, calls method pointers via `JALR ra, v0`  
+- 817 JALR instructions found in code section  
+- Call clusters at 0x00430CA0-0x00430CD8 call methods through register-based vtable pointers ($15/$t7)
+
+---
+
+## 13. Widescreen Patch (EE 0x002B12D4)
+
+**Patch target:** `LUI v0,0x3F40` → `LUI v0,0x3F10` (float constant 0.75 → 0.53125)  
+- This is an aspect ratio adjustment in the COP1 FPU pipeline  
+- File offset: 0x1B1354  
+- **MISMATCH confirmed** - current ELF has 0x3F40, patch wants 0x3F10  
+
+**Function at 0x002B1280** (COP1 vector setup leaf):  
+- No JAL calls (leaf function)  
+- Uses COP1 `LWC1`, `MUL.S`, `DIV.S`, matrix/viewport constants  
+
+**Called from 3 sites:**  
+- 0x002B18FC (file 0x1B190C)  
+- 0x002B2A1C (file 0x1B2A9C)  
+- 0x002B6194 (file 0x1B6214)  
+
+**Caller chain:** `0x002D507C` → `0x003D4FE0` (JALR indirect) → `0x002B1700` → `0x002B1280`
+
+**Cheat sources:**  
+- OPL-Widescreen-Cheats: `202b12d4 3c023f10` + mastercode `90178010 0c05dfac`  
+- PCSX2 pnach: `patch=1,EE,002b12d4,word,3c023f10`  
+- Mastercode `0x00178010` → `JAL 0x00177EB0` at file 0x078090: **MATCH** (existing hook in ELF)
 
 ---
 
@@ -320,22 +462,55 @@ Runtime object (CEBZEffectObj, mesh, texture, etc.)
 
 | Address | Description |
 |---------|-------------|
-| 0x003301E0-0x00330300 | CEBZ effect loading code |
+| 0x00100008 | ELF entry point (MMI code, FPU init, BSS clear) |
+| 0x00174880 + N*0x10 | Syscall wrapper functions ($v1-based) |
+| 0x0017F018 | Entry point JAL chain start |
+| 0x00174F20 | Entry point JAL chain middle |
+| 0x00422630 | Entry point JAL chain end → J 0x0018C518 |
+| 0x0018C518 | Main loop (vtable dispatch, JALR ra,v0) |
+| 0x003301E0-0x00330300 | CEBZ effect loading code (18 entries × 0x48 bytes) |
 | 0x00191EF8 | String hash function (effect name lookup) |
 | 0x00191638 | Data unpacking function (.ebz entry parsing) |
+| 0x002B1280 | Widescreen patch function (COP1 FPU pipeline, leaf) |
+| 0x002B12D4 | Widescreen patch site: LUI v0,0x3F40→0x3F10 |
+| 0x002B18FC | Widescreen patch caller #1 |
+| 0x002B2A1C | Widescreen patch caller #2 |
+| 0x002B6194 | Widescreen patch caller #3 |
+| 0x00332CD0 | CEBZ dispatch function (24 JAL calls) |
+| 0x0038DFCC-0x0038DFF0 | CEBZEffect vfunc[0-3] (jump table dispatchers) |
+| 0x0038E07C | CEBZEffect common dispatch target |
 | 0x004CEF28 | "%s.ebz" format string |
 | 0x004C3AF0 | "eff/e%c%c/%s" path format |
 | 0x004CC5B0 | "%s.pix" format string |
 | 0x004CC5A8 | "%s.mdl" format string |
 | 0x004CC728 | "%s.pmt" format string |
 | 0x004CFAF0 | "%s.ani" format string |
-| 0x004CFAC8 | "%s.pas" format string |
+| 0x004CFACA | "%s.pas" format string |
 | 0x004CA6B8 | "%s.cht" format string |
 | 0x004CD460 | "font/5-24-2.fon" string |
+| 0x004CDD98 | "icon/memo.ico" string |
+| 0x004CDD8C | "icon/view.ico" string |
+| 0x004CE34F | "msg/key.txt" string |
+| 0x004C5F88+ | "msgmkXXXX" message key strings |
 | 0x004CA870 | CEffectMgr class name |
 | 0x004CEF18 | CEBZData class name |
 | 0x004FE628 | CEBZ class info block |
 | 0x004CEF50 | CEBZEffectObj class name |
+| 0x004CF030 | CEBZEffect class object |
+| 0x004CF060 | CEBZEffect vtable |
+| 0x004C3C08 | CEBZObject class object |
+| 0x004DAC70 | ASE sound (enter.ase) |
+| 0x004DB8B0 | ASE sound (ending.ase) |
+| 0x00499280 | AMS music (sel_in.ams) |
+| 0x004992A4 | AMS music (sel_lp.ams) |
+| 0x00499400 | AMS music (st01a_in.ams) |
+| 0x00499424 | AMS music (st01a_lp.ams) |
+| 0x00499700 | AMS music (st02a_in.ams) |
+| 0x00499724 | AMS music (st02a_lp.ams) |
+| 0x004C8860 | Hitbox s01a.hit |
+| 0x004C9520 | Hitbox s10a.hit |
+| 0x004C9700 | Hitbox s11a.hit |
+| 0x004C99B0 | Hitbox s12a.hit |
 
 ---
 
@@ -348,7 +523,17 @@ The file format interaction model for Super Dragon Ball Z follows a clear hierar
 3. **STAGE root** nodes reference `.mdl` models, `.hit` collision, `.ase` audio, `.ams` music
 4. **MDL models** reference `.pix` textures, `.pmt` materials, `.ani` animations
 5. **SPT scripts** can trigger effect spawning through commands that call `CEffectMgr`
+6. **Passthrough formats**: `.fon` font, `.ico` icons, `.txt` messages are loaded dynamically without direct format string references in code
 
 All asset loading ultimately goes through `CFileLoadMng` → `cvFsOpen`/`CCDRead` to read from `GAME.DAT`/`INFO.DAT` archives.
+
+**Key architectural findings:**
+
+- **Entry point** (0x00100008): MMI code that zeroes FPU registers, clears BSS, sets gp=0x00503070, then jumps to main loop at 0x0018C518
+- **Main loop** (0x0018C518): Uses vtable dispatch via `JALR ra, v0` with 817 JALR instructions in code
+- **Syscall convention**: Non-standard PS2 EE - syscall number in `$v1` (not `$v0`), 16-byte wrappers at `0x00174880 + N*0x10`
+- **Widescreen patch** (0x002B12D4): Changes `LUI v0,0x3F40`→`0x3F10` (0.75→0.53125 aspect ratio) in COP1 FPU pipeline
+- **CEBZ vtables**: CEBZEffect has 4 vfuncs at 0x004CF060 that set up s7 base addresses then fall through to common dispatch at 0x0038E07C
+- **CEBZ class table**: Instance table at 0x004FE628 contains CEBZData/CEBZEffectObj/CEBZEffect pointers with transform parameters
 
 The CEBZ effect system is particularly interesting: effect names (like "k7", "k8", "02Sp", etc.) are stored in a table and referenced by raw address in code, then looked up by hash in the `.ebz` ref table to find the matching entry, which defines the effect's transform and behavior.
