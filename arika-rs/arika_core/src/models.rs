@@ -10,7 +10,7 @@ use glam::{Mat4, Quat, Vec3};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Model {
     pub name: String,
     pub nodes: Vec<HierarchyNode>,
@@ -19,7 +19,7 @@ pub struct Model {
     pub textures: Vec<TextureSlot>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HierarchyNode {
     pub index: i32,
     pub name: String,
@@ -35,7 +35,7 @@ pub struct HierarchyNode {
     pub world: Mat4,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mesh {
     pub name: String,
     pub flags: u32,
@@ -58,7 +58,7 @@ pub struct Material {
     pub texture_index: i32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextureSlot {
     pub index: usize,
     pub width: u32,

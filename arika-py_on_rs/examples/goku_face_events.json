@@ -1,8 +1,0 @@
-{
-  "format": "ARIKA_FACE_EVENTS",
-  "source_sha256": "9d4be8afbe488c67ef87d8efe4a58834c7ee07896444a58ac77a9b0e67660ac5",
-  "events": [
-    {"time": 0.3, "group": 0, "program": 0},
-    {"time": 2.0, "group": 1, "program": 0}
-  ]
-}

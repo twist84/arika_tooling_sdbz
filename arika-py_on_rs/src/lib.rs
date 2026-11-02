@@ -11,6 +11,13 @@ use std::slice;
 
 use arika_core::dat::{Archive, Entry};
 use arika_core::error::ArikaError;
+use arika_core::ani::parse_ani;
+use arika_core::ebz::parse_ebz;
+use arika_core::models::{attach_textures, model_to_json, parse_fmdl};
+use arika_core::pas::parse_pas;
+use arika_core::stages::{parse_hit, hit_to_json, parse_stg, stage_to_json};
+use arika_core::spt::parse_spt;
+use arika_core::tim2::{decode_tim2, decode_xpix};
 use base64::engine::general_purpose::STANDARD as base64_engine;
 use base64::Engine as _;
 use serde::Serialize;
@@ -431,7 +438,14 @@ pub extern "C" fn arika_parse_cht(input: *const u8, len: usize) -> ArikaBuffer {
         }
     };
     match arika_core::cht::parse_cht(data) {
-        Ok(doc) => to_json_buffer(&doc),
+        Ok(doc) => match serde_json::to_vec(&doc) {
+            Ok(bytes) => {
+                let len = bytes.len();
+                let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+                ArikaBuffer { ptr, len }
+            }
+            Err(e) => error_buffer(e.into()),
+        },
         Err(e) => error_buffer(e),
     }
 }
@@ -463,7 +477,14 @@ pub extern "C" fn arika_cht_lookup(
         }
     };
     match arika_core::cht::lookup(&doc, motion_id, variant) {
-        Ok(v) => to_json_buffer(&v),
+        Ok(v) => match serde_json::to_vec(&v) {
+            Ok(bytes) => {
+                let len = bytes.len();
+                let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+                ArikaBuffer { ptr, len }
+            }
+            Err(e) => error_buffer(e.into()),
+        },
         Err(e) => error_buffer(e),
     }
 }
@@ -481,7 +502,10 @@ pub extern "C" fn arika_runtime_motion_name(name: *const c_char) -> ArikaBuffer 
         }
     };
     let result = arika_core::cht::runtime_motion_name(&name_str);
-    to_json_buffer(&result)
+    let bytes = result.into_bytes();
+    let len = bytes.len();
+    let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+    ArikaBuffer { ptr, len }
 }
 
 // ---------------------------------------------------------------------------
@@ -837,6 +861,334 @@ pub extern "C" fn arika_pitch_for_rate(rate: u32, original_pitch: u32) -> c_int 
             set_last_error(e.to_string());
             -1
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Model (FMDL) / Texture (TIM2/XPIX)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct Tim2Json {
+    width: u32,
+    height: u32,
+    format: String,
+    rgba: String, // base64
+}
+
+#[no_mangle]
+pub extern "C" fn arika_parse_fmdl(
+    input: *const u8,
+    len: usize,
+    name: *const c_char,
+) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    let name_str = match read_c_string(name) {
+        Some(s) => s,
+        None => "model".to_string(),
+    };
+    match arika_core::models::parse_fmdl(data, &name_str) {
+        Ok(model) => match arika_core::models::model_to_json(&model) {
+            Ok(json) => {
+                let bytes = json.into_bytes();
+                let len = bytes.len();
+                let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+                ArikaBuffer { ptr, len }
+            }
+            Err(e) => error_buffer(e),
+        },
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_attach_textures(
+    model_json: *const c_char,
+    fpix_data: *const u8,
+    fpix_len: usize,
+) -> ArikaBuffer {
+    let model_str = match read_c_string(model_json) {
+        Some(s) => s,
+        None => {
+            set_last_error("model json is null".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    let fpix = match read_bytes(fpix_data, fpix_len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid fpix buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    let mut model: arika_core::models::Model = match serde_json::from_str(&model_str) {
+        Ok(m) => m,
+        Err(e) => {
+            set_last_error(format!("invalid model JSON: {e}"));
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::models::attach_textures(&mut model, fpix) {
+        Ok(()) => match arika_core::models::model_to_json(&model) {
+            Ok(json) => {
+                let bytes = json.into_bytes();
+                let len = bytes.len();
+                let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+                ArikaBuffer { ptr, len }
+            }
+            Err(e) => error_buffer(e),
+        },
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_parse_fmdl_with_textures(
+    input: *const u8,
+    len: usize,
+    name: *const c_char,
+    fpix_data: *const u8,
+    fpix_len: usize,
+) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    let name_str = match read_c_string(name) {
+        Some(s) => s,
+        None => "model".to_string(),
+    };
+    let fpix = match read_bytes(fpix_data, fpix_len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid fpix buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::models::parse_fmdl(data, &name_str) {
+        Ok(mut model) => match arika_core::models::attach_textures(&mut model, fpix) {
+            Ok(()) => match arika_core::models::model_to_json(&model) {
+                Ok(json) => {
+                    let bytes = json.into_bytes();
+                    let len = bytes.len();
+                    let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+                    ArikaBuffer { ptr, len }
+                }
+                Err(e) => error_buffer(e),
+            },
+            Err(e) => error_buffer(e),
+        },
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_decode_tim2(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::tim2::decode_tim2(data) {
+        Ok(img) => {
+            let result = Tim2Json {
+                width: img.width,
+                height: img.height,
+                format: format!("{:?}", img.format),
+                rgba: base64_engine.encode(&img.rgba),
+            };
+            to_json_buffer(&result)
+        }
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_decode_xpix(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::tim2::decode_xpix(data) {
+        Ok(img) => {
+            let result = Tim2Json {
+                width: img.width,
+                height: img.height,
+                format: format!("{:?}", img.format),
+                rgba: base64_engine.encode(&img.rgba),
+            };
+            to_json_buffer(&result)
+        }
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_decode_fpix(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    if data.len() < 32 || &data[0..4] != b"FPIX" {
+        set_last_error("expected FPIX".into());
+        return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+    }
+    let chunks = match arika_core::container::parse_directory(data, Some(b"FPIX")) {
+        Ok(c) => c,
+        Err(e) => return error_buffer(e),
+    };
+    let mut textures: Vec<serde_json::Value> = Vec::new();
+    for (i, chunk) in chunks.iter().enumerate() {
+        if chunk.magic != *b"XPIX" {
+            continue;
+        }
+        match arika_core::tim2::decode_xpix(&chunk.data) {
+            Ok(img) => {
+                textures.push(serde_json::json!({
+                    "index": textures.len(),
+                    "width": img.width,
+                    "height": img.height,
+                    "format": format!("{:?}", img.format),
+                    "rgba": base64_engine.encode(&img.rgba),
+                }));
+            }
+            Err(e) => {
+                set_last_error(format!("XPIX[{i}]: {e}"));
+                return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+            }
+        }
+    }
+    if textures.is_empty() {
+        set_last_error("no XPIX textures found in FPIX".into());
+        return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+    }
+    to_json_buffer(&textures)
+}
+
+// ---------------------------------------------------------------------------
+// Animation / Scene / Script
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn arika_parse_ani(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::ani::parse_ani(data) {
+        Ok(doc) => to_json_buffer(&doc),
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_parse_ebz(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::ebz::parse_ebz(data) {
+        Ok(doc) => to_json_buffer(&doc),
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_parse_stg(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::stages::parse_stg(data) {
+        Ok(stage) => match stage_to_json(&stage) {
+            Ok(json) => {
+                let bytes = json.into_bytes();
+                let len = bytes.len();
+                let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+                ArikaBuffer { ptr, len }
+            }
+            Err(e) => error_buffer(e),
+        },
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_parse_hit(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::stages::parse_hit(data) {
+        Ok(hit) => match hit_to_json(&hit) {
+            Ok(json) => {
+                let bytes = json.into_bytes();
+                let len = bytes.len();
+                let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+                ArikaBuffer { ptr, len }
+            }
+            Err(e) => error_buffer(e),
+        },
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_parse_pas(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::pas::parse_pas(data) {
+        Ok(doc) => to_json_buffer(&doc),
+        Err(e) => error_buffer(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn arika_parse_spt(input: *const u8, len: usize) -> ArikaBuffer {
+    let data = match read_bytes(input, len) {
+        Some(d) => d,
+        None => {
+            set_last_error("invalid input buffer".into());
+            return ArikaBuffer { ptr: ptr::null_mut(), len: 0 };
+        }
+    };
+    match arika_core::spt::parse_spt(data) {
+        Ok(doc) => to_json_buffer(&doc),
+        Err(e) => error_buffer(e),
     }
 }
 
