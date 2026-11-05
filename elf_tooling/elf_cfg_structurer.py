@@ -25,8 +25,11 @@ from elf_cfg_builder import (
     compute_dominators, find_loop_back_edges,
     BasicBlock
 )
-from elf_ir_lifter import lift_elf, IRFunction, IRInstr, IRValue
-from elf_ssa import lift_and_block, compute_dominance_frontiers, build_ssa
+from elf_ir_lifter import lift_elf, IRFunction
+from elf_ssa import (
+    lift_and_block, compute_dominance_frontiers, build_ssa,
+    IRValue, IRInstr
+)
 
 
 MIPS_REGS = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3',
@@ -76,98 +79,158 @@ class Stmt:
 class BlockStmt(Stmt):
     """A block of statements."""
     def __init__(self, stmts):
-        super().__init__('block', stmts=stmts)
+        # Flatten nested BlockStmts and drop pure nops for cleaner output
+        flat = []
+        for s in stmts:
+            if isinstance(s, BlockStmt):
+                flat.extend(s.stmts)
+            elif isinstance(s, Stmt) and s.kind == 'nop':
+                continue
+            elif isinstance(s, Stmt) and s.kind == 'expr' and str(getattr(s, 'expr', '')).startswith('/* nop'):
+                continue
+            else:
+                flat.append(s)
+        super().__init__('block', stmts=flat)
 
     def __str__(self, indent=0):
         pad = '  ' * indent
-        lines = [f'{pad}{{']
+        lines = []
         for s in self.stmts:
             if isinstance(s, Stmt):
-                lines.append(s.__str__(indent + 1))
+                lines.append(s.__str__(indent))
             else:
-                lines.append(f'{pad}  {s}')
-        lines.append(f'{pad}}}')
-        return '\n'.join(lines)
+                lines.append(f'{pad}{s}')
+        return '\n'.join(lines) if lines else f'{pad};'
+
+
+def _fmt_imm(v):
+    """Pretty-print an immediate."""
+    if not isinstance(v, int):
+        return str(v)
+    if v < 0:
+        return f'-0x{-v:X}' if -v > 9 else str(v)
+    if v < 10:
+        return str(v)
+    return f'0x{v:X}'
 
 
 def expr_str(instr):
-    """Convert an IR instruction to an expression string."""
+    """Convert an IR instruction to a clean C-like expression string."""
     op = instr.opcode
     uses = instr.uses
     defs = instr.defs
 
     def u(i):
-        """Get i-th use or return '0' if missing."""
         if i < len(uses):
             return str(uses[i])
         return '0'
 
     def d(i):
-        """Get i-th def or return 't0' if missing."""
         if i < len(defs):
             return str(defs[i])
-        return 't0'
+        return '_'
 
-    if op == 'addiu':
-        return f'{d(0)} = {u(0)} + {u(1)}'
-    elif op == 'addi':
-        return f'{d(0)} = {u(0)} + {u(1)}'
-    elif op == 'addu':
-        return f'{d(0)} = {u(0)} + {u(1)}'
-    elif op == 'sub':
+    # Arithmetic / logical (register and immediate forms)
+    if op in ('addiu', 'addi', 'addu', 'daddu', 'daddiu'):
+        rhs = u(1)
+        # Collapse "x + 0" / "x + zero"
+        if rhs in ('0', 'zero'):
+            return f'{d(0)} = {u(0)}'
+        return f'{d(0)} = {u(0)} + {rhs}'
+    if op in ('sub', 'subu', 'dsub', 'dsubu'):
         return f'{d(0)} = {u(0)} - {u(1)}'
-    elif op == 'subu':
-        return f'{d(0)} = {u(0)} - {u(1)}'
-    elif op == 'and':
+    if op in ('and', 'andi'):
         return f'{d(0)} = {u(0)} & {u(1)}'
-    elif op == 'or':
+    if op in ('or', 'ori'):
         return f'{d(0)} = {u(0)} | {u(1)}'
-    elif op == 'xor':
+    if op in ('xor', 'xori'):
         return f'{d(0)} = {u(0)} ^ {u(1)}'
-    elif op == 'sll':
+    if op in ('sll', 'dsll', 'sllv', 'dsllv'):
+        # SLL $zero,$zero,0 is the canonical MIPS nop
+        if not defs or (str(u(0)) in ('0', 'zero') and str(u(1)) in ('0', 'zero')):
+            return '/* nop */'
         return f'{d(0)} = {u(0)} << {u(1)}'
-    elif op == 'srl':
+    if op in ('srl', 'dsrl', 'srlv', 'dsrlv'):
         return f'{d(0)} = {u(0)} >> {u(1)}'
-    elif op == 'sra':
-        return f'{d(0)} = {u(0)} >> {u(1)}'
-    elif op == 'lui':
+    if op in ('sra', 'dsra', 'srav', 'dsrav'):
+        return f'{d(0)} = (int32_t){u(0)} >> {u(1)}'
+    if op == 'lui':
         return f'{d(0)} = {u(0)}'
-    elif op == 'lw':
+    if op == 'slt':
+        return f'{d(0)} = ({u(0)} < {u(1)}) ? 1 : 0'
+    if op == 'sltu':
+        return f'{d(0)} = ((uint32_t){u(0)} < (uint32_t){u(1)}) ? 1 : 0'
+    if op == 'slti':
+        return f'{d(0)} = ({u(0)} < {u(1)}) ? 1 : 0'
+    if op == 'sltiu':
+        return f'{d(0)} = ((uint32_t){u(0)} < (uint32_t){u(1)}) ? 1 : 0'
+    if op == 'nor':
+        return f'{d(0)} = ~({u(0)} | {u(1)})'
+    if op in ('mult', 'multu', 'div', 'divu'):
+        return f'/* {op} {u(0)}, {u(1)} */'
+    if op in ('mflo', 'mfhi'):
+        return f'{d(0)} = {op}()'
+    if op in ('mtlo', 'mthi'):
+        return f'{op}({u(0)})'
+
+    # Conditional moves
+    if op == 'movz':
+        return f'if ({u(1)} == 0) {d(0)} = {u(0)}'
+    if op == 'movn':
+        return f'if ({u(1)} != 0) {d(0)} = {u(0)}'
+
+    # Memory: IRValue('mem') already prints the address expression
+    if op in ('lw', 'lwu', 'lh', 'lhu', 'lb', 'lbu', 'ld', 'lq', 'lwc1', 'ldc1'):
+        if op in ('lw', 'lwu', 'lwc1'):
+            return f'{d(0)} = READ32({u(0)})'
+        if op == 'lb':
+            return f'{d(0)} = (int8_t)mem[{u(0)}]'
+        if op == 'lbu':
+            return f'{d(0)} = (uint8_t)mem[{u(0)}]'
         return f'{d(0)} = mem[{u(0)}]'
-    elif op == 'sw':
-        return f'mem[{u(1)}] = {u(0)}'
-    elif op == 'lwc1':
-        return f'{d(0)} = mem[{u(0)}]'
-    elif op == 'swc1':
-        return f'mem[{u(1)}] = {u(0)}'
-    elif op == 'mfc1':
+    if op in ('sw', 'sh', 'sb', 'sd', 'sq', 'swc1', 'sdc1'):
+        return f'WRITE32({u(1)}, {u(0)})' if op in ('sw', 'swc1') else f'mem[{u(1)}] = {u(0)}'
+
+    # Moves / COP1
+    if op == 'mfc1':
         return f'{d(0)} = {u(0)}'
-    elif op == 'mtc1':
+    if op == 'mtc1':
         return f'{u(0)} = {u(1)}'
-    elif op == 'add.s':
-        return f'{d(0)} = {u(0)} + {u(1)}'
-    elif op == 'sub.s':
-        return f'{d(0)} = {u(0)} - {u(1)}'
-    elif op == 'mul.s':
-        return f'{d(0)} = {u(0)} * {u(1)}'
-    elif op == 'div.s':
-        return f'{d(0)} = {u(0)} / {u(1)}'
-    elif op == 'abs.s':
+    if op in ('add.s', 'sub.s', 'mul.s', 'div.s'):
+        sym = {'add.s': '+', 'sub.s': '-', 'mul.s': '*', 'div.s': '/'}[op]
+        return f'{d(0)} = {u(0)} {sym} {u(1)}'
+    if op == 'abs.s':
         return f'{d(0)} = abs({u(0)})'
-    elif op == 'neg.s':
+    if op == 'neg.s':
         return f'{d(0)} = -{u(0)}'
-    elif op == 'mov.s':
+    if op == 'mov.s':
         return f'{d(0)} = {u(0)}'
-    elif op == 'jal':
-        return f'{d(0)} = {instr.mnemonic}(...)'
-    elif op == 'jalr':
-        return f'{d(0)} = {u(0)}(...)'
-    elif op == 'syscall':
+
+    # Control transfer
+    if op == 'jal':
+        tgt = getattr(instr, 'branch_target', None)
+        if tgt is not None:
+            return f'call_0x{tgt:08X}()'
+        return f'call({instr.mnemonic})'
+    if op == 'jalr':
+        site = getattr(instr, 'vaddr', 0) or 0
+        return f'call({u(0)}); /* jalr @ 0x{site:08X} */'
+    if op == 'jr':
+        return f'goto *{u(0)}'
+    if op == 'j':
+        tgt = getattr(instr, 'branch_target', None)
+        if tgt is not None:
+            return f'goto label_0x{tgt:08X}'
+        return f'goto {instr.mnemonic}'
+    if op == 'syscall':
         return 'syscall()'
-    elif op == 'nop':
-        return 'nop'
-    else:
-        return f'{instr.mnemonic}(...)'
+    if op == 'nop' or (op == 'sll' and not defs):
+        return '/* nop */'
+    if op == 'break':
+        return 'break_exception()'
+
+    # Fallback: keep original mnemonic for unknown ops
+    return f'/* {instr.mnemonic} */'
 
 
 def condition_str(instr):
@@ -175,38 +238,34 @@ def condition_str(instr):
     op = instr.opcode
     uses = instr.uses
     if len(uses) >= 2:
-        a, b = uses[0], uses[1]
+        a, b = str(uses[0]), str(uses[1])
     elif len(uses) == 1:
-        a, b = uses[0], IRValue('imm', 0)
+        a, b = str(uses[0]), '0'
     else:
-        a, b = IRValue('imm', 0), IRValue('imm', 0)
+        a, b = '0', '0'
 
-    if op == 'beq':
+    # Treat "reg == 0" style cleanly
+    if op in ('beq', 'beql'):
+        if b in ('0', 'zero'):
+            return f'{a} == 0'
+        if a in ('0', 'zero'):
+            return f'{b} == 0'
         return f'{a} == {b}'
-    elif op == 'bne':
+    if op in ('bne', 'bnel'):
+        if b in ('0', 'zero'):
+            return f'{a} != 0'
+        if a in ('0', 'zero'):
+            return f'{b} != 0'
         return f'{a} != {b}'
-    elif op == 'blez':
+    if op in ('blez', 'blezl'):
         return f'{a} <= 0'
-    elif op == 'bgtz':
+    if op in ('bgtz', 'bgtzl'):
         return f'{a} > 0'
-    elif op == 'bltz':
+    if op in ('bltz', 'bltzl'):
         return f'{a} < 0'
-    elif op == 'bgez':
+    if op in ('bgez', 'bgezl'):
         return f'{a} >= 0'
-    elif op == 'beql':
-        return f'{a} == {b}'
-    elif op == 'bnel':
-        return f'{a} != {b}'
-    elif op == 'blezl':
-        return f'{a} <= 0'
-    elif op == 'bgtzl':
-        return f'{a} > 0'
-    elif op == 'bltzl':
-        return f'{a} < 0'
-    elif op == 'bgezl':
-        return f'{a} >= 0'
-    else:
-        return f'{instr.mnemonic}(...)'
+    return f'/* {instr.mnemonic} */'
 
 
 class CFGStructurer:
@@ -240,10 +299,46 @@ class CFGStructurer:
         # Track which blocks have been structured
         self.structured = set()
 
+    BRANCH_OPS = (
+        'beq', 'bne', 'blez', 'bgtz', 'beql', 'bnel', 'blezl', 'bgtzl',
+        'bltz', 'bgez', 'bltzl', 'bgezl', 'bltzal', 'bgezal', 'bltzall', 'bgezall',
+    )
+
     def structure(self):
-        """Convert the CFG into a structured statement tree."""
-        # Start from entry block
-        return self._structure_block(0)
+        """Convert the CFG into a structured statement tree.
+
+        Walks from the entry, then appends any remaining unstructured blocks
+        so nothing is silently dropped.
+        """
+        root = self._structure_block(0)
+        # Emit any blocks we never reached (disconnected / missed edges)
+        extras = []
+        for i in range(self.n):
+            if i not in self.structured:
+                va = self.ir_blocks[i][0]
+                extras.append(Stmt('expr', expr=f'/* --- unreached block 0x{va:08X} --- */'))
+                extras.append(self._structure_block(i))
+        if extras:
+            if isinstance(root, BlockStmt):
+                root.stmts.extend(extras)
+            else:
+                root = BlockStmt([root] + extras)
+        return root
+
+    def _fallthrough_succ(self, idx):
+        """Preferred sequential successor (fallthrough edge, else next index)."""
+        for s in self.succs[idx]:
+            # Prefer edges that were marked fallthrough in the original edge list
+            for f, t, kind in self.edges:
+                if f == idx and t == s and kind == 'fallthrough':
+                    return s
+        # Fallback: any successor that is numerically later
+        later = [s for s in self.succs[idx] if s > idx]
+        if later:
+            return min(later)
+        if idx + 1 < self.n and (idx + 1) in self.succs[idx]:
+            return idx + 1
+        return None
 
     def _structure_block(self, idx):
         """Structure a basic block and its successors."""
@@ -251,154 +346,247 @@ class CFGStructurer:
             return Stmt('nop')
 
         self.structured.add(idx)
-
-        # Get the block's instructions
         _, instrs = self.ir_blocks[idx]
 
-        # Separate non-terminator instructions from terminator
+        # Split body vs terminator. Delay-slot instr after a branch stays in body.
         body_instrs = []
         terminator = None
         for instr in instrs:
             if instr.opcode in ('jalr', 'jr', 'syscall', 'break', 'unk_rtype'):
                 terminator = instr
-            elif instr.opcode in ('beq', 'bne', 'blez', 'bgtz', 'beql', 'bnel', 'blezl', 'bgtzl'):
+            elif instr.opcode in self.BRANCH_OPS:
                 terminator = instr
             elif instr.opcode in ('j', 'jal'):
                 terminator = instr
             else:
                 body_instrs.append(instr)
 
-        # Build statements from body instructions
-        stmts = []
-        for instr in body_instrs:
-            stmts.append(Stmt('expr', expr=expr_str(instr)))
+        stmts = [Stmt('expr', expr=expr_str(instr)) for instr in body_instrs]
 
-        # Handle terminator
+        # --- no terminator: pure fall-through ---
         if terminator is None:
-            # Block ends without explicit terminator (fall through)
-            if idx + 1 < self.n:
-                next_stmt = self._structure_block(idx + 1)
-                stmts.append(next_stmt)
+            nxt = self._fallthrough_succ(idx)
+            if nxt is not None and nxt not in self.structured:
+                stmts.append(self._structure_block(nxt))
             return BlockStmt(stmts)
 
+        # --- unconditional jump ---
         if terminator.opcode == 'j':
             target = terminator.branch_target
             if target in self.vaddr_to_idx:
-                target_idx = self.vaddr_to_idx[target]
-                next_stmt = self._structure_block(target_idx)
-                stmts.append(next_stmt)
+                t_idx = self.vaddr_to_idx[target]
+                if t_idx not in self.structured:
+                    stmts.append(self._structure_block(t_idx))
+                else:
+                    stmts.append(Stmt('expr', expr=f'goto label_0x{target:08X}'))
+            else:
+                stmts.append(Stmt('expr', expr=expr_str(terminator)))
             return BlockStmt(stmts)
 
-        elif terminator.opcode == 'jal':
-            target = terminator.branch_target
-            if target in self.vaddr_to_idx:
-                target_idx = self.vaddr_to_idx[target]
-                # Function call, then fall through
-                call_stmt = Stmt('call', expr=expr_str(terminator))
-                stmts.append(call_stmt)
-                if idx + 1 < self.n:
-                    next_stmt = self._structure_block(idx + 1)
-                    stmts.append(next_stmt)
-                return BlockStmt(stmts)
+        # --- direct call (JAL) ---
+        if terminator.opcode == 'jal':
+            stmts.append(Stmt('call', expr=expr_str(terminator)))
+            nxt = self._fallthrough_succ(idx)
+            if nxt is not None and nxt not in self.structured:
+                stmts.append(self._structure_block(nxt))
             return BlockStmt(stmts)
 
-        elif terminator.opcode in ('jalr', 'jr', 'syscall', 'break'):
+        # --- indirect call / return / trap ---
+        if terminator.opcode in ('jalr', 'jr', 'syscall', 'break'):
             stmts.append(Stmt('expr', expr=expr_str(terminator)))
+            if terminator.opcode == 'jalr':
+                nxt = self._fallthrough_succ(idx)
+                if nxt is not None and nxt not in self.structured:
+                    stmts.append(self._structure_block(nxt))
             return BlockStmt(stmts)
 
-        elif terminator.opcode in ('beq', 'bne', 'blez', 'bgtz', 'beql', 'bnel', 'blezl', 'bgtzl'):
+        # --- conditional branch ---
+        if terminator.opcode in self.BRANCH_OPS:
             cond = condition_str(terminator)
             target = terminator.branch_target
+            ft = self._fallthrough_succ(idx)
 
-            if target in self.vaddr_to_idx:
-                target_idx = self.vaddr_to_idx[target]
+            if target is not None and target in self.vaddr_to_idx:
+                t_idx = self.vaddr_to_idx[target]
 
-                # Check if this is a loop back edge (target dominates current)
-                if target_idx in self.loop_headers and self._dominates(target_idx, idx):
-                    # This is a while loop - condition is checked at header
-                    # Build loop body from header to current block
-                    loop_body = self._build_loop_body(target_idx, idx)
-                    return Stmt('while', cond=cond, body=loop_body)
-                else:
-                    # If/then/else
-                    then_block = self._structure_block(target_idx)
-                    # Fall through to next block
-                    if idx + 1 < self.n:
-                        else_block = self._structure_block(idx + 1)
-                    else:
-                        else_block = Stmt('nop')
-                    return Stmt('if', cond=cond, then_block=then_block, else_block=else_block)
+                # Back-edge → while loop
+                is_back = (
+                    (t_idx in self.loop_headers and self._dominates(t_idx, idx))
+                    or (t_idx < idx and self._dominates(t_idx, idx))
+                    or any(l['header'] == t_idx and l['back_edge_from'] == idx for l in self.loops)
+                )
+                if is_back:
+                    # Structure the loop body (blocks reachable from header that
+                    # can reach the back-edge source, excluding the header itself
+                    # for the condition check).
+                    body = self._build_loop_body(t_idx, idx)
+                    # The while condition is the back-edge condition; body is
+                    # everything between header and latch.
+                    stmts.append(Stmt('while', cond=cond, body=body))
+                    # After the loop, continue at the fall-through of the latch
+                    # (or of the header's non-loop succ).
+                    if ft is not None and ft not in self.structured:
+                        stmts.append(self._structure_block(ft))
+                    return BlockStmt(stmts)
 
+                # Ordinary if/else
+                then_block = self._structure_block(t_idx) if t_idx not in self.structured else Stmt('nop')
+                else_block = (
+                    self._structure_block(ft)
+                    if ft is not None and ft not in self.structured
+                    else Stmt('nop')
+                )
+                stmts.append(Stmt('if', cond=cond, then_block=then_block, else_block=else_block))
+                return BlockStmt(stmts)
+
+            # Target outside analysed range
+            stmts.append(Stmt('expr', expr=f'if ({cond}) goto 0x{target:08X}' if target else f'/* {cond} */'))
+            if ft is not None and ft not in self.structured:
+                stmts.append(self._structure_block(ft))
             return BlockStmt(stmts)
-
-        return BlockStmt(stmts)
 
         return BlockStmt(stmts)
 
     def _dominates(self, a, b):
         """Check if block a dominates block b."""
         current = b
-        while current is not None:
+        seen = set()
+        while current is not None and current not in seen:
             if current == a:
                 return True
+            seen.add(current)
             current = self.idom.get(current)
         return False
 
-    def _build_loop_body(self, header_idx, back_edge_from_idx):
-        """Build the body of a loop from header to back edge source."""
-        # Collect all blocks in the loop body
-        loop_body_blocks = set()
-        stack = [back_edge_from_idx]
+    def _natural_loop(self, header_idx, latch_idx):
+        """Natural loop set: header + nodes that reach latch without going through header."""
+        body = {latch_idx}
+        stack = [latch_idx]
         while stack:
             node = stack.pop()
-            if node == header_idx or node in loop_body_blocks:
-                continue
-            loop_body_blocks.add(node)
             for p in self.preds[node]:
-                if p != header_idx:
+                if p not in body and p != header_idx:
+                    body.add(p)
                     stack.append(p)
+        body.add(header_idx)
+        return body
 
-        # Build statements from the body
+    def _inner_loops(self, outer_body, outer_header):
+        """Loops whose header is inside outer_body (properly nested)."""
+        inners = []
+        for loop in self.loops:
+            h = loop['header']
+            if h in outer_body and h != outer_header:
+                # Prefer innermost: body must be subset of outer
+                lb = self._natural_loop(h, loop['back_edge_from'])
+                if lb <= outer_body:
+                    inners.append((h, loop['back_edge_from'], lb))
+        # Sort outer-first so we process outer of nested-inner pairs first... 
+        # actually innermost first so they get structured before parent consumes them
+        inners.sort(key=lambda x: len(x[2]))
+        return inners
+
+    def _emit_block_linear(self, idx, skip_branch_to=None, loop_header=None, loop_latch=None, loop_body=None):
+        """Emit a single block's instructions as linear stmts.
+
+        skip_branch_to: omit branch to this idx (loop-back → while cond)
+        loop_*: rewrite intra-loop gotos to continue / break
+        """
         stmts = []
-        # Process blocks in order
-        visited = set()
-
-        def emit_block(idx):
-            if idx in visited or idx not in loop_body_blocks:
-                return
-            visited.add(idx)
-            _, instrs = self.ir_blocks[idx]
-            for instr in instrs:
-                if instr.opcode in ('beq', 'bne', 'blez', 'bgtz', 'beql', 'bnel', 'blezl', 'bgtzl'):
-                    # Branch within loop
-                    target = instr.branch_target
-                    if target in self.vaddr_to_idx:
-                        t_idx = self.vaddr_to_idx[target]
-                        if t_idx == header_idx:
-                            # Loop back - don't emit, it's the loop condition
-                            stmts.append(Stmt('expr', expr=f'// loop back: {condition_str(instr)}'))
-                        elif t_idx in self.vaddr_to_idx.values():
-                            # Forward branch within loop
-                            pass
-                    elif instr.opcode in ('jalr', 'jr'):
-                        stmts.append(Stmt('expr', expr=expr_str(instr)))
+        _, instrs = self.ir_blocks[idx]
+        body = loop_body or set()
+        for instr in instrs:
+            if instr.opcode in self.BRANCH_OPS:
+                tgt = instr.branch_target
+                t_idx = self.vaddr_to_idx.get(tgt) if tgt else None
+                if skip_branch_to is not None and t_idx == skip_branch_to:
+                    continue
+                cond = condition_str(instr)
+                if t_idx is not None and loop_header is not None:
+                    if t_idx == loop_header or t_idx == loop_latch:
+                        stmts.append(Stmt('expr', expr=f'if ({cond}) continue'))
+                    elif t_idx not in body:
+                        stmts.append(Stmt('expr', expr=f'if ({cond}) break'))
                     else:
-                        stmts.append(Stmt('expr', expr=expr_str(instr)))
-                elif instr.opcode in ('j', 'jal'):
-                    stmts.append(Stmt('expr', expr=expr_str(instr)))
+                        stmts.append(Stmt('expr', expr=f'if ({cond}) goto block_0x{tgt:08X}'))
+                elif t_idx is not None:
+                    stmts.append(Stmt('expr', expr=f'if ({cond}) goto block_0x{tgt:08X}'))
                 else:
-                    stmts.append(Stmt('expr', expr=expr_str(instr)))
+                    stmts.append(Stmt('expr', expr=f'if ({cond}) goto 0x{tgt:08X}'))
+            elif instr.opcode == 'jalr':
+                site = getattr(instr, 'vaddr', 0) or 0
+                uses = instr.uses
+                target_reg = str(uses[0]) if uses else '?'
+                stmts.append(Stmt('expr', expr=f'call({target_reg}); /* jalr @ 0x{site:08X} */'))
+            elif instr.opcode in ('j', 'jal', 'jr'):
+                stmts.append(Stmt('expr', expr=expr_str(instr)))
+            else:
+                stmts.append(Stmt('expr', expr=expr_str(instr)))
+        return stmts
 
-        # Emit blocks in order
-        for i in range(len(self.ir_blocks)):
-            if i in loop_body_blocks:
-                emit_block(i)
+    def _build_loop_body(self, header_idx, latch_idx):
+        """Structure the natural loop body, nesting any inner loops as while."""
+        body = self._natural_loop(header_idx, latch_idx)
+        inners = self._inner_loops(body, header_idx)
+
+        inner_header_of = {h: (h, latch, lb) for h, latch, lb in inners}
+        consumed_by_inner = set()
+        for h, latch, lb in inners:
+            for b in lb:
+                if b != h:
+                    consumed_by_inner.add(b)
+
+        def emit_opts(i):
+            skip_to = header_idx if i == latch_idx else None
+            return dict(
+                skip_branch_to=skip_to,
+                loop_header=header_idx,
+                loop_latch=latch_idx,
+                loop_body=body,
+            )
+
+        stmts = []
+        for i in sorted(body):
+            if i in consumed_by_inner:
+                continue
+            if i in self.structured and i != header_idx and i != latch_idx:
+                if i not in inner_header_of:
+                    continue
+
+            if i in inner_header_of:
+                h, ilatch, ilb = inner_header_of[i]
+                _, latch_instrs = self.ir_blocks[ilatch]
+                cond = '1'
+                for instr in latch_instrs:
+                    if instr.opcode in self.BRANCH_OPS:
+                        tgt = instr.branch_target
+                        if self.vaddr_to_idx.get(tgt) == h:
+                            cond = condition_str(instr)
+                            break
+                for b in ilb:
+                    self.structured.add(b)
+                inner_body = self._build_loop_body(h, ilatch)
+                stmts.append(Stmt('while', cond=cond, body=inner_body))
+                continue
+
+            self.structured.add(i)
+            stmts.extend(self._emit_block_linear(i, **emit_opts(i)))
 
         return BlockStmt(stmts)
 
 
+def _default_elf():
+    here = Path(__file__).resolve().parent
+    for c in (here.parent / 'source_data' / 'SLUS_214.42',
+              here / 'source_data' / 'SLUS_214.42',
+              Path('source_data/SLUS_214.42')):
+        if c.is_file():
+            return str(c)
+    return str(here.parent / 'source_data' / 'SLUS_214.42')
+
+
 def main():
-    elf_path = sys.argv[1] if len(sys.argv) > 1 else r'C:\Dev\arika\source_data\SLUS_214.42'
+    elf_path = sys.argv[1] if len(sys.argv) > 1 else _default_elf()
     start_vaddr = int(sys.argv[2], 0) if len(sys.argv) > 2 else 0x0018C518
     end_vaddr = int(sys.argv[3], 0) if len(sys.argv) > 3 else start_vaddr + 0x400
 

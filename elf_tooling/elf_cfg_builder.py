@@ -30,8 +30,21 @@ CODE_START = 0x80
 CODE_END = 0x400700
 
 
-def is_branch(op):
-    return op in (0x04, 0x05, 0x06, 0x07, 0x14, 0x15, 0x16, 0x17)
+# REGIMM rt codes that are PC-relative branches (not traps)
+_REGIMM_BRANCH_RT = {0x00, 0x01, 0x02, 0x03, 0x10, 0x11, 0x12, 0x13}  # BLTZ..BGEZALL
+
+
+def is_regimm_branch(op, rt):
+    return op == 0x01 and rt in _REGIMM_BRANCH_RT
+
+
+def is_branch(op, rt=None):
+    """True for PC-relative conditional branches (incl. REGIMM / likely)."""
+    if op in (0x04, 0x05, 0x06, 0x07, 0x14, 0x15, 0x16, 0x17):
+        return True
+    if op == 0x01 and rt is not None and rt in _REGIMM_BRANCH_RT:
+        return True
+    return False
 
 
 def is_jump(op):
@@ -42,14 +55,12 @@ def is_indirect(op, funct=None):
     return op == 0x00 and funct in (0x08, 0x09)  # JR, JALR
 
 
-def compute_branch_target(op, word, vaddr, imm_signed):
-    if op == 0x03:  # JAL
+def compute_branch_target(op, word, vaddr, imm_signed, rt=None):
+    if op in (0x02, 0x03):  # J / JAL
         target_idx = word & 0x3FFFFFF
         return (vaddr & 0xF0000000) | (target_idx << 2)
-    if op == 0x02:  # J
-        target_idx = word & 0x3FFFFFF
-        return (vaddr & 0xF0000000) | (target_idx << 2)
-    if op in (0x04, 0x05, 0x06, 0x07, 0x14, 0x15, 0x16, 0x17):
+    # All PC-relative branches (incl. REGIMM): target = PC+4 + (imm << 2)
+    if is_branch(op, rt):
         return vaddr + 4 + (imm_signed << 2)
     return None
 
@@ -64,17 +75,16 @@ def find_branch_targets(data, start_off, end_off):
         word = struct.unpack_from('<I', data, off)[0]
         vaddr = file_to_vaddr(off)
         op = (word >> 26) & 0x3F
+        rt = (word >> 16) & 0x1F
         imm = word & 0xFFFF
         imm_signed = imm - 0x10000 if imm & 0x8000 else imm
 
-        if op == 0x03:  # JAL
-            target_idx = word & 0x3FFFFFF
-            targets.add((vaddr & 0xF0000000) | (target_idx << 2))
-        elif op == 0x02:  # J
-            target_idx = word & 0x3FFFFFF
-            targets.add((vaddr & 0xF0000000) | (target_idx << 2))
-        elif op in (0x04, 0x05, 0x06, 0x07, 0x14, 0x15, 0x16, 0x17):
-            targets.add(vaddr + 4 + (imm_signed << 2))
+        tgt = compute_branch_target(op, word, vaddr, imm_signed, rt)
+        if tgt is not None:
+            targets.add(tgt)
+        # Instruction after delay slot is a natural join point
+        if is_branch(op, rt) or is_jump(op):
+            targets.add(vaddr + 8)
 
         off += 4
     return targets
@@ -123,6 +133,7 @@ def split_into_basic_blocks(data, start_vaddr, end_vaddr):
         info = decode_instruction(word, vaddr)
         mnemonic = info.get('mnemonic', '')
         op = (word >> 26) & 0x3F
+        rt = (word >> 16) & 0x1F
         funct = word & 0x3F
         imm = word & 0xFFFF
         imm_signed = imm - 0x10000 if imm & 0x8000 else imm
@@ -137,12 +148,17 @@ def split_into_basic_blocks(data, start_vaddr, end_vaddr):
 
         # Check if this instruction terminates the block
         terminates = False
+        needs_delay = False
         fall_through = None
         branch_target = None
 
         if is_indirect(op, funct):
             current_block.is_terminal = True
             terminates = True
+            needs_delay = True  # JR/JALR have a delay slot
+            # JALR returns to the instruction after the delay slot
+            if funct == 0x09:  # JALR
+                fall_through = vaddr + 8
         elif op == 0x0C:  # SYSCALL
             current_block.is_terminal = True
             terminates = True
@@ -150,25 +166,37 @@ def split_into_basic_blocks(data, start_vaddr, end_vaddr):
             current_block.is_terminal = True
             terminates = True
         elif is_jump(op):
-            branch_target = compute_branch_target(op, word, vaddr, imm_signed)
+            branch_target = compute_branch_target(op, word, vaddr, imm_signed, rt)
             current_block.is_terminal = True
             terminates = True
-        elif is_branch(op):
-            branch_target = compute_branch_target(op, word, vaddr, imm_signed)
-            fall_through = file_to_vaddr(off + 4) if off + 4 < len(data) else None
+            needs_delay = True
+            # JAL returns to instruction after delay slot
+            if op == 0x03:  # JAL
+                fall_through = vaddr + 8
+        elif is_branch(op, rt):
+            branch_target = compute_branch_target(op, word, vaddr, imm_signed, rt)
+            # Fall-through is the instruction AFTER the delay slot
+            fall_through = vaddr + 8
             terminates = True
-        elif op == 0x00 and funct == 0x08:  # JR
-            current_block.is_terminal = True
-            terminates = True
+            needs_delay = True
 
         if terminates:
+            # Absorb delay-slot instruction into this block
+            if needs_delay and off + 8 <= len(data):
+                ds_off = off + 4
+                ds_word = struct.unpack_from('<I', data, ds_off)[0]
+                ds_vaddr = file_to_vaddr(ds_off)
+                ds_info = decode_instruction(ds_word, ds_vaddr)
+                current_block.add_instruction(
+                    ds_vaddr, ds_off, ds_word,
+                    ds_info.get('mnemonic', ''), ds_info
+                )
+                off = ds_off  # loop will +4 → skip past delay slot
+
             current_block.fall_through = fall_through
             current_block.branch_target = branch_target
             blocks.append(current_block)
             current_block = None
-        else:
-            off += 4
-            continue
 
         off += 4
 

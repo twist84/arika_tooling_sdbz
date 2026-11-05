@@ -41,25 +41,67 @@ def mips_expr_to_c(expr_str):
     """Convert a MIPS assembly expression string to C."""
     expr = expr_str.strip()
     
-    # Debug: print input
-    if 'mem[' in expr_str:
-        print(f'DEBUG mips_expr_to_c input: {expr_str!r}', file=sys.stderr)
-    
     # Handle negative hex: 0x-0000040 -> -0x40
-    expr = re.sub(r'0x-0*(\d+)', r'-\1', expr)
+    expr = re.sub(r'0x-0*(\d+)', lambda m: '-' + m.group(1), expr)
 
     # Handle << 0 -> remove
     expr = re.sub(r'<< 0\b', '', expr)
 
-    # Handle + zero -> just the register
-    expr = re.sub(r'\+\s*zero\b', '', expr)
-
-    # Handle zero + expr -> just expr
-    expr = re.sub(r'^zero\s*\+\s*', '', expr)
-
     # Handle mem[something] -> READ32(something)
     while 'mem[' in expr:
-        expr = re.sub(r'mem\[([^\]]+)\]', r'READ32(\1)', expr)
+        expr = re.sub(r'mem\[([^\]]+)\]', lambda m: 'READ32(' + m.group(1) + ')', expr)
+
+    # Handle lhs = lhs + imm -> lhs += imm (or lhs = lhs - imm)
+    m = re.match(r'(\w+)\s*=\s*\1\s*\+\s*(-?0x[\da-fA-F]+|-?\d+)', expr)
+    if m:
+        lhs = m.group(1)
+        val = m.group(2)
+        if val.startswith('-'):
+            return f'{lhs} -= {val[1:]}'
+        return f'{lhs} += {val}'
+
+    # Handle lhs = lhs - imm -> lhs -= imm
+    m = re.match(r'(\w+)\s*=\s*\1\s*-\s*(-?0x[\da-fA-F]+|-?\d+)', expr)
+    if m:
+        lhs = m.group(1)
+        val = m.group(2)
+        if val.startswith('-'):
+            return f'{lhs} += {val[1:]}'
+        return f'{lhs} -= {val}'
+
+    # Handle lhs = lhs + reg -> lhs += reg
+    m = re.match(r'(\w+)\s*=\s*\1\s*\+\s*(\w+)', expr)
+    if m:
+        lhs = m.group(1)
+        rhs = m.group(2)
+        return f'{lhs} += {rhs}'
+
+    # Handle lhs = lhs - reg -> lhs -= reg
+    m = re.match(r'(\w+)\s*=\s*\1\s*-\s*(\w+)', expr)
+    if m:
+        lhs = m.group(1)
+        rhs = m.group(2)
+        return f'{lhs} -= {rhs}'
+
+    # Handle lhs = rhs + imm (different registers)
+    m = re.match(r'(\w+)\s*=\s*(\w+)\s*\+\s*(-?0x[\da-fA-F]+|-?\d+)', expr)
+    if m:
+        return f'{m.group(1)} = {m.group(2)} + {m.group(3)}'
+
+    # Handle lhs = rhs - imm (different registers)
+    m = re.match(r'(\w+)\s*=\s*(\w+)\s*-\s*(-?0x[\da-fA-F]+|-?\d+)', expr)
+    if m:
+        return f'{m.group(1)} = {m.group(2)} - {m.group(3)}'
+
+    # Handle lhs = rhs + reg (different registers)
+    m = re.match(r'(\w+)\s*=\s*(\w+)\s*\+\s*(\w+)', expr)
+    if m:
+        return f'{m.group(1)} = {m.group(2)} + {m.group(3)}'
+
+    # Handle lhs = rhs - reg (different registers)
+    m = re.match(r'(\w+)\s*=\s*(\w+)\s*-\s*(\w+)', expr)
+    if m:
+        return f'{m.group(1)} = {m.group(2)} - {m.group(3)}'
 
     # Handle DADDU rd,rs,rt -> rd = rs + rt
     m = re.match(r'DADDU\s+(\w+),\s*(\w+),\s*(\w+)', expr)
@@ -73,6 +115,11 @@ def mips_expr_to_c(expr_str):
         if val.startswith('0x-'):
             val = f'-{val[3:]}'
         return f'{m.group(1)} = {m.group(2)} + {val}'
+
+    # Handle call_0xADDR -> sub_ADDR
+    m = re.match(r'call_0x([\da-fA-F]+)\(\)', expr)
+    if m:
+        return f'sub_{m.group(1)}()'
 
     # Handle ADDI rd,rs,imm -> rd = rs + imm
     m = re.match(r'ADDI\s+(\w+),\s*(\w+),\s*(0x[\da-fA-F]+)', expr)
@@ -111,26 +158,22 @@ def mips_expr_to_c(expr_str):
     if m:
         return expr  # Keep as-is, it's a function call
 
+    # Final cleanup: handle + zero
+    expr = re.sub(r'\+\s*zero\b', '', expr)
+    # Handle zero + expr -> just expr
+    expr = re.sub(r'^zero\s*\+\s*', '', expr)
+    # Clean up extra spaces
+    expr = re.sub(r'\s+', ' ', expr).strip()
+
     return expr
 
 
 def condition_to_c(cond_str):
-    """Convert a condition string to C."""
+    """Light cleanup of condition strings."""
+    if not cond_str or not isinstance(cond_str, str):
+        return str(cond_str)
     cond = cond_str.strip()
-
-    # Handle negative hex
-    cond = re.sub(r'0x-0*(\d+)', r'-\1', cond)
-
-    # Handle << 0
-    cond = re.sub(r'<< 0\b', '', cond)
-
-    # Handle + zero -> just the register
-    cond = re.sub(r'\+\s*zero\b', '', cond)
-
-    # Handle mem[...] -> just the inner (READ32 wraps it)
-    while 'mem[' in cond:
-        cond = re.sub(r'mem\[([^\]]+)\]', r'\1', cond)
-
+    cond = re.sub(r'0x-([0-9a-fA-F]+)', r'-0x\1', cond)
     return cond
 
 
@@ -150,16 +193,28 @@ class CEmitter:
         else:
             self._emit_line(f'/* unknown statement type: {type(stmt)} */', indent)
 
-    def _emit_block(self, block, indent=0):
-        """Emit a block of statements."""
+    def _emit_block(self, block, indent=0, braces=True):
+        """Emit a block of statements. braces=False when already inside if/while."""
         pad = '  ' * indent
-        self._emit_line(f'{pad}{{', indent)
+        if braces:
+            self._emit_line(f'{pad}{{', indent)
+            inner = indent + 1
+        else:
+            inner = indent
         for s in block.stmts:
             if isinstance(s, Stmt):
-                self._emit_stmt(s, indent + 1)
+                self._emit_stmt(s, inner)
             else:
-                self._emit_line(f'{pad}  /* {s} */', indent + 1)
-        self._emit_line(f'{pad}}}', indent)
+                self._emit_line(f'{"  " * inner}/* {s} */', inner)
+        if braces:
+            self._emit_line(f'{pad}}}', indent)
+
+    def _emit_body(self, stmt, indent):
+        """Emit then/else/while body without adding another brace layer."""
+        if isinstance(stmt, BlockStmt):
+            self._emit_block(stmt, indent, braces=False)
+        else:
+            self._emit_stmt(stmt, indent)
 
     def _emit_stmt(self, stmt, indent=0):
         """Emit a single statement."""
@@ -168,7 +223,16 @@ class CEmitter:
 
         if kind == 'expr':
             expr = mips_expr_to_c(stmt.expr)
-            self._emit_line(f'{pad}{expr};', indent)
+            if not expr or expr == ';':
+                return
+            stripped = expr.rstrip()
+            if stripped.startswith('/*') and stripped.endswith('*/'):
+                self._emit_line(f'{pad}{expr}', indent)
+            elif stripped.endswith(';') or '; /*' in stripped or stripped.endswith('*/'):
+                # Already terminated, or statement + trailing comment
+                self._emit_line(f'{pad}{expr}', indent)
+            else:
+                self._emit_line(f'{pad}{expr};', indent)
         elif kind == 'assign':
             lhs = mips_expr_to_c(stmt.lhs) if '=' not in stmt.lhs else stmt.lhs
             rhs = mips_expr_to_c(stmt.rhs)
@@ -176,20 +240,29 @@ class CEmitter:
         elif kind == 'if':
             cond = condition_to_c(stmt.cond)
             self._emit_line(f'{pad}if ({cond}) {{', indent)
-            self._emit_stmt(stmt.then_block, indent + 1)
-            if stmt.else_block:
+            self._emit_body(stmt.then_block, indent + 1)
+            else_b = stmt.else_block
+            # Skip empty / nop-only else
+            has_else = False
+            if else_b is not None:
+                if isinstance(else_b, BlockStmt) and else_b.stmts:
+                    has_else = True
+                elif isinstance(else_b, Stmt) and else_b.kind not in ('nop',):
+                    has_else = True
+            if has_else:
                 self._emit_line(f'{pad}}} else {{', indent)
-                self._emit_stmt(stmt.else_block, indent + 1)
+                self._emit_body(else_b, indent + 1)
             self._emit_line(f'{pad}}}', indent)
         elif kind == 'while':
             cond = condition_to_c(stmt.cond)
             self._emit_line(f'{pad}while ({cond}) {{', indent)
-            self._emit_stmt(stmt.body, indent + 1)
+            self._emit_body(stmt.body, indent + 1)
             self._emit_line(f'{pad}}}', indent)
         elif kind == 'return':
             self._emit_line(f'{pad}return {stmt.expr};', indent)
         elif kind == 'call':
-            self._emit_line(f'{pad}{stmt.expr};', indent)
+            expr = mips_expr_to_c(stmt.expr)
+            self._emit_line(f'{pad}{expr};', indent)
         elif kind == 'nop':
             self._emit_line(f'{pad};', indent)
         elif kind == 'block':
@@ -229,13 +302,21 @@ class CEmitter:
                 self._extract_vars_from_expr(stmt.expr)
 
     def _extract_vars_from_expr(self, expr):
-        """Extract variable names from an expression string."""
-        for m in re.finditer(r'\bt(\d+)\b', expr):
-            self.vars.add(f't{m.group(1)}')
-        # Find memory access patterns mem[...]
-        for m in re.finditer(r'mem\[([^\]]+)\]', expr):
-            inner = m.group(1)
-            self._extract_vars_from_expr(inner)
+        """Extract MIPS register / temp names from an expression string."""
+        if not expr or not isinstance(expr, str):
+            return
+        # Real MIPS register names + any tN leftovers
+        for m in re.finditer(
+            r'\b(zero|at|v0|v1|a0|a1|a2|a3|t0|t1|t2|t3|t4|t5|t6|t7|'
+            r's0|s1|s2|s3|s4|s5|s6|s7|t8|t9|k0|k1|gp|sp|fp|ra|t\d+)\b',
+            expr
+        ):
+            name = m.group(1)
+            if name != 'zero':  # constant, no need to declare
+                self.vars.add(name)
+        # Also scan inside READ32(...) / WRITE32(...) / mem[...]
+        for m in re.finditer(r'(?:READ32|WRITE32|mem)\[?\(?([^)\]]+)\)?\]?', expr):
+            self._extract_vars_from_expr(m.group(1))
 
     def emit_c(self, root_stmt, function_name='decompiled_main'):
         """Emit complete C code."""
@@ -244,8 +325,16 @@ class CEmitter:
         # Collect all variables used
         self.collect_vars(root_stmt)
 
-        # Sort variables by number
-        sorted_vars = sorted(self.vars, key=lambda v: int(v[1:]))
+        # Prefer canonical register order, then any extras
+        REG_ORDER = [
+            'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3',
+            't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
+            's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7',
+            't8', 't9', 'k0', 'k1', 'gp', 'sp', 'fp', 'ra'
+        ]
+        ordered = [r for r in REG_ORDER if r in self.vars]
+        extras = sorted(self.vars - set(ordered))
+        sorted_vars = ordered + extras
 
         # Header
         self._emit_line('#include <stdint.h>')
@@ -255,8 +344,8 @@ class CEmitter:
         self._emit_line(f'#define MEM_SIZE 0x{MEM_SIZE:X}')
         self._emit_line('static uint8_t mem[MEM_SIZE];')
         self._emit_line('')
-        self._emit_line('#define READ32(addr) (*(uint32_t*)(mem + (addr)))')
-        self._emit_line('#define WRITE32(addr, val) (*(uint32_t*)(mem + (addr)) = (val))')
+        self._emit_line('#define READ32(addr) (*(uint32_t*)(mem + ((addr) & (MEM_SIZE - 1))))')
+        self._emit_line('#define WRITE32(addr, val) (*(uint32_t*)(mem + ((addr) & (MEM_SIZE - 1))) = (val))')
         self._emit_line('')
 
         # Variable declarations
@@ -267,8 +356,11 @@ class CEmitter:
 
         # Main function
         self._emit_line(f'int {function_name}(void) {{')
-        self.emit(root_stmt, 1)
-        self._emit_line('return 0;')
+        if isinstance(root_stmt, BlockStmt):
+            self._emit_block(root_stmt, 1, braces=False)
+        else:
+            self.emit(root_stmt, 1)
+        self._emit_line('  return 0;')
         self._emit_line('}')
 
         return '\n'.join(self.lines)
@@ -297,8 +389,22 @@ def emit_c_from_ir(ir_blocks, blocks, edges, dom, idom, loops, output_path=None)
     return c_code
 
 
+def _default_elf():
+    """Resolve default ELF path relative to this script."""
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here.parent / 'source_data' / 'SLUS_214.42',
+        here / 'source_data' / 'SLUS_214.42',
+        Path('source_data/SLUS_214.42'),
+    ]
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return str(candidates[0])
+
+
 def main():
-    elf_path = sys.argv[1] if len(sys.argv) > 1 else r'C:\Dev\arika\source_data\SLUS_214.42'
+    elf_path = sys.argv[1] if len(sys.argv) > 1 else _default_elf()
     start_vaddr = int(sys.argv[2], 0) if len(sys.argv) > 2 else 0x0018C518
     end_vaddr = int(sys.argv[3], 0) if len(sys.argv) > 3 else start_vaddr + 0x400
     output_path = sys.argv[4] if len(sys.argv) > 4 else 'decompiled.c'
