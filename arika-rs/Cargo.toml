@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "arika_core",
     "arika_cli",
-    "arika_editor",
 ]
 
 [workspace.package]
@@ -48,3 +47,4 @@ egui_extras = "0.29"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 walkdir = "2"
+hex = "0.4"

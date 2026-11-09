@@ -115,7 +115,9 @@ decoded[i] = (~swap_nibbles(encoded[i]) - key[i & 15]) & 255
 encoded[i] = swap_nibbles(~(decoded[i] + key[i & 15]) & 255)
 ```
 
-The first 16 bytes remain unchanged. Byte zero varies between releases (EU beta: `7F`, EU: `11`, USA: `C2`, JPN: `60`); validation checks only bytes 1–15, `www.arika.co.jp`. All 16 bytes, including byte zero, remain part of the codec key. The sizes and record counts above describe the EU beta sample. The codec is reversible obfuscation. arika_info.h supplies equivalent C/C++ code and structure definitions; callers must handle little-endian conversion on other architectures.
+The first 16 bytes remain unchanged. Byte zero varies between releases (EU beta: `7F`, EU: `11`, USA: `C2`, JPN: `60`, arcade (DB1 Ver. B): `BB`); validation checks only bytes 1–15, `www.arika.co.jp`. All 16 bytes, including byte zero, remain part of the codec key. The sizes and record counts above describe the EU beta sample. The codec is reversible obfuscation. arika_info.h supplies equivalent C/C++ code and structure definitions; callers must handle little-endian conversion on other architectures.
+
+Rebuilding INFO.DAT requires a seed INFO.DAT: the 16-byte codec key, including region-specific byte 0, exists only in INFO.DAT and is not stored in GAME.DAT, so GAME.DAT alone cannot be re-encoded. Keep an original INFO.DAT of the matching region as the seed; encode-info/repack derive the key from it.
 
 | Header offset | Size | Meaning |
 | --- | --- | --- |

@@ -22,7 +22,10 @@ pub mod project;
 
 pub use dat::{Archive, Entry};
 pub use error::{ArikaError, Result};
-pub use info::{decode_info, encode_info, HEADER, MAGIC, RECORD, SECTOR};
+pub use info::{
+    decode_info, encode_info, encode_info_with_key, HEADER, INFO_MAGIC_TAIL, MAGIC, RECORD, SECTOR,
+    InfoRegion, make_decoded_info, write_info_record,
+};
 pub use ani::parse_ani;
 pub use ebz::parse_ebz;
 pub use pas::parse_pas;

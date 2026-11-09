@@ -36,6 +36,55 @@ def encode_info(data):
     return key + bytes(swap_nibbles(~(value + key[index & 15]) & 255) for index, value in enumerate(data[16:]))
 
 
+# Region byte 0 values for the INFO.DAT codec key. Bytes 1..15 are always www.arika.co.jp.
+INFO_REGIONS = {
+    "eu-beta": 0x7F,
+    "eubeta": 0x7F,
+    "eu_beta": 0x7F,
+    "eu": 0x11,
+    "usa": 0xC2,
+    "jpn": 0x60,
+    "db1": 0xBB,
+    "dvb1": 0xBB,
+    "arcade": 0xBB,
+    "db1.b": 0xBB,
+}
+
+
+def region_byte0(name):
+    lowered = name.strip().lower()
+    if lowered not in INFO_REGIONS:
+        raise ValueError("unknown region: " + name + " (expected: " + ", ".join(sorted(INFO_REGIONS)) + ")")
+    return INFO_REGIONS[lowered]
+
+
+def make_decoded_info(byte_0, count):
+    buf = bytearray(HEADER)
+    buf[0] = byte_0
+    buf[1:16] = MAGIC[1:]
+    struct.pack_into("<I", buf, 0x2C, count)
+    return buf
+
+
+def write_info_record(decoded, index, name, unknown, sector, sectors, size):
+    at = HEADER + index * RECORD
+    if at + RECORD > len(decoded):
+        raise ValueError("record index out of bounds: " + str(index))
+    name_bytes = name.encode("cp932")
+    if len(name_bytes) > 32:
+        raise ValueError("asset name too long: " + name)
+    decoded[at:at + len(name_bytes)] = name_bytes
+    struct.pack_into("<IIII", decoded, at + 32, unknown, sector, sectors, size)
+
+
+def encode_info_with_key(key, data):
+    if len(data) < HEADER:
+        raise ValueError("decoded INFO data has an invalid header")
+    if len(key) != 16:
+        raise ValueError("key must be exactly 16 bytes")
+    return key + bytes(swap_nibbles(~(value + key[index & 15]) & 255) for index, value in enumerate(data[16:]))
+
+
 def relative_name(name):
     path = PurePosixPath(name.replace("\\", "/"))
     if not name or path.is_absolute() or ".." in path.parts or ":" in name or any(ord(c) < 32 for c in name):
@@ -193,6 +242,85 @@ def rebuild(archive, destination, replacements=None):
     print("Wrote %s and %s; original archive sizes retained" % (out_info, out_game))
 
 
+def create_from_dir(region, key_override, asset_dir, out_info, out_game=None):
+    asset_dir = Path(asset_dir)
+    out_info = Path(out_info)
+    out_game = Path(out_game) if out_game else None
+
+    if out_game and out_info.resolve() == out_game.resolve():
+        raise ValueError("output INFO.DAT and GAME.DAT must differ")
+
+    # Collect all regular files under asset_dir, keyed by relative POSIX path.
+    files = []
+    for path in sorted(asset_dir.rglob("*")):
+        if path.is_file():
+            rel = path.relative_to(asset_dir).as_posix()
+            relative_name(rel)
+            size = path.stat().st_size
+            files.append((rel, path, size))
+
+    # Sort by name for deterministic sector ordering.
+    files.sort(key=lambda f: f[0])
+
+    if region is not None:
+        byte_0 = region_byte0(region)
+    else:
+        byte_0 = key_override[0]
+
+    count = len(files)
+    decoded = make_decoded_info(byte_0, count)
+    needed = HEADER + count * RECORD
+    if len(decoded) < needed:
+        decoded.extend(b"\0" * (needed - len(decoded)))
+
+    next_sector = 0
+    planned = []
+    for index, (rel, path, size) in enumerate(files):
+        if size > 0xFFFFFFFF:
+            raise ValueError("asset size exceeds the 32-bit field: " + rel)
+        sectors = (size + SECTOR - 1) // SECTOR
+        write_info_record(decoded, index, rel, 0, next_sector, sectors, size)
+        planned.append((index, rel, path, next_sector, sectors, size))
+        next_sector += sectors
+
+    game_size = next_sector * SECTOR
+
+    if key_override is not None:
+        encoded = encode_info_with_key(key_override, decoded)
+    else:
+        encoded = encode_info(decoded)
+
+    root = out_info.parent
+    root.mkdir(parents=True, exist_ok=True)
+
+    if out_game:
+        game_root = out_game.parent
+        game_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(prefix="GAME.", suffix=".tmp", dir=game_root, delete=False) as output:
+            game_temp = Path(output.name)
+            with open(game_temp, "wb") as out:
+                for _index, _rel, path, _sector, sectors, size in planned:
+                    with open(path, "rb") as source:
+                        exact_copy(source, out, size)
+                    padding = sectors * SECTOR - size
+                    if padding > 0:
+                        out.write(bytes(padding))
+                out.truncate(game_size)
+        game_temp.replace(out_game)
+
+    info_root = out_info.parent
+    info_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix="INFO.", suffix=".tmp", dir=info_root, delete=False) as output:
+        info_temp = Path(output.name)
+        output.write(encoded)
+    info_temp.replace(out_info)
+
+    msg = "Wrote %s" % out_info
+    if out_game:
+        msg += " and %s" % out_game
+    print(msg)
+
+
 def container(data):
     if len(data) < 32 or data[:4] not in [b"FPIX", b"FMDL"]:
         raise ValueError("expected FPIX or FMDL")
@@ -331,7 +459,12 @@ def main():
     extracting = subs.add_parser("extract")
     extracting.add_argument("info"); extracting.add_argument("game"); extracting.add_argument("output"); extracting.add_argument("--pattern", action="append", default=[]); extracting.add_argument("--overwrite", action="store_true")
     repacking = subs.add_parser("repack")
-    repacking.add_argument("info"); repacking.add_argument("game"); repacking.add_argument("output"); repacking.add_argument("--replacements")
+    repacking.add_argument("--info", default=None, help="seed INFO.DAT (omit with --version/--key to build without a seed)")
+    repacking.add_argument("--game", default=None, help="seed GAME.DAT (required when rebuilding from a seed)")
+    repacking.add_argument("output")
+    repacking.add_argument("--replacements", required=True)
+    repacking.add_argument("--version", help="region name (eu-beta, eu, usa, jpn, db1) to build INFO.DAT without a seed")
+    repacking.add_argument("--key", help="raw 16-byte codec key as hex (overrides --version)")
     splitting = subs.add_parser("split-container")
     splitting.add_argument("input"); splitting.add_argument("output"); splitting.add_argument("--overwrite", action="store_true")
     motions = subs.add_parser("split-rfsm")
@@ -348,19 +481,36 @@ def main():
         elif args.command == "split-rfsm": split_motion_archive(args.input, args.output, args.overwrite)
         elif args.command == "tim2-png": tim2_png(args.input, args.output, args.linear_clut)
         else:
-            archive = Archive(args.info, args.game)
-            if args.command == "extract": extract(archive, args.output, args.pattern, args.overwrite)
-            elif args.command == "repack": rebuild(archive, args.output, args.replacements)
+            if args.command == "repack" and args.info is None:
+                # Build INFO.DAT from scratch without a seed.
+                key_bytes = None
+                if args.key:
+                    key_bytes = bytes.fromhex(args.key.strip())
+                    if len(key_bytes) != 16:
+                        raise ValueError("--key must be exactly 16 bytes (32 hex chars)")
+                if key_bytes is None:
+                    if args.version is None:
+                        raise ValueError("--version is required when no seed INFO.DAT is provided")
+                    region = args.version
+                else:
+                    region = None
+                out_info_path = Path(args.output) / "INFO.DAT"
+                out_game_path = Path(args.output) / "GAME.DAT" if args.game else None
+                create_from_dir(region, key_bytes, args.replacements, out_info_path, out_game_path)
             else:
-                rows = archive.manifest()
-                if args.json: args.json.write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
-                if args.csv:
-                    with args.csv.open("w", encoding="utf-8-sig", newline="") as out:
-                        writer = csv.DictWriter(out, fieldnames=list(rows[0]) if rows else ["index", "name"])
-                        writer.writeheader(); writer.writerows(rows)
-                if not args.json and not args.csv:
-                    for row in rows: print("%4d %10d %10d %s" % (row["index"], row["offset"], row["size"], row["name"]))
-                print("%d assets; indexed extent %d bytes" % (len(rows), archive.used_bytes), file=sys.stderr)
+                archive = Archive(args.info, args.game)
+                if args.command == "extract": extract(archive, args.output, args.pattern, args.overwrite)
+                elif args.command == "repack": rebuild(archive, args.output, args.replacements)
+                else:
+                    rows = archive.manifest()
+                    if args.json: args.json.write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
+                    if args.csv:
+                        with args.csv.open("w", encoding="utf-8-sig", newline="") as out:
+                            writer = csv.DictWriter(out, fieldnames=list(rows[0]) if rows else ["index", "name"])
+                            writer.writeheader(); writer.writerows(rows)
+                    if not args.json and not args.csv:
+                        for row in rows: print("%4d %10d %10d %s" % (row["index"], row["offset"], row["size"], row["name"]))
+                    print("%d assets; indexed extent %d bytes" % (len(rows), archive.used_bytes), file=sys.stderr)
     except (OSError, ValueError, UnicodeError, struct.error) as error:
         parser.exit(1, str(error) + "\n")
 

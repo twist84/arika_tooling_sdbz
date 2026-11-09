@@ -1,15 +1,18 @@
 //! INFO.DAT / GAME.DAT archive handling.
 
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::fs::{self, File};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use encoding_rs::SHIFT_JIS; // CP932 is a Microsoft extension of Shift_JIS; close enough for filenames
+use encoding_rs::SHIFT_JIS;
 
 use crate::error::{ArikaError, Result};
-use crate::info::{decode_info, encode_info, HEADER, RECORD, SECTOR};
+use crate::info::{
+    decode_info, encode_info, encode_info_with_key, HEADER, RECORD, SECTOR, InfoRegion,
+    make_decoded_info, write_info_record,
+};
 
 /// One asset record from INFO.DAT.
 #[derive(Debug, Clone)]
@@ -410,6 +413,156 @@ impl Archive {
         Ok(())
     }
 
+    /// Create a new INFO.DAT / GAME.DAT pair from a directory of asset files without
+    /// needing a seed INFO.DAT. The region byte 0 of the codec key is supplied via
+    /// `region`. An optional `key_override` (full 16 bytes) replaces the derived key
+    /// when encoding. All files under `asset_dir` are written sequentially into
+    /// GAME.DAT (when `out_game` is provided); INFO.DAT is built with the region's
+    /// codec key (byte 0 + `www.arika.co.jp`) or the override key.
+    pub fn create_from_dir(
+        region: InfoRegion,
+        key_override: Option<[u8; 16]>,
+        asset_dir: impl AsRef<Path>,
+        out_info: impl AsRef<Path>,
+        out_game: Option<impl AsRef<Path>>,
+    ) -> Result<()> {
+        let asset_dir = asset_dir.as_ref();
+        let out_info = out_info.as_ref();
+
+        // Reject identical output paths.
+        let info_abs =
+            std::fs::canonicalize(out_info).unwrap_or_else(|_| out_info.to_path_buf());
+        if let Some(og) = out_game.as_ref() {
+            let game_abs =
+                std::fs::canonicalize(og.as_ref()).unwrap_or_else(|_| og.as_ref().to_path_buf());
+            if info_abs == game_abs {
+                return Err(ArikaError::Other(
+                    "output INFO.DAT and GAME.DAT must differ".into(),
+                ));
+            }
+        }
+
+        // Collect all regular files under asset_dir, keyed by relative POSIX path.
+        let mut files: Vec<(String, PathBuf, u64)> = Vec::new();
+        collect_files(asset_dir, asset_dir, &mut files)?;
+
+        // Sort by name for deterministic sector ordering.
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let byte_0 = region.byte0();
+        let count = files.len() as u32;
+        let mut decoded = make_decoded_info(byte_0, count);
+        let needed = HEADER + files.len() * RECORD;
+        decoded.resize(needed, 0);
+        decoded[0x2C..0x30].copy_from_slice(&count.to_le_bytes());
+
+        // Assign contiguous sectors and write INFO records.
+        let mut next_sector: u64 = 0;
+        let mut planned: Vec<(usize, String, PathBuf, u32, u32, u32)> = Vec::new();
+        for (index, (rel, path, size)) in files.iter().enumerate() {
+            let sectors = (*size as u64 + SECTOR - 1) / SECTOR;
+            let sector = u32::try_from(next_sector).map_err(|_| {
+                ArikaError::Other("rebuilt sector index exceeds the 32-bit field".into())
+            })?;
+            let sectors_u32 = u32::try_from(sectors).map_err(|_| {
+                ArikaError::Other("rebuilt sector count exceeds the 32-bit field".into())
+            })?;
+            let size_u32 = u32::try_from(*size).map_err(|_| {
+                ArikaError::Other("asset size exceeds the 32-bit field".into())
+            })?;
+
+            write_info_record(&mut decoded, index, rel, 0, sector, sectors_u32, size_u32)?;
+
+            planned.push((index, rel.clone(), path.clone(), sector, sectors_u32, size_u32));
+            next_sector += sectors;
+        }
+
+        let encoded = match key_override {
+            Some(key) => encode_info_with_key(&key, &decoded)?,
+            None => encode_info(&decoded)?,
+        };
+        let game_size = next_sector * SECTOR;
+
+        // Write GAME.DAT to a temp file, then persist.
+        if let Some(og) = out_game.as_ref() {
+            let out_game = og.as_ref();
+            let game_parent = out_game
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."));
+            std::fs::create_dir_all(game_parent)?;
+        let mut game_temp = tempfile::NamedTempFile::new_in(game_parent)?;
+        let mut buffer = vec![0u8; 1024 * 1024];
+
+        for (_index, _rel, path, _sector, sectors, size) in &planned {
+            let mut source = File::open(path)?;
+            let mut remaining = *size as u64;
+            while remaining > 0 {
+                let wanted = remaining.min(buffer.len() as u64) as usize;
+                source.read_exact(&mut buffer[..wanted])?;
+                game_temp.write_all(&buffer[..wanted])?;
+                remaining -= wanted as u64;
+            }
+            let allocation = *sectors as u64 * SECTOR;
+            let padding = allocation - *size as u64;
+            if padding > 0 {
+                buffer.fill(0);
+                let mut remaining = padding;
+                while remaining > 0 {
+                    let wanted = remaining.min(buffer.len() as u64) as usize;
+                    game_temp.write_all(&buffer[..wanted])?;
+                    remaining -= wanted as u64;
+                }
+            }
+        }
+
+            game_temp.flush()?;
+            game_temp.as_file_mut().set_len(game_size)?;
+            game_temp.persist(out_game).map_err(|e| ArikaError::Io(e.error))?;
+        }
+
+        // Write INFO.DAT to a temp file, then persist.
+        let info_parent = out_info
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(info_parent)?;
+        let mut info_temp = tempfile::NamedTempFile::new_in(info_parent)?;
+        info_temp.write_all(&encoded)?;
+        info_temp.flush()?;
+
+        info_temp.persist(out_info).map_err(|e| ArikaError::Io(e.error))?;
+
+        Ok(())
+    }
+}
+
+/// Recursively collect all regular files under `root`, keyed by path relative to `base`.
+fn collect_files(
+    root: &Path,
+    base: &Path,
+    files: &mut Vec<(String, PathBuf, u64)>,
+) -> Result<()> {
+    for entry in fs::read_dir(root).map_err(|e| ArikaError::Other(e.to_string()))? {
+        let entry = entry.map_err(|e| ArikaError::Other(e.to_string()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(&path, base, files)?;
+        } else if path.is_file() {
+            let rel = path
+                .strip_prefix(base)
+                .map_err(|e| ArikaError::Other(e.to_string()))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            relative_name(&rel)?;
+            let size = entry
+                .metadata()
+                .map_err(|e| ArikaError::Other(e.to_string()))?
+                .len();
+            files.push((rel, path, size));
+        }
+    }
+    Ok(())
 }
 
 fn relative_name(name: &str) -> Result<PathBuf> {

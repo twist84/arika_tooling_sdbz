@@ -4,6 +4,7 @@ use arika_core::audio::{
     write_wav, HEADER, INTERLEAVE,
 };
 use arika_core::dat::Archive;
+use arika_core::info::InfoRegion;
 use arika_core::faces::{faces_to_json, parse_face};
 use arika_core::gltf::write_gltf;
 use arika_core::models::{attach_textures, model_to_json, parse_fmdl, write_obj};
@@ -47,13 +48,23 @@ enum Commands {
         #[arg(long)]
         game: Option<PathBuf>,
     },
-    /// Rebuild INFO (and optional GAME) from a directory of modified assets
+    /// Rebuild INFO (and optional GAME) from a directory of modified assets.
+    /// Without a seed INFO.DAT, pass --version (or --key) to build from scratch.
     Rebuild {
-        info: PathBuf,
+        /// Input INFO.DAT (omit with --version/--key to build without a seed)
+        info: Option<PathBuf>,
+        /// Directory of extracted (possibly edited) assets
+        #[arg(long)]
+        assets: PathBuf,
+        /// Input GAME.DAT (required when rebuilding from a seed)
         #[arg(long)]
         game: Option<PathBuf>,
-        /// Directory of extracted (possibly edited) assets
-        assets: PathBuf,
+        /// Region name (eu-beta, eu, usa, jpn, db1) to build INFO.DAT without a seed
+        #[arg(long)]
+        version: Option<String>,
+        /// Raw 16-byte codec key as hex (overrides --version)
+        #[arg(long)]
+        key: Option<String>,
         #[arg(long, default_value = "INFO.DAT.new")]
         out_info: PathBuf,
         #[arg(long)]
@@ -134,7 +145,6 @@ enum Commands {
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
-
     match cli.command {
         Commands::List { info } => {
             let arch = Archive::open(&info, None::<PathBuf>)?;
@@ -174,12 +184,51 @@ fn main() -> Result<()> {
             assets,
             out_info,
             out_game,
+            version,
+            key,
         } => {
-            let arch = Archive::open(&info, game.as_ref())?;
-            arch.rebuild_from_dir(&assets, &out_info, out_game.as_ref())?;
-            println!("Wrote {}", out_info.display());
-            if let Some(og) = out_game {
-                println!("Wrote {}", og.display());
+            if let Some(info_path) = info {
+                // Existing seed-based rebuild path.
+                let arch = Archive::open(&info_path, game.as_ref())?;
+                arch.rebuild_from_dir(&assets, &out_info, out_game.as_ref())?;
+                println!("Wrote {}", out_info.display());
+                if let Some(og) = out_game {
+                    println!("Wrote {}", og.display());
+                }
+            } else {
+                // Build INFO.DAT from scratch without a seed.
+                let key_bytes = match key {
+                    Some(hex) => {
+                        let bytes = hex::decode(hex.trim())
+                            .map_err(|e| anyhow::anyhow!("invalid --key hex: {e}"))?;
+                        if bytes.len() != 16 {
+                            anyhow::bail!("--key must be exactly 16 bytes (32 hex chars)");
+                        }
+                        let mut arr = [0u8; 16];
+                        arr.copy_from_slice(&bytes);
+                        Some(arr)
+                    }
+                    None => None,
+                };
+                let region = match key_bytes {
+                    Some(_) => InfoRegion::EuBeta,
+                    None => {
+                        let region_str = version.ok_or_else(|| {
+                            anyhow::anyhow!("--version is required when no seed INFO.DAT is provided")
+                        })?;
+                        InfoRegion::from_str(&region_str).ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "unknown region '{}' (expected: eu-beta, eu, usa, jpn, db1)",
+                                region_str
+                            )
+                        })?
+                    }
+                };
+                Archive::create_from_dir(region, key_bytes, &assets, &out_info, out_game.as_ref())?;
+                println!("Wrote {}", out_info.display());
+                if let Some(og) = out_game {
+                    println!("Wrote {}", og.display());
+                }
             }
         }
         Commands::ModelJson { mdl, out, pix } => {

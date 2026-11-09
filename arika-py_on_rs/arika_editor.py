@@ -182,7 +182,7 @@ def detect_format(data, name):
         return 'script'
     if (name or '').upper() in ('INFO.DAT','GAME.DAT'):
         return 'archive'
-    if magic[:7]==b'\x7fwww.ar':
+    if len(magic) >= 7 and magic[1:7] == b'www.ar':
         return 'archive'
     try:
         data.decode('utf-8')
