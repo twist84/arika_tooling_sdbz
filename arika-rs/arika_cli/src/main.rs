@@ -69,9 +69,12 @@ enum Commands {
         out_info: PathBuf,
         #[arg(long)]
         out_game: Option<PathBuf>,
-        /// Total INFO.DAT file size (including encoded trailing padding) for seedless builds
+        /// Total INFO.DAT file size for seedless builds (overrides the US 96 KiB default)
         #[arg(long)]
         info_size: Option<usize>,
+        /// Build a minimal INFO.DAT instead of the original US 96 KiB capacity
+        #[arg(long, conflicts_with = "info_size")]
+        compact_info: bool,
         /// Total GAME.DAT file size (including zero-filled reserve) for seedless builds
         #[arg(long)]
         game_size: Option<u64>,
@@ -181,6 +184,9 @@ fn main() -> Result<()> {
                 println!("GAME: {}", g.display());
             }
             println!("Entries: {}", arch.entries.len());
+            println!("INFO record capacity: {}", arch.record_capacity());
+            println!("Spare INFO record slots: {}", arch.spare_record_slots());
+            println!("INFO trailing non-record bytes: {}", arch.record_tail_bytes());
             println!("Used bytes: {}", arch.used_bytes);
             println!("Decoded size: {}", arch.decoded.len());
         }
@@ -193,10 +199,11 @@ fn main() -> Result<()> {
             version,
             key,
             info_size,
+            compact_info,
             game_size,
         } => {
-            if info.is_some() && (info_size.is_some() || game_size.is_some()) {
-                anyhow::bail!("--info-size and --game-size apply only to seedless builds");
+            if info.is_some() && (info_size.is_some() || game_size.is_some() || compact_info) {
+                anyhow::bail!("--info-size, --compact-info and --game-size apply only to seedless builds");
             }
             if let Some(info_path) = info {
                 // Existing seed-based rebuild path.
@@ -237,7 +244,7 @@ fn main() -> Result<()> {
                 };
                 Archive::create_from_dir_sized(
                     region, key_bytes, &assets, &out_info, out_game.as_ref(),
-                    info_size, game_size,
+                    resolve_seedless_info_size(region, info_size, compact_info), game_size,
                 )?;
                 println!("Wrote {}", out_info.display());
                 if let Some(og) = out_game {
@@ -801,4 +808,33 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The original US INFO.DAT is 96 KiB: 48-byte header + 2,047 record slots.
+/// This preserves its observed layout by default, without claiming the driver
+/// enforces a 2,047-entry limit. Explicit sizes can exceed that capacity.
+fn resolve_seedless_info_size(
+    region: InfoRegion,
+    requested: Option<usize>,
+    compact_info: bool,
+) -> Option<usize> {
+    if compact_info {
+        None
+    } else {
+        requested.or_else(|| (region == InfoRegion::Usa).then_some(98_304))
+    }
+}
+
+#[cfg(test)]
+mod capacity_tests {
+    use super::*;
+
+    #[test]
+    fn us_defaults_to_original_capacity_but_allows_overrides() {
+        assert_eq!(resolve_seedless_info_size(InfoRegion::Usa, None, false), Some(98_304));
+        assert_eq!(resolve_seedless_info_size(InfoRegion::Usa, None, true), None);
+        assert_eq!(resolve_seedless_info_size(InfoRegion::Usa, Some(98_352), false), Some(98_352));
+        assert_eq!(resolve_seedless_info_size(InfoRegion::Eu, None, false), None);
+        assert_eq!(resolve_seedless_info_size(InfoRegion::Jpn, None, false), None);
+    }
 }

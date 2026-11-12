@@ -129,6 +129,24 @@ impl Archive {
         })
     }
 
+    /// Number of complete 48-byte INFO.DAT records that fit after the header.
+    ///
+    /// This is a file-layout capacity, not a verified ARKD_DVD.IRX runtime limit.
+    /// The US original is 98,304 bytes, giving 2,047 possible records.
+    pub fn record_capacity(&self) -> usize {
+        self.decoded.len().saturating_sub(HEADER) / RECORD
+    }
+
+    /// Unused complete INFO.DAT record slots after the active header count.
+    pub fn spare_record_slots(&self) -> usize {
+        self.record_capacity().saturating_sub(self.entries.len())
+    }
+
+    /// Bytes beyond the last complete INFO.DAT record.
+    pub fn record_tail_bytes(&self) -> usize {
+        self.decoded.len().saturating_sub(HEADER) % RECORD
+    }
+
     /// List of (index, name, size, sector).
     pub fn manifest(&self) -> Vec<(usize, &str, u32, u32)> {
         self.entries
@@ -431,7 +449,9 @@ impl Archive {
 
     /// Like create_from_dir, but optionally retain an explicit container capacity.
     /// INFO.DAT's unused encoded tail is filled with 0x40, matching the observed
-    /// US original. GAME.DAT's reserved extent is zero-filled.
+    /// US original. Its 98,304-byte length holds 2,047 complete 48-byte records
+    /// after the header; this is an observed layout capacity, not a confirmed
+    /// hard-coded limit in ARKD_DVD.IRX. GAME.DAT's reserve is zero-filled.
     pub fn create_from_dir_sized(
         region: InfoRegion,
         key_override: Option<[u8; 16]>,
@@ -745,6 +765,9 @@ mod tests {
         assert!(game_bytes[SECTOR as usize..].iter().all(|&b| b == 0));
         let reopened = Archive::open(&info, Some(&game)).expect("roundtrip");
         assert_eq!(reopened.entries.len(), 1);
+        assert_eq!(reopened.record_capacity(), (4096 - HEADER) / RECORD);
+        assert_eq!(reopened.spare_record_slots(), (4096 - HEADER) / RECORD - 1);
+        assert_eq!(reopened.record_tail_bytes(), (4096 - HEADER) % RECORD);
         assert_eq!(reopened.used_bytes, SECTOR);
 
         let too_small_info = Archive::create_from_dir_sized(
@@ -757,6 +780,51 @@ mod tests {
             None, Some(SECTOR - 1),
         );
         assert!(too_small_game.is_err());
+    }
+
+    #[test]
+    fn us_info_capacity_has_2047_slots_without_enforcing_a_runtime_limit() {
+        assert_eq!((98_304 - HEADER) / RECORD, 2_047);
+        assert_eq!((98_304 - HEADER) % RECORD, 0);
+        assert_eq!(98_304 - (HEADER + 1_930 * RECORD), 117 * RECORD);
+
+        let root = tempfile::tempdir().expect("temp dir");
+        let assets = root.path().join("assets");
+        std::fs::create_dir_all(&assets).expect("asset directory");
+        std::fs::write(assets.join("sample.bin"), b"abc").expect("asset");
+        let info = root.path().join("INFO.DAT");
+        Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, None::<&Path>,
+            Some(98_304), None,
+        ).expect("full-size INFO");
+        let archive = Archive::open(&info, None::<&Path>).expect("open INFO");
+        assert_eq!(archive.record_capacity(), 2_047);
+        assert_eq!(archive.entries.len(), 1);
+        assert_eq!(archive.spare_record_slots(), 2_046);
+        assert_eq!(archive.record_tail_bytes(), 0);
+    }
+
+    #[test]
+    fn seedless_info_records_remain_sorted_for_irx_letter_buckets() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let assets = root.path().join("assets");
+        std::fs::create_dir_all(&assets).expect("asset directory");
+        // Create in reverse order; IRX uses filename's first letter to locate
+        // a bucket and assumes records of that letter are contiguous.
+        std::fs::write(assets.join("z_last.bin"), b"z").expect("asset");
+        std::fs::write(assets.join("b_middle.bin"), b"b").expect("asset");
+        std::fs::write(assets.join("a_first.bin"), b"a").expect("asset");
+
+        let info = root.path().join("INFO.DAT");
+        Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, None::<&Path>,
+            Some(98_304), None,
+        ).expect("seedless INFO");
+        let archive = Archive::open(&info, None::<&Path>).expect("open INFO");
+        let names: Vec<_> = archive.entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["a_first.bin", "b_middle.bin", "z_last.bin"]);
+        assert_eq!(archive.record_capacity(), 2_047);
+        assert_eq!(archive.spare_record_slots(), 2_044);
     }
 
     #[test]

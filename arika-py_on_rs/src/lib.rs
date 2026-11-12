@@ -222,6 +222,28 @@ pub extern "C" fn arika_archive_entries(handle: usize) -> ArikaBuffer {
     to_json_buffer(&entries)
 }
 
+/// Return physical INFO table geometry without implying a verified game-side limit.
+#[no_mangle]
+pub extern "C" fn arika_archive_capacity(handle: usize) -> ArikaBuffer {
+    let archive = match get_archive(handle) {
+        Some(a) => a,
+        None => {
+            set_last_error("invalid archive handle".into());
+            return ArikaBuffer {
+                ptr: ptr::null_mut(),
+                len: 0,
+            };
+        }
+    };
+    to_json_buffer(&serde_json::json!({
+        "active_entries": archive.entries.len(),
+        "record_capacity": archive.record_capacity(),
+        "spare_record_slots": archive.spare_record_slots(),
+        "trailing_bytes": archive.record_tail_bytes(),
+        "info_size": archive.encoded.len(),
+    }))
+}
+
 #[no_mangle]
 pub extern "C" fn arika_archive_used_bytes(handle: usize) -> u64 {
     match get_archive(handle) {

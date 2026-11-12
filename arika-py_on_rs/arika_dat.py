@@ -82,6 +82,11 @@ class Archive:
             self._used_bytes = self._archive.used_bytes
         return self._used_bytes
 
+    @property
+    def capacity(self):
+        """INFO.DAT record slots inferred from its file length, not a game limit."""
+        return self._archive.capacity
+
     def rebuild(self, destination, replacements=None):
         self._archive.rebuild(destination, replacements)
 
@@ -325,7 +330,17 @@ def main():
                 if not args.json and not args.csv:
                     for row in rows:
                         print("%4d %10d %10d %s" % (row["index"], row["offset"], row["size"], row["name"]))
-                print("%d assets; indexed extent %d bytes" % (len(rows), archive.used_bytes), file=sys.stderr)
+                capacity = archive.capacity
+                print(
+                    "%d assets; %d INFO slots (%d spare); indexed extent %d bytes"
+                    % (
+                        len(rows),
+                        capacity["record_capacity"],
+                        capacity["spare_record_slots"],
+                        archive.used_bytes,
+                    ),
+                    file=sys.stderr,
+                )
     except (OSError, ValueError, UnicodeError, struct.error) as error:
         parser.exit(1, str(error) + "\n")
 

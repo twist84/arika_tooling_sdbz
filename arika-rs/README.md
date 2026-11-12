@@ -42,28 +42,95 @@ cargo run -p arika_editor
 `arika stage-gltf s01a.stg out.gltf` exports MDL geometry with instance list in extras.
 
 
-## Seedless rebuild with original US archive capacities
+## INFO.DAT record capacity and US disc layout
 
-For the original US SLUS_214.42 archive (1,930 entries), the observed container
-sizes are 98,304 bytes for INFO.DAT and 732,073,984 bytes for GAME.DAT.
-The indexed GAME.DAT extent is 695,373,824 bytes. The trailing GAME.DAT
-reserve is 35 MiB of zeroes; the unused encoded INFO.DAT tail is filled
-with byte `0x40`.
+The original US SLUS_214.42 archive contains 1,930 active entries in a
+98,304-byte (0x18000) INFO.DAT. Both the header and each record are 48 bytes:
 
-To preserve the original total sizes when rebuilding from extracted assets:
+```text
+INFO.DAT = 48-byte header + 2,047 x 48-byte record slots
+         = 98,304 bytes
+active   = 1,930 entries (header count at 0x2C)
+spare    = 117 record slots (5,616 bytes of encoded 0x40 padding)
+```
+
+The original US EE executable (`SLUS_214.42`) passes `file=2047` to
+`ARKD_DVD.IRX` at startup (EE address `0x422354–0x422360`). The IRX
+parses `file=` at module-relative `0xA810–0xA878`, saves the configured
+limit, and prints `File Len : 2047`. **This value is an EE-supplied driver
+configuration, not a count calculated from the INFO.DAT file length.**
+
+At IRX `0x0410–0x043C`, the decoded header's `entry_count` is accepted
+only when `entry_count < configured_file_limit`. Thus with the stock US
+`file=2047`, **2,047 active entries fail** this check; 2,046 pass this
+one check, but may fail elsewhere.
+
+The driver appears to read `(file_limit * 48) >> 11` sectors
+(module-relative `0x1914–0x1950`), yielding 47 sectors with `file=2047`.
+Only 2,004 *complete* 48-byte records plus the header fit within those
+96,256 bytes. Whether another read populates the remainder of the table
+is **not yet verified**; 2,004 is a suspected earlier ceiling, not a proven
+functional maximum. See `research/ARKD_DVD_LOOKUP.md` for evidence and
+test strategy.
+
+The 2,047 **physical** slots and the configured limit have distinct meanings;
+neither guarantees all records are accessible. This toolkit deliberately
+does **not** enforce an unverified global 2,004/2,046/2,047 cap.
+
+The CLI `arika info INFO.DAT` now reports active entries, the number of
+complete record slots, unused slots, and any non-record trailing bytes.
+This is a layout calculation, **not** a loader compatibility check.
+
+### Seedless rebuild policy
+
+For `--version usa`, seedless CLI builds now default to a 98,304-byte
+INFO.DAT with encoded `0x40` padding. This preserves the observed US
+table extent even if fewer than 2,047 records are active:
 
 ```bash
 arika rebuild --assets extracted --version usa \
   --out-info rebuilt/INFO.DAT --out-game rebuilt/GAME.DAT \
-  --info-size 98304 --game-size 732073984
+  --game-size 732073984
 ```
 
-These limits are optional and apply only to **seedless** builds. With no
-explicit sizes, the files are minimal as before. Values below the required
-indexed extent are rejected. The original full-size files still need
-game-side validation; matching lengths does not guarantee byte-identical
-record layout or runtime compatibility. The GUI/frontend is maintained in
-`arika-py_on_rs`; the standalone Rust editor is legacy.
+`--compact-info` explicitly requests a minimal INFO.DAT. `--info-size N`
+overrides the default capacity and can be larger than 98,304 if testing
+more than 2,047 records; an undersized capacity is rejected. These options
+apply only to seedless builds. Other regions and custom codec keys retain
+their existing minimal default until their loader behaviour is verified.
+
+The original US GAME.DAT is 732,073,984 bytes. Its indexed extent is
+695,373,824 bytes, leaving 35 MiB of zero-filled reserve. This remains
+**optional** via `--game-size 732073984`; by default seedless GAME.DAT
+uses the minimum required size. A seed-based rebuild already preserves
+the seed's INFO and GAME file sizes.
+
+### Lookup compatibility and emulator verification
+
+The driver builds 26 initial-letter buckets from the table, then scans
+48-byte entries within the selected bucket (`ARKD_DVD.IRX` module-relative
+`0x04B4–0x0610`, `0x0A60–0x0C98`). **Keep filenames grouped by
+lowercase a–z initial letter**; retaining the original lexicographic order
+is the safest approach. Seedless rebuilding already sorts paths by name.
+Appending new records without re-sorting may make them invisible.
+
+1. Boot the original and rebuilt US discs, including `--compact-info`.
+   Expect `File Len : 2047` in all cases, because the EE supplies it.
+2. Add a 1,931st unique asset in sorted position, increment the header
+   count, and confirm the game can perform a real file lookup.
+3. Repeat at **2,004** and **2,005** active records, tracing IOP CDVD reads.
+   This tests the suspected 47-sector truncation.
+4. Test **2,046** and **2,047** only after investigating the read boundary;
+   with unmodified `file=2047`, 2,047 should hit the overflow check.
+5. Verify ISO 9660 file sizes and GAME.DAT sector extents match the rebuild.
+
+Merely opening a generated archive with `arika info` does not demonstrate
+IOP driver compatibility.
+
+Full-size files still require game-side validation. Matching lengths alone
+does not guarantee byte-identical record ordering or runtime compatibility.
+The GUI/frontend is maintained in `arika-py_on_rs`; the standalone Rust
+editor is legacy.
 
 ## Implemented
 
