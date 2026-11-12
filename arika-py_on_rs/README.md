@@ -114,9 +114,14 @@ after updating; older compiled libraries do not export
 
 For the US SLUS_214.42 disc, 98,304 bytes allow 2,047 complete 48-byte
 records after the 48-byte header; 1,930 are active and 117 are spare.
-A published boot log prints `File Len : 2047`, but `ARKD_DVD.IRX`
-has not been disassembled to establish whether this is a fixed game-side
-limit or a file-size-derived value. This API reports *physical capacity*,
+The US game ELF explicitly passes `file=2047` to `ARKD_DVD.IRX`,
+which prints `File Len : 2047`; the value is **not derived from the INFO
+file size**. The IRX rejects `entry_count >= 2047`, and its initial
+table-sector read suggests a potentially earlier boundary around 2,004
+records (not yet runtime-verified). Its filename search uses 26 initial-letter
+buckets, so new records must remain grouped and sorted by filename.
+See `../arika-rs/research/ARKD_DVD_LOOKUP.md` for instruction addresses,
+inferences, and a PCSX2 validation plan. This API reports *physical capacity*,
 not a verified maximum number of loadable assets.
 
 
