@@ -247,8 +247,17 @@ def create_from_dir(region, key_override, asset_dir, out_info, out_game=None):
     out_info = Path(out_info)
     out_game = Path(out_game) if out_game else None
 
+    if not asset_dir.is_dir():
+        raise ValueError("asset directory does not exist: " + str(asset_dir))
+    if region is None and key_override is None:
+        raise ValueError("region or codec key is required")
+    if key_override is not None and (len(key_override) != 16 or key_override[1:] != MAGIC[1:]):
+        raise ValueError("codec key must be 16 bytes ending in www.arika.co.jp")
     if out_game and out_info.resolve() == out_game.resolve():
         raise ValueError("output INFO.DAT and GAME.DAT must differ")
+    for output in (out_info, out_game):
+        if output is not None and output.resolve().is_relative_to(asset_dir.resolve()):
+            raise ValueError("archive output must be outside the source asset directory")
 
     # Collect all regular files under asset_dir, keyed by relative POSIX path.
     files = []
@@ -261,6 +270,12 @@ def create_from_dir(region, key_override, asset_dir, out_info, out_game=None):
 
     # Sort by name for deterministic sector ordering.
     files.sort(key=lambda f: f[0])
+    names = set()
+    for rel, _path, _size in files:
+        folded = rel.casefold()
+        if folded in names:
+            raise ValueError("duplicate/case-colliding asset name: " + rel)
+        names.add(folded)
 
     if region is not None:
         byte_0 = region_byte0(region)
@@ -280,6 +295,8 @@ def create_from_dir(region, key_override, asset_dir, out_info, out_game=None):
             raise ValueError("asset size exceeds the 32-bit field: " + rel)
         sectors = (size + SECTOR - 1) // SECTOR
         write_info_record(decoded, index, rel, 0, next_sector, sectors, size)
+        if next_sector > 0xFFFFFFFF or sectors > 0xFFFFFFFF or next_sector + sectors > 0x100000000:
+            raise ValueError("archive sector offset exceeds the 32-bit field: " + rel)
         planned.append((index, rel, path, next_sector, sectors, size))
         next_sector += sectors
 
@@ -495,7 +512,9 @@ def main():
                 else:
                     region = None
                 out_info_path = Path(args.output) / "INFO.DAT"
-                out_game_path = Path(args.output) / "GAME.DAT" if args.game else None
+                if args.game is not None:
+                    raise ValueError("--game is a seed archive; omit it when rebuilding without --info")
+                out_game_path = Path(args.output) / "GAME.DAT"
                 create_from_dir(region, key_bytes, args.replacements, out_info_path, out_game_path)
             else:
                 archive = Archive(args.info, args.game)
