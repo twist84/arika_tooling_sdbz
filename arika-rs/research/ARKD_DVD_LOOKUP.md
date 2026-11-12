@@ -55,6 +55,44 @@ This is **a suspected boundary, not a proven effective maximum**. Other read pat
 
 When adding assets, update header count, insert records in sorted order, encode INFO, update GAME.DAT sectors, and ensure ISO 9660 file lengths match outputs. Validate **real IOP lookup and read**, not only our local parser.
 
+## Reproducible fixture generator (new)
+
+`arika-rs/tools/irx_boundary_fixture.py` produces test archive pairs with
+the real extracted US assets plus small alphabetically earlier probe files.
+The probes begin with `a__irx_probe_`, so genuine assets are shifted to
+later record indices without needing to patch every asset path. Source assets
+are hard-linked when supported, otherwise copied into a temporary staging
+folder. **The source tree is never modified.** The generator accepts only
+the six explicitly interesting counts and expects a complete 1,930-file US
+extraction to avoid testing the wrong release.
+
+Build and run from `arika-rs`:
+
+```bash
+cargo build --release -p arika_cli
+python tools/irx_boundary_fixture.py --assets extracted --out fixtures \\
+    --target-count 2004 --dry-run
+python tools/irx_boundary_fixture.py --assets extracted --out fixtures \\
+    --target-count 2004 --arika target/release/arika
+python tools/irx_boundary_fixture.py --assets extracted --out fixtures \\
+    --target-count 2005 --arika target/release/arika
+python -m unittest discover -s tools -p "test_irx_boundary_fixture.py" -v
+```
+
+Outputs live in `fixtures/irx_<count>/` with `INFO.DAT`,
+`GAME.DAT`, and `fixture.json`. INFO defaults to exactly **98,304
+bytes**, GAME to **732,073,984 bytes**, matching the original disc
+footprint. The generator verifies encoded header count and both output
+lengths, records the names at the 2,004/2,005 positions, and refuses to
+overwrite any existing fixture. It does not construct a new ISO.
+
+**Testing caveat:** Merely adding synthetic files cannot prove they are
+searchable by the game; the stock EE never requests them. To test the
+2,004/2,005 boundary, inspect `fixture.json` for original assets now
+near/after that index and trigger *those* assets in actual gameplay,
+or instrument the IOP driver's lookup routine directly. Confirm with a
+CDVD read trace rather than accepting a successful boot alone.
+
 ## External references
 
 - PS2SDK IOP sysclib declarations and import ordinals: https://ps2dev.github.io/ps2sdk/sysclib_8h.html
