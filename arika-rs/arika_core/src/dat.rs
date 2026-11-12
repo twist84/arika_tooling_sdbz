@@ -805,6 +805,29 @@ mod tests {
     }
 
     #[test]
+    fn seedless_info_records_remain_sorted_for_irx_letter_buckets() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let assets = root.path().join("assets");
+        std::fs::create_dir_all(&assets).expect("asset directory");
+        // Create in reverse order; IRX uses filename's first letter to locate
+        // a bucket and assumes records of that letter are contiguous.
+        std::fs::write(assets.join("z_last.bin"), b"z").expect("asset");
+        std::fs::write(assets.join("b_middle.bin"), b"b").expect("asset");
+        std::fs::write(assets.join("a_first.bin"), b"a").expect("asset");
+
+        let info = root.path().join("INFO.DAT");
+        Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, None::<&Path>,
+            Some(98_304), None,
+        ).expect("seedless INFO");
+        let archive = Archive::open(&info, None::<&Path>).expect("open INFO");
+        let names: Vec<_> = archive.entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["a_first.bin", "b_middle.bin", "z_last.bin"]);
+        assert_eq!(archive.record_capacity(), 2_047);
+        assert_eq!(archive.spare_record_slots(), 2_044);
+    }
+
+    #[test]
     fn test_archive_entry_parsing() {
         let encoded = make_info_with_entry("dir/test.bin", 0, 1, 3);
         let mut game = Vec::new();
