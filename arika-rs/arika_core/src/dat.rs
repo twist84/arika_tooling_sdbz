@@ -723,6 +723,43 @@ mod tests {
     }
 
     #[test]
+    fn seedless_capacity_preserves_encoded_info_padding_and_game_reserve() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let assets = root.path().join("assets");
+        std::fs::create_dir_all(&assets).expect("asset directory");
+        std::fs::write(assets.join("sample.bin"), b"abc").expect("asset");
+
+        let info = root.path().join("INFO.DAT");
+        let game = root.path().join("GAME.DAT");
+        Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, Some(&game),
+            Some(4096), Some(SECTOR * 3),
+        ).expect("seedless build with reserve");
+        let encoded = std::fs::read(&info).expect("read info");
+        assert_eq!(encoded.len(), 4096);
+        assert_eq!(encoded[0], 0xC2);
+        assert!(encoded[HEADER + RECORD..].iter().all(|&b| b == 0x40));
+        let game_bytes = std::fs::read(&game).expect("read game");
+        assert_eq!(game_bytes.len() as u64, SECTOR * 3);
+        assert_eq!(&game_bytes[..3], b"abc");
+        assert!(game_bytes[SECTOR as usize..].iter().all(|&b| b == 0));
+        let reopened = Archive::open(&info, Some(&game)).expect("roundtrip");
+        assert_eq!(reopened.entries.len(), 1);
+        assert_eq!(reopened.used_bytes, SECTOR);
+
+        let too_small_info = Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, Some(&game),
+            Some(HEADER + RECORD - 1), None,
+        );
+        assert!(too_small_info.is_err());
+        let too_small_game = Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, Some(&game),
+            None, Some(SECTOR - 1),
+        );
+        assert!(too_small_game.is_err());
+    }
+
+    #[test]
     fn test_archive_entry_parsing() {
         let encoded = make_info_with_entry("dir/test.bin", 0, 1, 3);
         let mut game = Vec::new();
