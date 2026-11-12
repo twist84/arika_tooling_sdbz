@@ -42,6 +42,29 @@ cargo run -p arika_editor
 `arika stage-gltf s01a.stg out.gltf` exports MDL geometry with instance list in extras.
 
 
+## Seedless rebuild with original US archive capacities
+
+For the original US SLUS_214.42 archive (1,930 entries), the observed container
+sizes are 98,304 bytes for INFO.DAT and 732,073,984 bytes for GAME.DAT.
+The indexed GAME.DAT extent is 695,373,824 bytes. The trailing GAME.DAT
+reserve is 35 MiB of zeroes; the unused encoded INFO.DAT tail is filled
+with byte `0x40`.
+
+To preserve the original total sizes when rebuilding from extracted assets:
+
+```bash
+arika rebuild --assets extracted --version usa \
+  --out-info rebuilt/INFO.DAT --out-game rebuilt/GAME.DAT \
+  --info-size 98304 --game-size 732073984
+```
+
+These limits are optional and apply only to **seedless** builds. With no
+explicit sizes, the files are minimal as before. Values below the required
+indexed extent are rejected. The original full-size files still need
+game-side validation; matching lengths does not guarantee byte-identical
+record layout or runtime compatibility. The GUI/frontend is maintained in
+`arika-py_on_rs`; the standalone Rust editor is legacy.
+
 ## Implemented
 
 - INFO/GAME archive (extract + rebuild)

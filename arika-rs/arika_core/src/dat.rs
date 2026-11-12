@@ -426,6 +426,21 @@ impl Archive {
         out_info: impl AsRef<Path>,
         out_game: Option<impl AsRef<Path>>,
     ) -> Result<()> {
+        Self::create_from_dir_sized(region, key_override, asset_dir, out_info, out_game, None, None)
+    }
+
+    /// Like create_from_dir, but optionally retain an explicit container capacity.
+    /// INFO.DAT's unused encoded tail is filled with 0x40, matching the observed
+    /// US original. GAME.DAT's reserved extent is zero-filled.
+    pub fn create_from_dir_sized(
+        region: InfoRegion,
+        key_override: Option<[u8; 16]>,
+        asset_dir: impl AsRef<Path>,
+        out_info: impl AsRef<Path>,
+        out_game: Option<impl AsRef<Path>>,
+        info_size: Option<usize>,
+        game_size: Option<u64>,
+    ) -> Result<()> {
         let asset_dir = asset_dir.as_ref();
         let out_info = out_info.as_ref();
 
@@ -477,11 +492,33 @@ impl Archive {
             next_sector += sectors;
         }
 
-        let encoded = match key_override {
+        let mut encoded = match key_override {
             Some(key) => encode_info_with_key(&key, &decoded)?,
             None => encode_info(&decoded)?,
         };
-        let game_size = next_sector * SECTOR;
+        let indexed_game_size = next_sector.checked_mul(SECTOR).ok_or_else(|| {
+            ArikaError::Other("rebuilt GAME.DAT size overflows u64".into())
+        })?;
+        let info_capacity = info_size.unwrap_or(encoded.len());
+        if info_capacity < encoded.len() {
+            return Err(ArikaError::Other(format!(
+                "INFO.DAT capacity {} is less than the required {} bytes",
+                info_capacity, encoded.len()
+            )));
+        }
+        let game_capacity = game_size.unwrap_or(indexed_game_size);
+        if game_capacity < indexed_game_size {
+            return Err(ArikaError::Other(format!(
+                "GAME.DAT capacity {} is less than the indexed {} bytes",
+                game_capacity, indexed_game_size
+            )));
+        }
+        if game_size.is_some() && out_game.is_none() {
+            return Err(ArikaError::Other(
+                "GAME.DAT capacity requires a GAME.DAT output path".into()
+            ));
+        }
+        encoded.resize(info_capacity, 0x40);
 
         // Write GAME.DAT to a temp file, then persist.
         if let Some(og) = out_game.as_ref() {
@@ -517,7 +554,7 @@ impl Archive {
         }
 
             game_temp.flush()?;
-            game_temp.as_file_mut().set_len(game_size)?;
+            game_temp.as_file_mut().set_len(game_capacity)?;
             game_temp.persist(out_game).map_err(|e| ArikaError::Io(e.error))?;
         }
 
@@ -683,6 +720,43 @@ mod tests {
         decoded[HEADER + 40..HEADER + 44].copy_from_slice(&sectors.to_le_bytes());
         decoded[HEADER + 44..HEADER + 48].copy_from_slice(&size.to_le_bytes());
         crate::info::encode_info(&decoded).expect("encode")
+    }
+
+    #[test]
+    fn seedless_capacity_preserves_encoded_info_padding_and_game_reserve() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let assets = root.path().join("assets");
+        std::fs::create_dir_all(&assets).expect("asset directory");
+        std::fs::write(assets.join("sample.bin"), b"abc").expect("asset");
+
+        let info = root.path().join("INFO.DAT");
+        let game = root.path().join("GAME.DAT");
+        Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, Some(&game),
+            Some(4096), Some(SECTOR * 3),
+        ).expect("seedless build with reserve");
+        let encoded = std::fs::read(&info).expect("read info");
+        assert_eq!(encoded.len(), 4096);
+        assert_eq!(encoded[0], 0xC2);
+        assert!(encoded[HEADER + RECORD..].iter().all(|&b| b == 0x40));
+        let game_bytes = std::fs::read(&game).expect("read game");
+        assert_eq!(game_bytes.len() as u64, SECTOR * 3);
+        assert_eq!(&game_bytes[..3], b"abc");
+        assert!(game_bytes[SECTOR as usize..].iter().all(|&b| b == 0));
+        let reopened = Archive::open(&info, Some(&game)).expect("roundtrip");
+        assert_eq!(reopened.entries.len(), 1);
+        assert_eq!(reopened.used_bytes, SECTOR);
+
+        let too_small_info = Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, Some(&game),
+            Some(HEADER + RECORD - 1), None,
+        );
+        assert!(too_small_info.is_err());
+        let too_small_game = Archive::create_from_dir_sized(
+            InfoRegion::Usa, None, &assets, &info, Some(&game),
+            None, Some(SECTOR - 1),
+        );
+        assert!(too_small_game.is_err());
     }
 
     #[test]
