@@ -93,6 +93,52 @@ near/after that index and trigger *those* assets in actual gameplay,
 or instrument the IOP driver's lookup routine directly. Confirm with a
 CDVD read trace rather than accepting a successful boot alone.
 
+## Byte-identical GAME.DAT rebuilding (padding restoration)
+
+The user's comparison of the original US archives against the PR #3 seedless
+rebuild establishes:
+
+- INFO.DAT: **98,304 / 98,304 bytes, byte-identical** (including all 117 spare slots).
+- GAME.DAT: **732,073,984 / 732,073,984 bytes** and every indexed asset
+  has exactly matching payload, name, size, and sector assignment.
+- The **1,203,676 differing GAME bytes** are entirely in sector padding.
+  The original file's per-asset padding is not zero, while the seedless
+  builder zeroes it. The 35 MiB trailing reserve matches.
+
+This does not indicate a broken loader or archive index. It reflects bytes
+which the extraction workflow does not retain. Matching those bytes from
+extracted assets alone is not guaranteed possible.
+
+For a **byte-for-byte reproducible**, *unmodified* US rebuild, the optional
+`tools/restore_game_padding.py` restores original padding *only after*
+verifying both INFO files are byte-identical, the GAME files have equal
+lengths, and every indexed asset's actual payload bytes match. It also
+restores any non-asset gaps and the trailing reserve. It **refuses** to
+process modified payloads, so it cannot overwrite modified asset data.
+
+```bash
+python tools/restore_game_padding.py \\
+    --original-info source_data/INFO.DAT \\
+    --original-game source_data/GAME.DAT \\
+    --rebuilt-info source_data/test/INFO.DAT \\
+    --rebuilt-game source_data/test/GAME.DAT \\
+    --check
+
+# Without --check, modify only the rebuilt GAME.DAT's non-asset bytes.
+python tools/restore_game_padding.py \\
+    --original-info source_data/INFO.DAT \\
+    --original-game source_data/GAME.DAT \\
+    --rebuilt-info source_data/test/INFO.DAT \\
+    --rebuilt-game source_data/test/GAME.DAT
+
+python -m unittest discover -s tools -p "test_restore_game_padding.py" -v
+```
+
+Do **not** use the padding-restoration tool on archives with modified asset
+payloads; the default seedless zero-padding mode remains appropriate for
+modding. Keep original and rebuilt files on distinct paths. No original
+copyrighted game data is checked into this repository.
+
 ## External references
 
 - PS2SDK IOP sysclib declarations and import ordinals: https://ps2dev.github.io/ps2sdk/sysclib_8h.html
