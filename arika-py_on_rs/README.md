@@ -105,6 +105,21 @@ Use actual paths from files.csv for models and motions. `extract --pattern "*.pi
 
 ## INFO.DAT
 
+The hybrid Rust backend now exposes `Archive.capacity` as a dictionary with
+`active_entries`, `record_capacity`, `spare_record_slots`,
+`trailing_bytes`, and `info_size`. The `arika_dat.py list` summary
+shows active entries and spare INFO slots. Rebuild the hybrid native library
+after updating; older compiled libraries do not export
+`arika_archive_capacity`.
+
+For the US SLUS_214.42 disc, 98,304 bytes allow 2,047 complete 48-byte
+records after the 48-byte header; 1,930 are active and 117 are spare.
+A published boot log prints `File Len : 2047`, but `ARKD_DVD.IRX`
+has not been disassembled to establish whether this is a fixed game-side
+limit or a file-size-derived value. This API reports *physical capacity*,
+not a verified maximum number of loadable assets.
+
+
 All integers are little-endian. The file is 98,304 bytes, containing a 0x30-byte header, 1,934 records of 0x30 bytes, then padding. The first 16 bytes are the signature and codec key: `7F 77 77 77 2E 61 72 69 6B 61 2E 63 6F 2E 6A 70` (`\x7fwww.arika.co.jp`).
 
 For every byte at offset i >= 16, including trailing padding:
