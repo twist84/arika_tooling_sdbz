@@ -119,6 +119,9 @@ _lib.arika_archive_free.argtypes = [ctypes.c_size_t]
 _lib.arika_archive_entries.restype = ArikaBuffer
 _lib.arika_archive_entries.argtypes = [ctypes.c_size_t]
 
+_lib.arika_archive_capacity.restype = ArikaBuffer
+_lib.arika_archive_capacity.argtypes = [ctypes.c_size_t]
+
 _lib.arika_archive_used_bytes.restype = ctypes.c_uint64
 _lib.arika_archive_used_bytes.argtypes = [ctypes.c_size_t]
 
@@ -328,6 +331,7 @@ class Archive:
         self._handle = handle
         self._entries = None
         self._used_bytes = None
+        self._capacity = None
         weakref.finalize(self, _lib.arika_archive_free, self._handle)
 
     @property
@@ -342,6 +346,13 @@ class Archive:
         if self._used_bytes is None:
             self._used_bytes = _lib.arika_archive_used_bytes(self._handle)
         return self._used_bytes
+
+    @property
+    def capacity(self):
+        """Physical INFO.DAT record capacity, not a verified game-side limit."""
+        if self._capacity is None:
+            self._capacity = json.loads(_call_ptr(_lib.arika_archive_capacity, self._handle))
+        return self._capacity
 
     def manifest(self):
         result = []
