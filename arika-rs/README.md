@@ -54,15 +54,28 @@ active   = 1,930 entries (header count at 0x2C)
 spare    = 117 record slots (5,616 bytes of encoded 0x40 padding)
 ```
 
-A published PCSX2 boot log shows Arika's IOP driver reporting
-`File Len : 2047`, which matches the table's physical capacity:
-https://forums.pcsx2.net/Thread-PCSX2-Widescreen-Game-Patches?page=393
+The original US EE executable (`SLUS_214.42`) passes `file=2047` to
+`ARKD_DVD.IRX` at startup (EE address `0x422354–0x422360`). The IRX
+parses `file=` at module-relative `0xA810–0xA878`, saves the configured
+limit, and prints `File Len : 2047`. **This value is an EE-supplied driver
+configuration, not a count calculated from the INFO.DAT file length.**
 
-**Important:** `ARKD_DVD.IRX` has not been disassembled to verify what
-`File Len` represents. It is unknown whether 2,047 is a hard-coded limit,
-a value derived from the INFO.DAT length, or something else. Spare record
-slots are *potential* capacity, not proof that the game accepts added assets.
-The tooling does **not** impose a global 2,047-entry limit.
+At IRX `0x0410–0x043C`, the decoded header's `entry_count` is accepted
+only when `entry_count < configured_file_limit`. Thus with the stock US
+`file=2047`, **2,047 active entries fail** this check; 2,046 pass this
+one check, but may fail elsewhere.
+
+The driver appears to read `(file_limit * 48) >> 11` sectors
+(module-relative `0x1914–0x1950`), yielding 47 sectors with `file=2047`.
+Only 2,004 *complete* 48-byte records plus the header fit within those
+96,256 bytes. Whether another read populates the remainder of the table
+is **not yet verified**; 2,004 is a suspected earlier ceiling, not a proven
+functional maximum. See `research/ARKD_DVD_LOOKUP.md` for evidence and
+test strategy.
+
+The 2,047 **physical** slots and the configured limit have distinct meanings;
+neither guarantees all records are accessible. This toolkit deliberately
+does **not** enforce an unverified global 2,004/2,046/2,047 cap.
 
 The CLI `arika info INFO.DAT` now reports active entries, the number of
 complete record slots, unused slots, and any non-record trailing bytes.
@@ -92,14 +105,27 @@ The original US GAME.DAT is 732,073,984 bytes. Its indexed extent is
 uses the minimum required size. A seed-based rebuild already preserves
 the seed's INFO and GAME file sizes.
 
-### Emulator verification still needed
+### Lookup compatibility and emulator verification
 
-1. Boot the original disc and record `File Len : 2047`.
-2. Boot a rebuilt disc with `--compact-info` (1,930 entries); check whether
-   the log changes to `File Len : 1930` or remains 2,047.
-3. Add a 1,931st asset, update the table, and exercise an actual loader
-   lookup. Merely parsing an extra record in this toolkit is insufficient.
-4. Test the 2,047/2,048 boundary before declaring a hard limit.
+The driver builds 26 initial-letter buckets from the table, then scans
+48-byte entries within the selected bucket (`ARKD_DVD.IRX` module-relative
+`0x04B4–0x0610`, `0x0A60–0x0C98`). **Keep filenames grouped by
+lowercase a–z initial letter**; retaining the original lexicographic order
+is the safest approach. Seedless rebuilding already sorts paths by name.
+Appending new records without re-sorting may make them invisible.
+
+1. Boot the original and rebuilt US discs, including `--compact-info`.
+   Expect `File Len : 2047` in all cases, because the EE supplies it.
+2. Add a 1,931st unique asset in sorted position, increment the header
+   count, and confirm the game can perform a real file lookup.
+3. Repeat at **2,004** and **2,005** active records, tracing IOP CDVD reads.
+   This tests the suspected 47-sector truncation.
+4. Test **2,046** and **2,047** only after investigating the read boundary;
+   with unmodified `file=2047`, 2,047 should hit the overflow check.
+5. Verify ISO 9660 file sizes and GAME.DAT sector extents match the rebuild.
+
+Merely opening a generated archive with `arika info` does not demonstrate
+IOP driver compatibility.
 
 Full-size files still require game-side validation. Matching lengths alone
 does not guarantee byte-identical record ordering or runtime compatibility.
