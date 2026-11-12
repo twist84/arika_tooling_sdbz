@@ -69,6 +69,12 @@ enum Commands {
         out_info: PathBuf,
         #[arg(long)]
         out_game: Option<PathBuf>,
+        /// Total INFO.DAT file size (including encoded trailing padding) for seedless builds
+        #[arg(long)]
+        info_size: Option<usize>,
+        /// Total GAME.DAT file size (including zero-filled reserve) for seedless builds
+        #[arg(long)]
+        game_size: Option<u64>,
     },
     /// Parse FMDL and write JSON geometry summary
     ModelJson {
@@ -186,7 +192,12 @@ fn main() -> Result<()> {
             out_game,
             version,
             key,
+            info_size,
+            game_size,
         } => {
+            if info.is_some() && (info_size.is_some() || game_size.is_some()) {
+                anyhow::bail!("--info-size and --game-size apply only to seedless builds");
+            }
             if let Some(info_path) = info {
                 // Existing seed-based rebuild path.
                 let arch = Archive::open(&info_path, game.as_ref())?;
@@ -224,7 +235,10 @@ fn main() -> Result<()> {
                         })?
                     }
                 };
-                Archive::create_from_dir(region, key_bytes, &assets, &out_info, out_game.as_ref())?;
+                Archive::create_from_dir_sized(
+                    region, key_bytes, &assets, &out_info, out_game.as_ref(),
+                    info_size, game_size,
+                )?;
                 println!("Wrote {}", out_info.display());
                 if let Some(og) = out_game {
                     println!("Wrote {}", og.display());
