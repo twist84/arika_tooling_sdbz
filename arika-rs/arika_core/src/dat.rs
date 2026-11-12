@@ -426,6 +426,21 @@ impl Archive {
         out_info: impl AsRef<Path>,
         out_game: Option<impl AsRef<Path>>,
     ) -> Result<()> {
+        Self::create_from_dir_sized(region, key_override, asset_dir, out_info, out_game, None, None)
+    }
+
+    /// Like create_from_dir, but optionally retain an explicit container capacity.
+    /// INFO.DAT's unused encoded tail is filled with 0x40, matching the observed
+    /// US original. GAME.DAT's reserved extent is zero-filled.
+    pub fn create_from_dir_sized(
+        region: InfoRegion,
+        key_override: Option<[u8; 16]>,
+        asset_dir: impl AsRef<Path>,
+        out_info: impl AsRef<Path>,
+        out_game: Option<impl AsRef<Path>>,
+        info_size: Option<usize>,
+        game_size: Option<u64>,
+    ) -> Result<()> {
         let asset_dir = asset_dir.as_ref();
         let out_info = out_info.as_ref();
 
@@ -477,11 +492,33 @@ impl Archive {
             next_sector += sectors;
         }
 
-        let encoded = match key_override {
+        let mut encoded = match key_override {
             Some(key) => encode_info_with_key(&key, &decoded)?,
             None => encode_info(&decoded)?,
         };
-        let game_size = next_sector * SECTOR;
+        let indexed_game_size = next_sector.checked_mul(SECTOR).ok_or_else(|| {
+            ArikaError::Other("rebuilt GAME.DAT size overflows u64".into())
+        })?;
+        let info_capacity = info_size.unwrap_or(encoded.len());
+        if info_capacity < encoded.len() {
+            return Err(ArikaError::Other(format!(
+                "INFO.DAT capacity {} is less than the required {} bytes",
+                info_capacity, encoded.len()
+            )));
+        }
+        let game_capacity = game_size.unwrap_or(indexed_game_size);
+        if game_capacity < indexed_game_size {
+            return Err(ArikaError::Other(format!(
+                "GAME.DAT capacity {} is less than the indexed {} bytes",
+                game_capacity, indexed_game_size
+            )));
+        }
+        if game_size.is_some() && out_game.is_none() {
+            return Err(ArikaError::Other(
+                "GAME.DAT capacity requires a GAME.DAT output path".into()
+            ));
+        }
+        encoded.resize(info_capacity, 0x40);
 
         // Write GAME.DAT to a temp file, then persist.
         if let Some(og) = out_game.as_ref() {
@@ -517,7 +554,7 @@ impl Archive {
         }
 
             game_temp.flush()?;
-            game_temp.as_file_mut().set_len(game_size)?;
+            game_temp.as_file_mut().set_len(game_capacity)?;
             game_temp.persist(out_game).map_err(|e| ArikaError::Io(e.error))?;
         }
 
