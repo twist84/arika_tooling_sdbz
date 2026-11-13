@@ -3,6 +3,7 @@
 //! Opaque handles are usize; 0 indicates an invalid/null handle.
 
 mod editor_transform;
+mod skeleton_batch;
 
 use std::ffi::{CStr, CString};
 use std::io::{Read, Seek, SeekFrom, Write};
