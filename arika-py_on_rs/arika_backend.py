@@ -325,6 +325,64 @@ def skeleton_world_matrices(nodes):
     ]
 
 
+# MOT2 pose sampler: descriptors u32[track_count * 2], times f64[keys],
+# values f64[keys * 4], output f64[node_count * 10].
+_lib.arika_motion_sample_pose.restype = ctypes.c_int
+_lib.arika_motion_sample_pose.argtypes = [
+    ctypes.POINTER(ctypes.c_uint32), ctypes.c_size_t,
+    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+    ctypes.c_size_t, ctypes.c_double, ctypes.POINTER(ctypes.c_double),
+]
+
+
+def motion_sample_pose(motion, time):
+    """Sample each MOT2 bone's local TRS at seconds using one native call.
+
+    Returns nodes with translation, rotation (glTF XYZW), and scale.
+    Values before or after authored key times clamp to the end keys.
+    """
+    nodes = motion['nodes']
+    if not nodes:
+        return []
+    if len(nodes) > 100_000:
+        raise ValueError("motion exceeds 100000 bones")
+    descriptions = []
+    times = []
+    values = []
+    for node in nodes:
+        for path, components in (('translation', 3), ('rotation', 4), ('scale', 3)):
+            track = node['tracks'][path]
+            t = list(track['times'])
+            v = list(track['values'])
+            if not t or len(t) != len(v):
+                raise ValueError("track keys and values must have equal nonzero lengths")
+            descriptions.extend((len(times), len(t)))
+            times.extend(t)
+            for item in v:
+                if len(item) != components:
+                    raise ValueError("unexpected MOT2 track component count")
+                values.extend(item if components == 4 else [*item, 0.0])
+    if len(times) > 5_000_000:
+        raise ValueError("motion exceeds 5000000 keys")
+    descriptors_buf = (ctypes.c_uint32 * len(descriptions))(*descriptions)
+    times_buf = (ctypes.c_double * len(times))(*times)
+    values_buf = (ctypes.c_double * len(values))(*values)
+    output = (ctypes.c_double * (len(nodes) * 10))()
+    if _lib.arika_motion_sample_pose(
+        descriptors_buf, len(descriptions) // 2, times_buf, values_buf,
+        len(times), float(time), output,
+    ) != 0:
+        raise ValueError("invalid MOT2 time, keys, or quaternion")
+    return [
+        dict(
+            translation=list(output[i*10:i*10+3]),
+            rotation=list(output[i*10+3:i*10+7]),
+            scale=list(output[i*10+7:i*10+10]),
+        )
+        for i in range(len(nodes))
+    ]
+
+
 # --- convenience wrappers ---------------------------------------------------
 def quaternion_multiply(a, b):
     """Multiply two glTF XYZW quaternions using native f64 math."""
