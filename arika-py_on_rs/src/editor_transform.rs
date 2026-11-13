@@ -104,3 +104,88 @@ mod tests {
         assert_eq!(a,world);
     }
 }
+
+/// Invert a row-major 4x4 matrix using the same partial-pivot Gauss-Jordan
+/// algorithm and 1e-12 pivot threshold as the Python model exporter.
+#[no_mangle]
+pub extern "C" fn arika_matrix_inverse(matrix: *const f64, out: *mut f64) -> i32 {
+    let Some(input) = checked::<16>(matrix) else { return -1 };
+    if out.is_null() { return -1; }
+    let mut rows = [[0.0f64; 8]; 4];
+    for r in 0..4 {
+        for c in 0..4 {
+            rows[r][c] = input[r * 4 + c];
+        }
+        rows[r][r + 4] = 1.0;
+    }
+    for col in 0..4 {
+        let mut pivot = col;
+        for r in col + 1..4 {
+            if rows[r][col].abs() > rows[pivot][col].abs() {
+                pivot = r;
+            }
+        }
+        if rows[pivot][col].abs() <= 1e-12 {
+            return -1;
+        }
+        rows.swap(pivot, col);
+        let divisor = rows[col][col];
+        for c in 0..8 {
+            rows[col][c] /= divisor;
+        }
+        for r in 0..4 {
+            if r != col {
+                let factor = rows[r][col];
+                for c in 0..8 {
+                    rows[r][c] -= factor * rows[col][c];
+                }
+            }
+        }
+    }
+    let mut result = [0.0f64; 16];
+    for r in 0..4 {
+        for c in 0..4 {
+            result[r * 4 + c] = rows[r][c + 4];
+        }
+    }
+    output(out, result)
+}
+
+#[cfg(test)]
+mod matrix_inverse_tests {
+    use super::*;
+
+    #[test]
+    fn inverse_roundtrip_and_singular_rejection() {
+        let m = [
+            2.0, 0.0, 0.0, 4.0,
+            0.0, 3.0, 0.0, -5.0,
+            0.0, 0.0, 0.5, 9.0,
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        let mut inverse = [0.0f64; 16];
+        let mut identity = [0.0f64; 16];
+        assert_eq!(arika_matrix_inverse(m.as_ptr(), inverse.as_mut_ptr()), 0);
+        assert_eq!(arika_matrix_multiply(m.as_ptr(), inverse.as_ptr(), identity.as_mut_ptr()), 0);
+        for r in 0..4 {
+            for c in 0..4 {
+                assert!((identity[r * 4 + c] - if r == c { 1.0 } else { 0.0 }).abs() < 1e-11);
+            }
+        }
+        let singular = [0.0f64; 16];
+        assert_eq!(arika_matrix_inverse(singular.as_ptr(), inverse.as_mut_ptr()), -1);
+    }
+
+    #[test]
+    fn inversion_handles_pivot_row_swap() {
+        let permutation = [
+            0.0, 1.0, 0.0, 0.0,
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        let mut inverse = [0.0f64; 16];
+        assert_eq!(arika_matrix_inverse(permutation.as_ptr(), inverse.as_mut_ptr()), 0);
+        assert_eq!(permutation, inverse);
+    }
+}
