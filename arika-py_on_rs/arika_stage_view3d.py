@@ -1,6 +1,7 @@
 """Dependency-free orthographic stage geometry preparation for the Tk viewport."""
 import math
-from arika_models import identity,local_matrix,multiply,quaternion
+from arika_models import identity, quaternion
+from arika_backend import matrix_local, matrix_multiply
 
 
 def project(point,yaw,pitch):
@@ -17,8 +18,8 @@ def prepare(scene,model,hit=None,include_templates=False,limit=None):
     matrices=[];points=[];triangles=[];lines=[];candidates=[];total=0
     def transform(matrix,p):return tuple(sum(matrix[a][j]*p[j] for j in range(3))+matrix[a][3] for a in range(3))
     for node in scene['nodes']:
-        local=identity() if 'translation'not in node else local_matrix(dict(translation=node['translation'],rotation=quaternion([math.degrees(v) for v in node['rotation_radians']]),scale=node['scale']))
-        matrix=local if node['parent']<0 else multiply(matrices[node['parent']],local);matrices.append(matrix)
+        local=identity() if 'translation'not in node else matrix_local(node['translation'],quaternion([math.degrees(v) for v in node['rotation_radians']]),node['scale'])
+        matrix=local if node['parent']<0 else matrix_multiply(matrices[node['parent']],local);matrices.append(matrix)
         if node['index']not in allowed:continue
         points.append((node['index'],transform(matrix,(0,0,0)),node['kind']))
         mesh=meshes.get(node['name']) if node['kind']==2 else None
