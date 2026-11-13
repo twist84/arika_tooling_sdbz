@@ -343,3 +343,17 @@ python -m unittest test_arika_animation_preview test_arika_scene_characters -v
 GitHub Actions validates this path on Windows and Linux, including syntax
 compilation for the Qt editor. Interactive WebGPU playback still requires a
 local visual smoke test with a representative model and motion archive.
+
+### Zero-rebuild animation scrubbing
+
+The WebGPU scene renderer now retains vertex/index buffers, textures and
+skinned vertex buffers when switching between the authored scene and its
+read-only animation preview. The preview changes only local node TRS values:
+the renderer recomputes world transforms and writes freshly skinned vertices
+without recreating immutable GPU resources each time playback starts or stops.
+
+Geometry is reused only when scene resource arrays are shared by identity
+and node mesh/skin bindings and hierarchy links have not changed. Different
+projects, changed geometry or altered material resources trigger the existing
+full rebuild. The regression suite checks reuse and rebuild decisions without
+requiring a physical GPU. Live playback still needs a visual smoke test.
