@@ -227,3 +227,21 @@ cargo test gizmo_quaternion_tests
 ```
 
 The ctypes bridge deliberately has no fallback to the old Python math.
+
+Additional f64 native operations now include Euler XYZ ↔ quaternion (with a stable
+pitch singularity convention), quaternion inverse, row-major local TRS matrices,
+and 4x4 parent/world matrix composition. The hybrid gizmo uses native Euler
+conversion/inversion, and `arika_stage_view3d.prepare` uses native matrix
+composition while retaining its existing row-major Python matrix interface.
+
+The remaining general model import/export helpers in `arika_models.py` still
+implement their own matrix math; those paths are not silently switched until
+broader parity tests are in place.
+
+```bat
+python -m unittest test_arika_gizmo test_arika_stage_view3d -v
+```
+
+GitHub Actions runs these tests and the Rust unit tests on Windows and Linux
+via `.github/workflows/hybrid-editor-parity.yml`.
+
