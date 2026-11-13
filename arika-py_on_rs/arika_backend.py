@@ -206,7 +206,87 @@ _lib.arika_pitch_for_rate.argtypes = [ctypes.c_uint, ctypes.c_uint]
 _lib.arika_next_rng.restype = ctypes.c_uint64
 _lib.arika_next_rng.argtypes = [ctypes.c_uint64, ctypes.POINTER(ctypes.c_uint)]
 
+# Gizmo quaternion math (glTF XYZW, f64)
+_quaternion4 = ctypes.c_double * 4
+_lib.arika_quaternion_multiply.restype = ctypes.c_int
+_lib.arika_quaternion_multiply.argtypes = [
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double),
+]
+_lib.arika_quaternion_multiply.errcheck = _raise_negative
+
+# Editor transform math: all inputs and outputs are f64 arrays.
+for _name, _count in (
+    ("arika_euler_to_quaternion", 1),
+    ("arika_quaternion_to_euler", 1),
+    ("arika_quaternion_inverse", 1),
+    ("arika_matrix_multiply", 2),
+    ("arika_matrix_local", 3),
+):
+    _fn = getattr(_lib, _name)
+    _fn.restype = ctypes.c_int
+    _fn.argtypes = [ctypes.POINTER(ctypes.c_double)] * (_count + 1)
+    _fn.errcheck = _raise_negative
+
+
+def _float_array(values, size):
+    if len(values) != size:
+        raise ValueError(f"expected {size} components")
+    return (ctypes.c_double * size)(*(float(value) for value in values))
+
+
+def _transform_call(name, output_size, *inputs):
+    args = [_float_array(values, length) for values, length in inputs]
+    result = (ctypes.c_double * output_size)()
+    getattr(_lib, name)(*args, result)
+    return list(result)
+
+
+def euler_to_quaternion(euler):
+    return _transform_call("arika_euler_to_quaternion", 4, (euler, 3))
+
+
+def quaternion_to_euler(quaternion):
+    return tuple(_transform_call("arika_quaternion_to_euler", 3, (quaternion, 4)))
+
+
+def quaternion_inverse(quaternion):
+    return _transform_call("arika_quaternion_inverse", 4, (quaternion, 4))
+
+
+def matrix_local(translation, rotation, scale):
+    result = _transform_call(
+        "arika_matrix_local", 16,
+        (translation, 3), (rotation, 4), (scale, 3),
+    )
+    return [result[index:index + 4] for index in range(0, 16, 4)]
+
+
+def matrix_multiply(a, b):
+    if len(a) != 4 or len(b) != 4 or any(len(row) != 4 for row in (*a, *b)):
+        raise ValueError("expected two 4x4 matrices")
+    result = _transform_call(
+        "arika_matrix_multiply", 16,
+        ([value for row in a for value in row], 16),
+        ([value for row in b for value in row], 16),
+    )
+    return [result[index:index + 4] for index in range(0, 16, 4)]
+
+
 # --- convenience wrappers ---------------------------------------------------
+def quaternion_multiply(a, b):
+    """Multiply two glTF XYZW quaternions using native f64 math."""
+    if len(a) != 4 or len(b) != 4:
+        raise ValueError("expected two four-component quaternions")
+    lhs = _quaternion4(*(float(v) for v in a))
+    rhs = _quaternion4(*(float(v) for v in b))
+    output = _quaternion4()
+    _lib.arika_quaternion_multiply(lhs, rhs, output)
+    return list(output)
+
+
+
 
 def decode_info(data):
     return _call_buffer(_lib.arika_decode_info, data)

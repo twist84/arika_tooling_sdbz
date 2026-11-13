@@ -2,6 +2,8 @@
 //! All JSON payloads are UTF-8 bytes returned in ArikaBuffer.
 //! Opaque handles are usize; 0 indicates an invalid/null handle.
 
+mod editor_transform;
+
 use std::ffi::{CStr, CString};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_int};
@@ -1227,4 +1229,74 @@ pub extern "C" fn arika_next_rng(state: u64, out_value: *mut u32) -> u64 {
         }
     }
     next_state
+}
+
+// ---------------------------------------------------------------------------
+// Editor transform math
+// ---------------------------------------------------------------------------
+
+/// Hamilton product in glTF XYZW order. Uses f64 so repeated editor
+/// rotations do not lose precision when crossing the Python/Rust boundary.
+/// The caller supplies three arrays of four doubles (a, b, output).
+#[no_mangle]
+pub extern "C" fn arika_quaternion_multiply(
+    a: *const f64,
+    b: *const f64,
+    output: *mut f64,
+) -> c_int {
+    if a.is_null() || b.is_null() || output.is_null() {
+        set_last_error("null quaternion input or output".into());
+        return -1;
+    }
+    // Copy inputs before writing output so aliasing is safe.
+    let (a, b) = unsafe {
+        let a = std::array::from_fn(|i| *a.add(i));
+        let b = std::array::from_fn(|i| *b.add(i));
+        (a, b)
+    };
+    if !a.iter().chain(b.iter()).all(|v| v.is_finite()) {
+        set_last_error("nonfinite quaternion component".into());
+        return -1;
+    }
+    let [x, y, z, w] = a;
+    let [dx, dy, dz, dw] = b;
+    let result = [
+        w * dx + x * dw + y * dz - z * dy,
+        w * dy - x * dz + y * dw + z * dx,
+        w * dz + x * dy - y * dx + z * dw,
+        w * dw - x * dx - y * dy - z * dz,
+    ];
+    unsafe {
+        std::ptr::copy_nonoverlapping(result.as_ptr(), output, 4);
+    }
+    0
+}
+
+#[cfg(test)]
+mod gizmo_quaternion_tests {
+    use super::arika_quaternion_multiply;
+
+    #[test]
+    fn identity_and_axis_composition() {
+        let identity = [0.0, 0.0, 0.0, 1.0];
+        let x = [0.5, 0.0, 0.0, (0.75f64).sqrt()];
+        let mut result = [0.0; 4];
+        assert_eq!(arika_quaternion_multiply(identity.as_ptr(), x.as_ptr(), result.as_mut_ptr()), 0);
+        assert_eq!(result, x);
+
+        let y = [0.0, 0.5, 0.0, (0.75f64).sqrt()];
+        assert_eq!(arika_quaternion_multiply(x.as_ptr(), y.as_ptr(), result.as_mut_ptr()), 0);
+        assert!((result[2] - 0.25).abs() < 1e-12);
+        assert_eq!(arika_quaternion_multiply(y.as_ptr(), x.as_ptr(), result.as_mut_ptr()), 0);
+        assert!((result[2] + 0.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn rejects_invalid_inputs() {
+        let identity = [0.0, 0.0, 0.0, 1.0];
+        let mut result = [0.0; 4];
+        assert_eq!(arika_quaternion_multiply(std::ptr::null(), identity.as_ptr(), result.as_mut_ptr()), -1);
+        let invalid = [f64::NAN, 0.0, 0.0, 1.0];
+        assert_eq!(arika_quaternion_multiply(invalid.as_ptr(), identity.as_ptr(), result.as_mut_ptr()), -1);
+    }
 }

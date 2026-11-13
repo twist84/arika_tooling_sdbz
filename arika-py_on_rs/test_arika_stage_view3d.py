@@ -17,6 +17,14 @@ class StageViewTests(unittest.TestCase):
         scene,model=self.fixture();data=prepare(scene,model)
         self.assertEqual(data['triangles'][0],(1,[(10,20,30),(11,20,30),(10,21,30)]))
         self.assertFalse(data['sampled'])
+    def test_parent_translation_and_scale_propagate_to_child(self):
+        scene, model = self.fixture()
+        scene['nodes'][0]['translation'] = [2, 3, 4]
+        scene['nodes'][0]['scale'] = [2, 2, 2]
+        data = prepare(scene, model)
+        vertices = data['triangles'][0][1]
+        self.assertEqual(vertices, [(22, 43, 64), (24, 43, 64), (22, 45, 64)])
+
     def test_missing_model_still_produces_origins(self):
         scene,model=self.fixture();data=prepare(scene,None)
         self.assertEqual(data['triangles'],[]);self.assertEqual(len(data['points']),2)

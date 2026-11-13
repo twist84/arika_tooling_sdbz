@@ -74,6 +74,71 @@ class GizmoGeometryTests(unittest.TestCase):
         euler=quaternion_to_euler(quaternion)
         self.assertTrue(all(abs(value)<1e-7 for value in euler))
 
+    def test_native_quaternion_composition_parity(self):
+        from arika_backend import quaternion_multiply
+        pairs = [
+            ((0., 0., 0., 1.), (0.2, -0.3, 0.1, 0.9)),
+            ((0.5, 0., 0., math.sqrt(.75)), (0., 0.5, 0., math.sqrt(.75))),
+            ((-0.2, 0.3, 0.4, 0.8), (0.25, -0.75, 0.1, 0.5)),
+        ]
+        for a, b in pairs:
+            x, y, z, w = a
+            dx, dy, dz, dw = b
+            expected = (
+                w*dx + x*dw + y*dz - z*dy,
+                w*dy - x*dz + y*dw + z*dx,
+                w*dz + x*dy - y*dx + z*dw,
+                w*dw - x*dx - y*dy - z*dz,
+            )
+            actual = quaternion_multiply(a, b)
+            for got, want in zip(actual, expected):
+                self.assertAlmostEqual(got, want, places=12)
+
+    def test_native_quaternion_rejects_invalid_components(self):
+        from arika_backend import quaternion_multiply, BackendError
+        with self.assertRaises(ValueError):
+            quaternion_multiply((0, 0, 1), (0, 0, 0, 1))
+        with self.assertRaises(BackendError):
+            quaternion_multiply((math.nan, 0, 0, 1), (0, 0, 0, 1))
+
+
+
+    def test_native_euler_conversion_at_pitch_singularity(self):
+        from arika_backend import euler_to_quaternion, quaternion_to_euler
+        for sign in (-1, 1):
+            original = (0.0, sign * math.pi / 2, 0.0)
+            quaternion = euler_to_quaternion(original)
+            result = quaternion_to_euler(quaternion)
+            for actual, expected in zip(result, original):
+                self.assertAlmostEqual(actual, expected, places=9)
+
+    def test_native_quaternion_inverse_identity_composition(self):
+        from arika_backend import euler_to_quaternion, quaternion_inverse, quaternion_multiply
+        quaternion = euler_to_quaternion((0.3, -0.4, 0.7))
+        inverse = quaternion_inverse(quaternion)
+        product = quaternion_multiply(quaternion, inverse)
+        for actual, expected in zip(product, (0, 0, 0, 1)):
+            self.assertAlmostEqual(actual, expected, places=10)
+        with self.assertRaises(Exception):
+            quaternion_inverse((0.0, 0.0, 0.0, 0.0))
+
+    def test_native_hierarchy_matrix_matches_python_formula(self):
+        from arika_backend import matrix_local, matrix_multiply, euler_to_quaternion
+        from arika_models import local_matrix, multiply
+        parent = dict(translation=[3.0, -2.0, 4.0],
+                      rotation=euler_to_quaternion((0.4, 0.1, -0.2)),
+                      scale=[2.0, 1.0, 0.5])
+        child = dict(translation=[-1.0, 2.0, 0.5],
+                     rotation=euler_to_quaternion((0.2, -0.3, 0.1)),
+                     scale=[1.0, 3.0, 1.0])
+        native_parent = matrix_local(parent['translation'], parent['rotation'], parent['scale'])
+        native_child = matrix_local(child['translation'], child['rotation'], child['scale'])
+        expected = multiply(local_matrix(parent), local_matrix(child))
+        actual = matrix_multiply(native_parent, native_child)
+        for row_a, row_b in zip(actual, expected):
+            for value_a, value_b in zip(row_a, row_b):
+                self.assertAlmostEqual(value_a, value_b, places=10)
+
 
 if __name__=='__main__':
     unittest.main()

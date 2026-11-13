@@ -57,43 +57,17 @@ def _ring(origin, u, v, radius, segments):
 
 
 def _euler_to_quaternion(euler_radians):
-    x, y, z = [float(v) * 0.5 for v in euler_radians]
-    sx, sy, sz = math.sin(x), math.sin(y), math.sin(z)
-    cx, cy, cz = math.cos(x), math.cos(y), math.cos(z)
-    return [sx * cy * cz - cx * sy * sz,
-            cx * sy * cz + sx * cy * sz,
-            cx * cy * sz - sx * sy * cz,
-            cx * cy * cz + sx * sy * sz]
-
+    from arika_backend import euler_to_quaternion
+    return euler_to_quaternion(euler_radians)
 
 def _quaternion_to_euler(q):
-    x, y, z, w = q
-    length = math.sqrt(x*x + y*y + z*z + w*w)
-    if length <= 1e-12:
-        raise ValueError('invalid rotation quaternion')
-    x, y, z, w = x/length, y/length, z/length, w/length
-    sin_pitch = max(-1.0, min(1.0, 2.0 * (w*y - z*x)))
-    pitch = math.asin(sin_pitch)
-
-    # At +/-90 degrees of pitch, Euler roll and yaw are not independently
-    # defined. Choose yaw=0 for a stable canonical representation rather than
-    # letting floating-point noise produce (pi, pi/2, pi) for a pure Y rotation.
-    if abs(sin_pitch) >= 1.0 - 1e-10:
-        roll = math.atan2(2.0 * (w*x - y*z), 1.0 - 2.0 * (x*x + z*z))
-        yaw = 0.0
-    else:
-        roll = math.atan2(2.0 * (w*x + y*z), 1.0 - 2.0 * (x*x + y*y))
-        yaw = math.atan2(2.0 * (w*z + x*y), 1.0 - 2.0 * (y*y + z*z))
-    return (roll, pitch, yaw)
-
+    from arika_backend import quaternion_to_euler
+    return quaternion_to_euler(q)
 
 def _multiply_quaternions(a, b):
-    x, y, z, w = a
-    dx, dy, dz, dw = b
-    return [w*dx + x*dw + y*dz - z*dy,
-            w*dy - x*dz + y*dw + z*dx,
-            w*dz + x*dy - y*dx + z*dw,
-            w*dw - x*dx - y*dy - z*dz]
+    # Native precision-preserving composition, shared by local/world rotation.
+    from arika_backend import quaternion_multiply
+    return quaternion_multiply(a, b)
 
 
 def quaternion_multiply(a, b):
@@ -102,12 +76,8 @@ def quaternion_multiply(a, b):
 
 
 def quaternion_inverse(q):
-    length = sum(float(v) * float(v) for v in q)
-    if length <= 1e-12:
-        raise ValueError('invalid rotation quaternion')
-    return [-float(q[0]) / length, -float(q[1]) / length,
-            -float(q[2]) / length, float(q[3]) / length]
-
+    from arika_backend import quaternion_inverse as native_inverse
+    return native_inverse(q)
 
 def quaternion_to_euler(q):
     return _quaternion_to_euler(q)
