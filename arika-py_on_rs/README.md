@@ -265,3 +265,26 @@ cargo test editor_transform
 ```
 
 Both platforms run these tests in the hybrid-editor parity GitHub workflow.
+
+### Batched native skeleton evaluation
+
+`arika_models.world_matrices(nodes)` now delegates all nodes to one native
+`arika_skeleton_world_matrices` call rather than crossing the Python/Rust
+boundary for every local and parent matrix. The input layout is per-node
+translation xyz, glTF quaternion xyzw, and scale xyz, with parent indices
+referring to the original node list. It supports parents appearing after
+children and multiple roots. The Rust implementation rejects invalid parents,
+nonfinite transforms, and cycles before returning any matrices. It uses
+iterative ancestor evaluation to handle deep hierarchies without Rust
+recursion.
+
+The existing API still returns a list of row-major 4×4 Python matrices and
+raises `ValueError` for malformed skeletons. It imposes a 100,000-node
+defensive limit. Skeleton parsing, glTF export and animation remain in Python.
+
+```bat
+cd arika-py_on_rs
+python build.py
+cargo test --lib
+python -m unittest test_arika_models test_arika_gizmo test_arika_stage_view3d -v
+```
