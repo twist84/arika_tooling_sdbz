@@ -689,6 +689,8 @@ class c_viewport(QRenderWidget):
     def wheelEvent(self,e):self.zoom(-(e.angleDelta().y() or e.pixelDelta().y())/1200);e.accept()
     def keyPressEvent(self,e):
         key=e.key();mods=e.modifiers();pad=bool(mods&C.Qt.KeyboardModifier.KeypadModifier)
+        if getattr(self,'m_animation_readonly',False) and key in (C.Qt.Key.Key_Delete,C.Qt.Key.Key_X,C.Qt.Key.Key_G,C.Qt.Key.Key_R,C.Qt.Key.Key_S,C.Qt.Key.Key_T):
+            e.accept();return
         if self.m_gizmo_drag is not None:
             drag=self.m_gizmo_drag
             if key==C.Qt.Key.Key_Escape:
@@ -1077,7 +1079,9 @@ class c_scene_editor(W.QMainWindow):
             clip=self.m_animation_combo.itemData(index)
             self.m_animation_preview=c_animation_preview(self.m_project.m_document,clip)
             self.m_animation_slider.blockSignals(True);self.m_animation_slider.setValue(0);self.m_animation_slider.blockSignals(False)
-            self.m_view.m_show_gizmo=False;self.m_object_view.m_show_gizmo=False
+            self.m_animation_gizmo_state=(self.m_view.m_show_gizmo,self.m_object_view.m_show_gizmo)
+            for view in (self.m_view,self.m_object_view):
+                view.m_show_gizmo=False;view.m_animation_readonly=True
             self.m_tree.setEnabled(False);self.m_properties_tabs.setEnabled(False)
             self.update_animation_pose(0.0)
         except Exception as error:
@@ -1130,8 +1134,8 @@ class c_scene_editor(W.QMainWindow):
         if hasattr(self,'m_animation_slider'):
             self.m_animation_slider.blockSignals(True);self.m_animation_slider.setValue(0);self.m_animation_slider.blockSignals(False)
         if not preview:return
-        self.m_view.m_show_gizmo=True
-        self.m_object_view.m_show_gizmo=True
+        for view,show in zip((self.m_view,self.m_object_view),getattr(self,'m_animation_gizmo_state',(True,False))):
+            view.m_show_gizmo=show;view.m_animation_readonly=False
         self.m_tree.setEnabled(True);self.m_properties_tabs.setEnabled(True)
         for view in (self.m_view,self.m_object_view):
             view.set_project(self.m_project,geometry=False)
