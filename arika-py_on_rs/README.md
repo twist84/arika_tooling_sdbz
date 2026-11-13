@@ -357,3 +357,20 @@ and node mesh/skin bindings and hierarchy links have not changed. Different
 projects, changed geometry or altered material resources trigger the existing
 full rebuild. The regression suite checks reuse and rebuild decisions without
 requiring a physical GPU. Live playback still needs a visual smoke test.
+
+### CPU skinning correctness checks
+
+The WebGPU CPU skinning path validates each joint palette index and finite,
+nonnegative weight before writing skinned vertices to the GPU. Per-vertex
+weights are normalized (matching the static character baker), avoiding
+geometry distortion when source weights do not sum exactly to one. The
+joint transformation remains `inverse(mesh_world) * joint_world * inverse_bind`.
+Tests include weighted two-bone translation, invalid palette indices,
+zero/nonfinite/negative weights and the actual vertex-buffer upload bytes,
+without requiring a graphics device.
+
+```bat
+cd arika-py_on_rs
+python build.py
+python -m unittest test_arika_skinning -v
+```
