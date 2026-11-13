@@ -14,6 +14,33 @@ from arika_import import c_gltf_reader
 from arika_models import sample_motion_pose
 
 
+def geometry_resources_shared(previous, current):
+    """Whether two glTF documents can share already-uploaded GPU resources.
+
+    Animation previews shallow-copy immutable geometry data and deep-copy only
+    nodes. Arbitrary new projects must rebuild their buffers even when their
+    mesh indices happen to coincide.
+    """
+    if previous is current:
+        return True
+    if previous is None or current is None:
+        return False
+    for key in ('meshes', 'buffers', 'bufferViews', 'accessors',
+                'images', 'textures', 'samplers', 'materials', 'skins', 'scenes'):
+        if previous.get(key) is not current.get(key):
+            return False
+    old_nodes = previous.get('nodes', [])
+    new_nodes = current.get('nodes', [])
+    if len(old_nodes) != len(new_nodes):
+        return False
+    for old, new in zip(old_nodes, new_nodes):
+        if old.get('mesh') != new.get('mesh') or old.get('skin') != new.get('skin'):
+            return False
+        if old.get('children', []) != new.get('children', []):
+            return False
+    return True
+
+
 class c_animation_preview:
     def __init__(self, document, animation_index):
         animations = document.get('animations', [])
