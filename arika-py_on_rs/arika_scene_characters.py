@@ -8,7 +8,7 @@ from urllib.parse import unquote
 import numpy as np
 from PIL import Image
 from arika_import import c_gltf_reader
-from arika_models import c_gltf,parse_model,export_gltf,build_gltf,require
+from arika_models import c_gltf,parse_model,parse_motions,export_gltf,build_gltf,require
 
 
 def embedded_image(reader,image):
@@ -108,18 +108,30 @@ def load_character(path,texture_path=None):
     return result
 
 
-def load_skinned_character(path,texture_path=None):
+def load_skinned_character(path,texture_path=None,motion_path=None):
     """Load a character without baking: keep nodes, skins, joints and skin attributes."""
     path=Path(path);sources=[str(path.resolve())]
     if path.suffix.lower() in ('.gltf','.glb'):
-        doc=c_gltf_reader(path).m_document
+        reader=c_gltf_reader(path)
+        doc=copy.deepcopy(reader.m_document)
+        # Project files are self-contained. Embed GLB/external buffers and
+        # normalize images into inline PNG before merging with the scene.
+        for index, buffer in enumerate(doc.get('buffers', [])):
+            data=reader.m_buffers[index]
+            buffer['uri']='data:application/octet-stream;base64,'+base64.b64encode(data).decode()
+        doc['images']=[embedded_image(reader, image) for image in doc.get('images',[])]
     else:
         model=parse_model(path.read_bytes())
         if texture_path is None:
             candidate=path.with_suffix('.pix')
             texture_path=candidate if candidate.exists() else None
         if texture_path:sources.append(str(Path(texture_path).resolve()))
-        doc=build_gltf(model,motions=(),texture_path=texture_path,clamp_skin_weights=True).to_document()
+        motions=[]
+        if motion_path:
+            motion_path=Path(motion_path)
+            sources.append(str(motion_path.resolve()))
+            motions=parse_motions(motion_path.read_bytes())['motions']
+        doc=build_gltf(model,motions=motions,texture_path=texture_path,clamp_skin_weights=True).to_document()
     extras=doc.setdefault('extras',{})
     extras['skinned_character']=True
     extras['source_paths']=sources
@@ -203,5 +215,22 @@ def merge_character(document,character,name,mesh_indices=None,translation=(0,0,0
                 doc['nodes'].append(node)
         root['children']=children
     doc['scenes'][doc.get('scene',0)]['nodes'].append(actor)
+    if skinned:
+        for animation in source.get('animations',[]):
+            copy_animation=copy.deepcopy(animation)
+            channels=[]
+            for channel in copy_animation.get('channels',[]):
+                target=channel.get('target',{})
+                mapped=node_mapping.get(target.get('node'))
+                if mapped is not None:
+                    target['node']=mapped
+                    channels.append(channel)
+            if not channels:
+                continue
+            copy_animation['channels']=channels
+            for sampler in copy_animation.get('samplers',[]):
+                sampler['input']+=offsets['accessors']
+                sampler['output']+=offsets['accessors']
+            doc.setdefault('animations',[]).append(copy_animation)
     for key in ('buffers','bufferViews','accessors','images','textures','samplers','materials'):doc.setdefault(key,[]).extend(source.get(key,[]))
     return doc,actor
