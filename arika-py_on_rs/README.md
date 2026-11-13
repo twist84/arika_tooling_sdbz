@@ -205,3 +205,25 @@ Other assets include ASE sound-effect banks, AMS music streams, ANI facial timel
 validation.json records the original SHA-256 values, full extraction checks, container counts, and exact unmodified rebuild result. Six unit tests cover the codec, extraction/repacking including replacements, unsafe paths/extents, FPIX, RFSM and TIM2 fixtures. The C/C++ codec was also checked against the original INFO.DAT. previews/menu_0000.png is a decoded menu atlas from the uploaded game.
 
 Audio WAV import is available through `arika_audio_import.py`; see `AUDIO_EXPORT.md` for rebuilding ASE/AMS and repacking GAME.DAT.
+
+## Native gizmo quaternion composition
+
+The hybrid scene editor routes quaternion multiplication used by local/world
+rotation handles through `arika_backend` (Rust f64, glTF XYZW order).
+Euler conversion and handle geometry remain in Python. Rebuild the backend
+before running tests: a previously built DLL will not export the new symbol.
+
+```bat
+cd arika-py_on_rs
+python build.py
+python -m unittest test_arika_gizmo -v
+```
+
+Rust-side tests live in `arika-py_on_rs/src/lib.rs`:
+
+```bash
+cd arika-py_on_rs
+cargo test gizmo_quaternion_tests
+```
+
+The ctypes bridge deliberately has no fallback to the old Python math.
