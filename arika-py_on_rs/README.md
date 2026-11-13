@@ -245,3 +245,23 @@ python -m unittest test_arika_gizmo test_arika_stage_view3d -v
 GitHub Actions runs these tests and the Rust unit tests on Windows and Linux
 via `.github/workflows/hybrid-editor-parity.yml`.
 
+
+### Native model hierarchy and inverse-bind transforms
+
+The model exporter/importer now uses the same native row-major f64 matrix
+primitives as the stage viewport. `arika_models.local_matrix`,
+`multiply`, and `inverse` delegate to `arika_backend` (including
+partial-pivot Gauss-Jordan inversion). Python retains skeleton graph
+traversal, cycle detection, animation parsing, and glTF serialization.
+Singular inverse-bind matrices are still rejected.
+
+Rebuild the shared library before running the model regression suite:
+
+```bat
+cd arika-py_on_rs
+python build.py
+python -m unittest test_arika_models test_arika_gizmo test_arika_stage_view3d -v
+cargo test editor_transform
+```
+
+Both platforms run these tests in the hybrid-editor parity GitHub workflow.

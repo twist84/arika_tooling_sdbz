@@ -76,12 +76,9 @@ def normalized(v):
 
 
 def local_matrix(node):
-    x, y, z, w = node['rotation']
-    sx, sy, sz = node['scale']
-    tx, ty, tz = node['translation']
-    return [[(1 - 2 * (y*y + z*z))*sx, 2*(x*y - z*w)*sy, 2*(x*z + y*w)*sz, tx],
-        [2*(x*y + z*w)*sx, (1 - 2*(x*x + z*z))*sy, 2*(y*z - x*w)*sz, ty],
-        [2*(x*z - y*w)*sx, 2*(y*z + x*w)*sy, (1 - 2*(x*x + y*y))*sz, tz], [0, 0, 0, 1]]
+    """Build the glTF-compatible row-major model transform via Rust."""
+    from arika_backend import matrix_local
+    return matrix_local(node['translation'], node['rotation'], node['scale'])
 
 
 def identity():
@@ -89,22 +86,13 @@ def identity():
 
 
 def multiply(a, b):
-    return [[sum(a[r][k] * b[k][c] for k in range(4)) for c in range(4)] for r in range(4)]
+    from arika_backend import matrix_multiply
+    return matrix_multiply(a, b)
 
 
 def inverse(a):
-    rows = [list(a[r]) + identity()[r] for r in range(4)]
-    for col in range(4):
-        pivot = max(range(col, 4), key=lambda r: abs(rows[r][col]))
-        require(abs(rows[pivot][col]) > 1e-12, 'singular bind matrix')
-        rows[pivot], rows[col] = rows[col], rows[pivot]
-        divisor = rows[col][col]
-        rows[col] = [v / divisor for v in rows[col]]
-        for r in range(4):
-            if r != col:
-                factor = rows[r][col]
-                rows[r] = [v - factor*w for v, w in zip(rows[r], rows[col])]
-    return [r[4:] for r in rows]
+    from arika_backend import matrix_inverse
+    return matrix_inverse(a)
 
 
 def quaternion_from_matrix(matrix):

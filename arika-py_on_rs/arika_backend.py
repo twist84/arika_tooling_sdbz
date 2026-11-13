@@ -222,6 +222,7 @@ for _name, _count in (
     ("arika_quaternion_to_euler", 1),
     ("arika_quaternion_inverse", 1),
     ("arika_matrix_multiply", 2),
+    ("arika_matrix_inverse", 1),
     ("arika_matrix_local", 3),
 ):
     _fn = getattr(_lib, _name)
@@ -253,6 +254,16 @@ def quaternion_to_euler(quaternion):
 
 def quaternion_inverse(quaternion):
     return _transform_call("arika_quaternion_inverse", 4, (quaternion, 4))
+
+
+def matrix_inverse(matrix):
+    if len(matrix) != 4 or any(len(row) != 4 for row in matrix):
+        raise ValueError("expected a 4x4 matrix")
+    result = _transform_call(
+        "arika_matrix_inverse", 16,
+        ([value for row in matrix for value in row], 16),
+    )
+    return [result[index:index + 4] for index in range(0, 16, 4)]
 
 
 def matrix_local(translation, rotation, scale):
