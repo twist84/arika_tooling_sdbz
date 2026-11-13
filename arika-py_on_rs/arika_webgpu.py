@@ -320,7 +320,6 @@ class c_webgpu_renderer:
                     instance['inverse_binds']=[np.asarray(m,dtype='f4').reshape(4,4).T for m in _r.accessor(bind)]
             else:
                 instance['inverse_binds']=[np.eye(4,dtype='f4') for _ in instance['joint_nodes']]
-        doc=self.m_project.m_document
         mesh=instance['mesh']
         mesh_world_inv=np.linalg.inv(np.asarray(instance['matrix'],dtype=float))
         joint_matrices=[mesh_world_inv@self.m_node_worlds[j]@instance['inverse_binds'][i] for i,j in enumerate(instance['joint_nodes'])]
