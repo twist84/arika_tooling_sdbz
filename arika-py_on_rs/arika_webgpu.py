@@ -104,6 +104,46 @@ def viewport_guides(center,distance,grid=True,axes=True):
     return groups
 
 
+def skin_vertices(positions, joints, weights, joint_matrices):
+    """CPU skinning in mesh-local space, matching the glTF joint transform.
+
+    Weight sums are normalized per vertex, as in the static character baker.
+    Invalid joint references and nonfinite/negative weights are rejected before
+    indexing the palette or writing a GPU buffer.
+    """
+    positions=np.asarray(positions,dtype='f4')
+    joints=np.asarray(joints)
+    weights=np.asarray(weights,dtype='f4')
+    matrices=np.asarray(joint_matrices,dtype='f8')
+    count=len(positions)
+    if (positions.shape!=(count,3) or joints.shape!=(count,4)
+            or weights.shape!=(count,4) or matrices.ndim!=3
+            or matrices.shape[1:]!=(4,4) or not len(matrices)):
+        raise ValueError('invalid skin vertex or joint matrix dimensions')
+    if not np.isfinite(positions).all() or not np.isfinite(matrices).all():
+        raise ValueError('nonfinite skinned position or joint matrix')
+    if not np.isfinite(weights).all() or np.any(weights<0):
+        raise ValueError('invalid skin weights')
+    if not np.isfinite(joints).all() or np.any(joints<0) or np.any(joints>=len(matrices)) or np.any(joints!=np.floor(joints)):
+        raise ValueError('invalid skin joint indices')
+    sums=weights.sum(axis=1,dtype='f8')
+    if np.any(sums<=1e-8):
+        raise ValueError('skinned vertex has no positive influence')
+    weights=(weights/sums[:,None]).astype('f4')
+    joints=joints.astype('i4')
+    homogeneous=np.column_stack((positions,np.ones(count,dtype='f4')))
+    skinned=np.zeros((count,3),dtype='f8')
+    for k in range(4):
+        active=weights[:,k]!=0
+        if not np.any(active):
+            continue
+        transformed=np.einsum('nij,nj->ni',matrices[joints[active,k]],homogeneous[active])[:,:3]
+        skinned[active]+=weights[active,k:k+1]*transformed
+    if not np.isfinite(skinned).all():
+        raise ValueError('nonfinite skinned vertices')
+    return skinned.astype('f4')
+
+
 class c_webgpu_renderer:
     def __init__(self,canvas=None,format='rgba8unorm'):
         if wgpu is None:
@@ -289,14 +329,7 @@ class c_webgpu_renderer:
         for pi,part in enumerate(self.m_meshes[mesh]):
             vbo=instance.get('skinned_vbos',{}).get(pi)
             if vbo is None or part.get('joints') is None:continue
-            positions=part['positions'];joints=part['joints'];weights=part['weights']
-            homogeneous=np.column_stack((positions,np.ones(len(positions),dtype='f4')))
-            skinned=np.zeros((len(positions),3),dtype='f4')
-            for k in range(4):
-                wk=weights[:,k:k+1]
-                jmats=all_jmats[joints[:,k]]
-                transformed=np.einsum('nij,nj->ni',jmats,homogeneous)[:,:3]
-                skinned+=wk*transformed
+            skinned=skin_vertices(part['positions'],part['joints'],part['weights'],all_jmats)
             data=np.hstack((skinned,part['uvs'])).astype('f4')
             self.m_device.queue.write_buffer(vbo,0,data.tobytes())
 
