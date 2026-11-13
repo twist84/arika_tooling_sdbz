@@ -83,6 +83,8 @@ class CharacterPreviewTests(unittest.TestCase):
 
     def test_real_example_character_has_body_face_and_embedded_textures(self):
         path=Path(__file__).parent/'examples/goku_action_232_native_poses.gltf'
+        if not path.is_file():
+            self.skipTest('optional Goku glTF fixture is not present in this checkout')
         character=load_character(path)
         self.assertEqual(len(character['meshes']),7)
         self.assertTrue(any('face' in m['name'] for m in character['meshes']))
