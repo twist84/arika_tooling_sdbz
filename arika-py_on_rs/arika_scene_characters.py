@@ -8,7 +8,7 @@ from urllib.parse import unquote
 import numpy as np
 from PIL import Image
 from arika_import import c_gltf_reader
-from arika_models import c_gltf,parse_model,export_gltf,build_gltf,require
+from arika_models import c_gltf,parse_model,parse_motions,export_gltf,build_gltf,require
 
 
 def embedded_image(reader,image):
@@ -108,7 +108,7 @@ def load_character(path,texture_path=None):
     return result
 
 
-def load_skinned_character(path,texture_path=None):
+def load_skinned_character(path,texture_path=None,motion_path=None):
     """Load a character without baking: keep nodes, skins, joints and skin attributes."""
     path=Path(path);sources=[str(path.resolve())]
     if path.suffix.lower() in ('.gltf','.glb'):
@@ -126,7 +126,12 @@ def load_skinned_character(path,texture_path=None):
             candidate=path.with_suffix('.pix')
             texture_path=candidate if candidate.exists() else None
         if texture_path:sources.append(str(Path(texture_path).resolve()))
-        doc=build_gltf(model,motions=(),texture_path=texture_path,clamp_skin_weights=True).to_document()
+        motions=[]
+        if motion_path:
+            motion_path=Path(motion_path)
+            sources.append(str(motion_path.resolve()))
+            motions=parse_motions(motion_path.read_bytes())['motions']
+        doc=build_gltf(model,motions=motions,texture_path=texture_path,clamp_skin_weights=True).to_document()
     extras=doc.setdefault('extras',{})
     extras['skinned_character']=True
     extras['source_paths']=sources
