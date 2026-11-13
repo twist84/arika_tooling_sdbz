@@ -312,3 +312,34 @@ python build.py
 cargo test --lib
 python -m unittest test_arika_models test_arika_gizmo test_arika_stage_view3d -v
 ```
+
+### Animated character preview
+
+The Qt scene editor now includes an **Animation Timeline** dock for read-only
+character playback. Use **File → Add animated character (MDL/PMT or glTF)…**
+to add either a skinned glTF/GLB with animations or a native MDL plus its
+RFSM PMT motion package. Imported characters retain skeleton nodes, skinning
+data, and their animation channels. The importer embeds external glTF buffers
+and textures so the project remains self-contained.
+
+Select a clip in the Animation Timeline, scrub its slider or press Play.
+The viewport evaluates translation/scale tracks linearly and quaternion
+rotations with native shortest-path SLERP. The CPU skinning renderer updates
+the mesh at each sampled pose without permanently modifying scene nodes.
+**Stop** restores the original authored pose. Playback does not create undo
+entries or modify the project document.
+
+The preview currently supports glTF **LINEAR** samplers (MOT2 exports use
+LINEAR); STEP, cubic spline, and morph-weight playback are not implemented.
+The native renderer remains responsible for CPU skinning and updating WebGPU
+buffers. Native PS2 character-specific shader effects are not emulated.
+
+```bat
+cd arika-py_on_rs
+python build.py
+python -m unittest test_arika_animation_preview test_arika_scene_characters -v
+```
+
+GitHub Actions validates this path on Windows and Linux, including syntax
+compilation for the Qt editor. Interactive WebGPU playback still requires a
+local visual smoke test with a representative model and motion archive.
