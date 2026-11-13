@@ -74,6 +74,34 @@ class GizmoGeometryTests(unittest.TestCase):
         euler=quaternion_to_euler(quaternion)
         self.assertTrue(all(abs(value)<1e-7 for value in euler))
 
+    def test_native_quaternion_composition_parity(self):
+        from arika_backend import quaternion_multiply
+        pairs = [
+            ((0., 0., 0., 1.), (0.2, -0.3, 0.1, 0.9)),
+            ((0.5, 0., 0., math.sqrt(.75)), (0., 0.5, 0., math.sqrt(.75))),
+            ((-0.2, 0.3, 0.4, 0.8), (0.25, -0.75, 0.1, 0.5)),
+        ]
+        for a, b in pairs:
+            x, y, z, w = a
+            dx, dy, dz, dw = b
+            expected = (
+                w*dx + x*dw + y*dz - z*dy,
+                w*dy - x*dz + y*dw + z*dx,
+                w*dz + x*dy - y*dx + z*dw,
+                w*dw - x*dx - y*dy - z*dz,
+            )
+            actual = quaternion_multiply(a, b)
+            for got, want in zip(actual, expected):
+                self.assertAlmostEqual(got, want, places=12)
+
+    def test_native_quaternion_rejects_invalid_components(self):
+        from arika_backend import quaternion_multiply, BackendError
+        with self.assertRaises(ValueError):
+            quaternion_multiply((0, 0, 1), (0, 0, 0, 1))
+        with self.assertRaises(BackendError):
+            quaternion_multiply((math.nan, 0, 0, 1), (0, 0, 0, 1))
+
+
 
 if __name__=='__main__':
     unittest.main()
