@@ -206,7 +206,29 @@ _lib.arika_pitch_for_rate.argtypes = [ctypes.c_uint, ctypes.c_uint]
 _lib.arika_next_rng.restype = ctypes.c_uint64
 _lib.arika_next_rng.argtypes = [ctypes.c_uint64, ctypes.POINTER(ctypes.c_uint)]
 
+# Gizmo quaternion math (glTF XYZW, f64)
+_quaternion4 = ctypes.c_double * 4
+_lib.arika_quaternion_multiply.restype = ctypes.c_int
+_lib.arika_quaternion_multiply.argtypes = [
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double),
+]
+_lib.arika_quaternion_multiply.errcheck = _raise_negative
+
 # --- convenience wrappers ---------------------------------------------------
+def quaternion_multiply(a, b):
+    """Multiply two glTF XYZW quaternions using native f64 math."""
+    if len(a) != 4 or len(b) != 4:
+        raise ValueError("expected two four-component quaternions")
+    lhs = _quaternion4(*(float(v) for v in a))
+    rhs = _quaternion4(*(float(v) for v in b))
+    output = _quaternion4()
+    _lib.arika_quaternion_multiply(lhs, rhs, output)
+    return list(output)
+
+
+
 
 def decode_info(data):
     return _call_buffer(_lib.arika_decode_info, data)
