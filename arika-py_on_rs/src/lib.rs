@@ -1,3 +1,4 @@
+mod editor_transform;
 //! C ABI bridge exposing arika_core functionality to arika-py_on_rs via ctypes.
 //! All JSON payloads are UTF-8 bytes returned in ArikaBuffer.
 //! Opaque handles are usize; 0 indicates an invalid/null handle.
