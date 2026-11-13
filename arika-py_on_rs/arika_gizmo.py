@@ -88,12 +88,9 @@ def _quaternion_to_euler(q):
 
 
 def _multiply_quaternions(a, b):
-    x, y, z, w = a
-    dx, dy, dz, dw = b
-    return [w*dx + x*dw + y*dz - z*dy,
-            w*dy - x*dz + y*dw + z*dx,
-            w*dz + x*dy - y*dx + z*dw,
-            w*dw - x*dx - y*dy - z*dz]
+    # Native precision-preserving composition, shared by local/world rotation.
+    from arika_backend import quaternion_multiply
+    return quaternion_multiply(a, b)
 
 
 def quaternion_multiply(a, b):
