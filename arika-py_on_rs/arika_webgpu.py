@@ -18,6 +18,7 @@ except ImportError:  # Pure camera/color helpers and unit tests do not need a GP
     wgpu = None
 from arika_import import c_gltf_reader
 from arika_models import identity,local_matrix,multiply
+from arika_animation_preview import geometry_resources_shared
 from arika_scene_state import selection_nodes,hidden_nodes
 from arika_gizmo import gizmo_geometry
 
@@ -182,8 +183,12 @@ class c_webgpu_renderer:
         return cache[key]
 
     def set_project(self,project,geometry=True,fit=False):
-        same_project=self.m_project is project
-        rebuild_geometry=bool(geometry or not self.m_meshes or not same_project)
+        previous_doc=self.m_project.m_document if self.m_project else None
+        next_doc=project.m_document
+        rebuild_geometry=bool(
+            geometry or not self.m_meshes
+            or not geometry_resources_shared(previous_doc, next_doc)
+        )
         previous_instances={}
         if rebuild_geometry:
             self._destroy_instance_resources(self.m_instances)
