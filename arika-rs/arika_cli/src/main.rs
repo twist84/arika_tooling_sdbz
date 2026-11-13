@@ -1,3 +1,5 @@
+mod archive_audit;
+
 use anyhow::{Context, Result};
 use arika_core::audio::{
     ase_samples, ams_channels, decode_adpcm, encode_adpcm, pitch_for_rate, read_wav, sample_rate,
@@ -44,6 +46,12 @@ enum Commands {
     },
     /// Show archive summary
     Info {
+        info: PathBuf,
+        #[arg(long)]
+        game: Option<PathBuf>,
+    },
+    /// Audit INFO.DAT lookup bucket ordering and archive extents.
+    Audit {
         info: PathBuf,
         #[arg(long)]
         game: Option<PathBuf>,
@@ -189,6 +197,12 @@ fn main() -> Result<()> {
             println!("INFO trailing non-record bytes: {}", arch.record_tail_bytes());
             println!("Used bytes: {}", arch.used_bytes);
             println!("Decoded size: {}", arch.decoded.len());
+        }
+        Commands::Audit { info, game } => {
+            let arch = Archive::open(&info, game.as_ref())?;
+            if !archive_audit::audit(&arch) {
+                anyhow::bail!("archive audit found lookup bucket errors");
+            }
         }
         Commands::Rebuild {
             info,
