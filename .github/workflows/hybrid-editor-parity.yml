@@ -30,4 +30,4 @@ jobs:
         working-directory: arika-py_on_rs
         run: |
           python -m pip install pillow
-          python -m unittest test_arika_gizmo test_arika_stage_view3d -v
+          python -m unittest test_arika_gizmo test_arika_stage_view3d test_arika_models -v
