@@ -105,6 +105,29 @@ The original US GAME.DAT is 732,073,984 bytes. Its indexed extent is
 uses the minimum required size. A seed-based rebuild already preserves
 the seed's INFO and GAME file sizes.
 
+### Archive lookup audit
+
+Use the conservative preflight check before testing a rebuilt archive in PCSX2:
+
+```bash
+cargo run -p arika_cli -- audit rebuilt/INFO.DAT --game rebuilt/GAME.DAT
+```
+
+`--game` is optional; providing it also checks indexed extents against the
+actual GAME.DAT file length. The archive parser rejects malformed counts,
+duplicate names, unsafe paths, overlapping extents, and undersized allocations.
+The audit additionally flags out-of-order initial-letter lookup buckets as
+errors (nonzero exit), while reporting unsorted entries within one bucket and
+non-ASCII initial letters as warnings. It does not enforce the speculative
+2,004/2,046 entry ceilings or prove compatibility with ARKD_DVD.IRX. Test the
+result in PCSX2 with actual asset lookups.
+
+Run focused regression tests:
+
+```bash
+cargo test -p arika_cli archive_audit
+```
+
 ### Lookup compatibility and emulator verification
 
 The driver builds 26 initial-letter buckets from the table, then scans
