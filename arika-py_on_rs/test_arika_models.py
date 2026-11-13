@@ -92,6 +92,53 @@ class ModelTests(unittest.TestCase):
         nodes[0]['parent'] = 1
         with self.assertRaises(ValueError): model.world_matrices(nodes)
 
+    def test_native_matrix_multiplication_and_inversion_parity(self):
+        # Independent reference equations, including nonuniform scales.
+        q = model.quaternion([17.0, -29.0, 42.0])
+        node = dict(translation=[-3.0, 4.5, 8.0],
+                    rotation=q, scale=[2.0, 0.5, 3.0])
+        x, y, z, w = q
+        sx, sy, sz = node['scale']
+        tx, ty, tz = node['translation']
+        expected = [
+            [(1-2*(y*y+z*z))*sx, 2*(x*y-z*w)*sy, 2*(x*z+y*w)*sz, tx],
+            [2*(x*y+z*w)*sx, (1-2*(x*x+z*z))*sy, 2*(y*z-x*w)*sz, ty],
+            [2*(x*z-y*w)*sx, 2*(y*z+x*w)*sy, (1-2*(x*x+y*y))*sz, tz],
+            [0, 0, 0, 1],
+        ]
+        actual = model.local_matrix(node)
+        for row_a, row_b in zip(actual, expected):
+            for value_a, value_b in zip(row_a, row_b):
+                self.assertAlmostEqual(value_a, value_b, places=11)
+        inverse = model.inverse(actual)
+        product = model.multiply(actual, inverse)
+        for r in range(4):
+            for c in range(4):
+                self.assertAlmostEqual(product[r][c], int(r == c), places=10)
+
+        # Multiply must accept arbitrary 4x4 row-major matrices.
+        rhs = [[1.0, 2.0, 3.0, 4.0],
+               [5.0, 6.0, 7.0, 8.0],
+               [9.0, 10.0, 11.0, 12.0],
+               [13.0, 14.0, 15.0, 16.0]]
+        reference = [[sum(expected[r][k] * rhs[k][c] for k in range(4))
+                      for c in range(4)] for r in range(4)]
+        native = model.multiply(actual, rhs)
+        for row_a, row_b in zip(native, reference):
+            for value_a, value_b in zip(row_a, row_b):
+                self.assertAlmostEqual(value_a, value_b, places=11)
+
+    def test_native_inverse_rejects_singular_matrix(self):
+        with self.assertRaises(ValueError):
+            model.inverse([[0.0] * 4 for _ in range(4)])
+        with self.assertRaises(ValueError):
+            model.inverse([[1.0] * 4 for _ in range(3)])
+
+    def test_native_inverse_swaps_pivot_rows(self):
+        matrix = [[0, 1, 0, 0], [1, 0, 0, 0],
+                  [0, 0, 1, 0], [0, 0, 0, 1]]
+        self.assertEqual(model.inverse(matrix), matrix)
+
     def test_export_gltf_embeds_textures_without_splitting_archive(self):
         # Minimal 1x1 RGBA32 TIM2 picture inside a normal FPIX/XPIX chunk.
         tim2 = bytearray(68)
