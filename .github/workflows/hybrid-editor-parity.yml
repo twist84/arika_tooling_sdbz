@@ -25,7 +25,7 @@ jobs:
         run: python build.py
       - name: Test native transform math
         working-directory: arika-py_on_rs
-        run: cargo test editor_transform
+        run: cargo test --lib
       - name: Test editor gizmos and stage viewport
         working-directory: arika-py_on_rs
         run: |

@@ -285,6 +285,46 @@ def matrix_multiply(a, b):
     return [result[index:index + 4] for index in range(0, 16, 4)]
 
 
+# Batch skeleton world matrices. Input: i32 parents and f64 packed TRS.
+_lib.arika_skeleton_world_matrices.restype = ctypes.c_int
+_lib.arika_skeleton_world_matrices.argtypes = [
+    ctypes.POINTER(ctypes.c_int32),
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.c_size_t,
+    ctypes.POINTER(ctypes.c_double),
+]
+
+
+def skeleton_world_matrices(nodes):
+    """Evaluate row-major world matrices for all skeleton nodes in one native call."""
+    count = len(nodes)
+    if not count:
+        return []
+    if count > 100_000:
+        raise ValueError("skeleton exceeds 100000 nodes")
+    parents = (ctypes.c_int32 * count)()
+    transforms = (ctypes.c_double * (count * 10))()
+    for index, node in enumerate(nodes):
+        parent = node['parent']
+        if not isinstance(parent, int) or parent < -1 or parent >= count:
+            raise ValueError("invalid skeleton parent index")
+        parents[index] = parent
+        values = (
+            list(node['translation']) + list(node['rotation']) + list(node['scale'])
+        )
+        if len(values) != 10:
+            raise ValueError("expected translation xyz, quaternion xyzw and scale xyz")
+        for component, value in enumerate(values):
+            transforms[index * 10 + component] = float(value)
+    result = (ctypes.c_double * (count * 16))()
+    if _lib.arika_skeleton_world_matrices(parents, transforms, count, result) != 0:
+        raise ValueError("skeleton parent cycle or invalid/nonfinite transform")
+    return [
+        [[result[i * 16 + r * 4 + c] for c in range(4)] for r in range(4)]
+        for i in range(count)
+    ]
+
+
 # --- convenience wrappers ---------------------------------------------------
 def quaternion_multiply(a, b):
     """Multiply two glTF XYZW quaternions using native f64 math."""

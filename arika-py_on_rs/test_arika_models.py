@@ -92,6 +92,57 @@ class ModelTests(unittest.TestCase):
         nodes[0]['parent'] = 1
         with self.assertRaises(ValueError): model.world_matrices(nodes)
 
+    def test_batch_skeleton_matches_independent_hierarchy(self):
+        # Parent indices are intentionally not topologically sorted.
+        nodes = [
+            dict(parent=2, translation=[1, 0, 0],
+                 rotation=model.quaternion([0, 30, 0]), scale=[1, 2, 1]),
+            dict(parent=-1, translation=[-5, 1, 0],
+                 rotation=[0, 0, 0, 1], scale=[1, 1, 1]),
+            dict(parent=1, translation=[0, 2, 3],
+                 rotation=model.quaternion([20, 0, 0]), scale=[2, 1, 0.5]),
+            dict(parent=0, translation=[0, 0, -1],
+                 rotation=model.quaternion([0, 0, 45]), scale=[1, 1, 1]),
+        ]
+        # Independent Python reference, not a call to the new world_matrices.
+        def local(node):
+            x, y, z, w = node['rotation']
+            sx, sy, sz = node['scale']
+            tx, ty, tz = node['translation']
+            return [
+                [(1-2*(y*y+z*z))*sx, 2*(x*y-z*w)*sy, 2*(x*z+y*w)*sz, tx],
+                [2*(x*y+z*w)*sx, (1-2*(x*x+z*z))*sy, 2*(y*z-x*w)*sz, ty],
+                [2*(x*z-y*w)*sx, 2*(y*z+x*w)*sy, (1-2*(x*x+y*y))*sz, tz],
+                [0, 0, 0, 1],
+            ]
+        def mul(a, b):
+            return [[sum(a[r][k]*b[k][c] for k in range(4))
+                     for c in range(4)] for r in range(4)]
+        def reference(index):
+            local_matrix = local(nodes[index])
+            parent = nodes[index]['parent']
+            return mul(reference(parent), local_matrix) if parent >= 0 else local_matrix
+        actual = model.world_matrices(nodes)
+        for index, matrix in enumerate(actual):
+            expected = reference(index)
+            for r in range(4):
+                for c in range(4):
+                    self.assertAlmostEqual(matrix[r][c], expected[r][c], places=10)
+
+    def test_batch_skeleton_validation_and_empty(self):
+        self.assertEqual(model.world_matrices([]), [])
+        def node(parent):
+            return dict(parent=parent, translation=[0, 0, 0],
+                        rotation=[0, 0, 0, 1], scale=[1, 1, 1])
+        for nodes in ([node(1), node(0)],
+                      [node(0)],
+                      [node(3)],
+                      [node(-2)],
+                      [dict(node(-1), scale=[float('nan'), 1, 1])]):
+            with self.subTest(nodes=nodes):
+                with self.assertRaises(ValueError):
+                    model.world_matrices(nodes)
+
     def test_native_matrix_multiplication_and_inversion_parity(self):
         # Independent reference equations, including nonuniform scales.
         q = model.quaternion([17.0, -29.0, 42.0])
