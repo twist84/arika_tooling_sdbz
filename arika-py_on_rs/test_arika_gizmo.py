@@ -103,5 +103,42 @@ class GizmoGeometryTests(unittest.TestCase):
 
 
 
+    def test_native_euler_conversion_at_pitch_singularity(self):
+        from arika_backend import euler_to_quaternion, quaternion_to_euler
+        for sign in (-1, 1):
+            original = (0.0, sign * math.pi / 2, 0.0)
+            quaternion = euler_to_quaternion(original)
+            result = quaternion_to_euler(quaternion)
+            for actual, expected in zip(result, original):
+                self.assertAlmostEqual(actual, expected, places=9)
+
+    def test_native_quaternion_inverse_identity_composition(self):
+        from arika_backend import euler_to_quaternion, quaternion_inverse, quaternion_multiply
+        quaternion = euler_to_quaternion((0.3, -0.4, 0.7))
+        inverse = quaternion_inverse(quaternion)
+        product = quaternion_multiply(quaternion, inverse)
+        for actual, expected in zip(product, (0, 0, 0, 1)):
+            self.assertAlmostEqual(actual, expected, places=10)
+        with self.assertRaises(Exception):
+            quaternion_inverse((0.0, 0.0, 0.0, 0.0))
+
+    def test_native_hierarchy_matrix_matches_python_formula(self):
+        from arika_backend import matrix_local, matrix_multiply, euler_to_quaternion
+        from arika_models import local_matrix, multiply
+        parent = dict(translation=[3.0, -2.0, 4.0],
+                      rotation=euler_to_quaternion((0.4, 0.1, -0.2)),
+                      scale=[2.0, 1.0, 0.5])
+        child = dict(translation=[-1.0, 2.0, 0.5],
+                     rotation=euler_to_quaternion((0.2, -0.3, 0.1)),
+                     scale=[1.0, 3.0, 1.0])
+        native_parent = matrix_local(parent['translation'], parent['rotation'], parent['scale'])
+        native_child = matrix_local(child['translation'], child['rotation'], child['scale'])
+        expected = multiply(local_matrix(parent), local_matrix(child))
+        actual = matrix_multiply(native_parent, native_child)
+        for row_a, row_b in zip(actual, expected):
+            for value_a, value_b in zip(row_a, row_b):
+                self.assertAlmostEqual(value_a, value_b, places=10)
+
+
 if __name__=='__main__':
     unittest.main()
