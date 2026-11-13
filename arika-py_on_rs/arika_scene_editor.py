@@ -938,7 +938,7 @@ class c_scene_editor(W.QMainWindow):
         file_menu=self.menuBar().addMenu('File')
         file_menu.addAction('Add character…').triggered.connect(self.add_character)
         file_menu.addAction('Add example Goku').triggered.connect(self.add_example_character)
-        file_menu.addAction('Add animated/skinned glTF…').triggered.connect(self.add_animated_character)
+        file_menu.addAction('Add animated character (MDL/PMT or glTF)…').triggered.connect(self.add_animated_character)
         file_menu.addSeparator()
         for title,shortcut,callback in [('Open stage…','Ctrl+O',self.open_stage),('Open project…','Ctrl+Shift+O',self.open_project)]:
             action=file_menu.addAction(title);action.triggered.connect(callback)
@@ -1017,12 +1017,16 @@ class c_scene_editor(W.QMainWindow):
     def add_animated_character(self):
         if not self.m_project:
             self.statusBar().showMessage('Open a stage or project first.');return
-        path,_=W.QFileDialog.getOpenFileName(self,'Import animated character','','glTF characters (*.gltf *.glb)')
+        path,_=W.QFileDialog.getOpenFileName(self,'Import animated character','','Character models (*.mdl *.gltf *.glb)')
         if not path:return
+        motion_path=None
+        if Path(path).suffix.lower()=='.mdl':
+            motion_path,_=W.QFileDialog.getOpenFileName(self,'Choose character RFSM motions','','RFSM motion packages (*.pmt)')
+            if not motion_path:return
         try:
             from arika_scene_characters import load_skinned_character
             self.stop_animation_preview()
-            character=load_skinned_character(path)
+            character=load_skinned_character(path,motion_path=motion_path)
             if not character.get('animations'):
                 raise ValueError('This character contains no glTF animation clips')
             index=self.m_project.add_character(
