@@ -288,3 +288,27 @@ python build.py
 cargo test --lib
 python -m unittest test_arika_models test_arika_gizmo test_arika_stage_view3d -v
 ```
+
+### Native MOT2 pose sampling
+
+The hybrid backend now exposes `arika_models.sample_motion_pose(motion, seconds)`
+and `sample_motion_world_matrices(motion, skeleton_nodes, seconds)`.
+The first operation samples all translation/rotation/scale tracks in **one**
+Rust call; the second matches RFSM bone names (when assigned), preserves
+unmatched skeleton transforms, and feeds the sampled local TRS data to the
+batched world-matrix evaluator.
+
+Translation/scale tracks use linear interpolation, quaternion tracks use
+shortest-path spherical interpolation with normalized output, and times
+outside the authored span clamp to the nearest key. Bad key ordering,
+nonfinite values, or invalid quaternions are rejected instead of producing
+an invalid pose. This is a reusable sampling API, **not yet a live
+animation player in the editor**. glTF export still writes original
+animation keys rather than baking sampled frames.
+
+```bat
+cd arika-py_on_rs
+python build.py
+cargo test --lib
+python -m unittest test_arika_models test_arika_gizmo test_arika_stage_view3d -v
+```

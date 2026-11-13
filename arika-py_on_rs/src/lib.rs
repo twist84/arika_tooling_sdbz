@@ -4,6 +4,7 @@
 
 mod editor_transform;
 mod skeleton_batch;
+mod motion_pose;
 
 use std::ffi::{CStr, CString};
 use std::io::{Read, Seek, SeekFrom, Write};

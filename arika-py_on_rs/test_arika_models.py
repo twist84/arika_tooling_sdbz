@@ -55,6 +55,46 @@ class ModelTests(unittest.TestCase):
         for actual,expected in zip(euler_radians(rotation),angles):
             self.assertAlmostEqual(actual,expected,places=6)
 
+    def test_native_mot2_pose_sampling(self):
+        motion = model.parse_motion(motion_fixture())
+        first = model.sample_motion_pose(motion, 0.0)[0]
+        middle = model.sample_motion_pose(motion, 0.05)[0]
+        last = model.sample_motion_pose(motion, 1.0)[0]
+        self.assertEqual(first['translation'], [0.0, 0.0, 0.0])
+        for actual, expected in zip(middle['translation'], [1.0, 2.0, 3.0]):
+            self.assertAlmostEqual(actual, expected, places=6)
+        self.assertEqual(last['translation'], [2.0, 4.0, 6.0])
+        self.assertEqual(middle['scale'], [1.0, 1.0, 1.0])
+        self.assertAlmostEqual(middle['rotation'][2], math.sqrt(0.5), places=6)
+        self.assertAlmostEqual(middle['rotation'][3], math.sqrt(0.5), places=6)
+
+    def test_native_mot2_pose_shortest_arc_and_invalid_timing(self):
+        motion = model.parse_motion(motion_fixture())
+        rotation = motion['nodes'][0]['tracks']['rotation']
+        rotation['values'][1] = [0.0, 0.0, -1.0, 0.0]
+        sample = model.sample_motion_pose(motion, .05)[0]
+        self.assertAlmostEqual(abs(sample['rotation'][2]), math.sqrt(.5), places=6)
+        self.assertAlmostEqual(abs(sample['rotation'][3]), math.sqrt(.5), places=6)
+        with self.assertRaises(ValueError):
+            model.sample_motion_pose(motion, float('nan'))
+        rotation['times'] = [0.0, 0.0]
+        with self.assertRaises(ValueError):
+            model.sample_motion_pose(motion, .05)
+
+    def test_native_motion_named_skeleton_hierarchy(self):
+        motion = model.parse_motion(motion_fixture())
+        motion['nodes'][0]['name'] = 'animated'
+        skeleton = [
+            dict(name='root', parent=-1, translation=[10, 0, 0],
+                 rotation=[0, 0, 0, 1], scale=[1, 1, 1]),
+            dict(name='animated', parent=0, translation=[0, 0, 0],
+                 rotation=[0, 0, 0, 1], scale=[1, 1, 1]),
+        ]
+        world = model.sample_motion_world_matrices(motion, skeleton, .05)
+        self.assertAlmostEqual(world[1][0][3], 11.0, places=6)
+        self.assertAlmostEqual(world[1][1][3], 2.0, places=6)
+        self.assertAlmostEqual(world[1][2][3], 3.0, places=6)
+
     def test_packet_continuation_and_winding(self):
         parsed = model.mesh_geometry(geometry_fixture(), [-1]*32, [0], 0)
         self.assertEqual(parsed['primitives'][0]['triangles'], [[0,1,2],[2,1,3]])

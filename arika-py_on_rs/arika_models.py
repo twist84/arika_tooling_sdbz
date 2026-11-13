@@ -305,6 +305,30 @@ def parse_motion(data):
         channel_counts=[v['channels'] for v in arrays], nodes=nodes)
 
 
+def sample_motion_pose(motion, seconds):
+    """Sample every MOT2 node's local TRS at a time in seconds."""
+    from arika_backend import motion_sample_pose
+    return motion_sample_pose(motion, seconds)
+
+
+def sample_motion_world_matrices(motion, skeleton_nodes, seconds):
+    """Sample motion and evaluate named bone world matrices.
+
+    Unmatched skeleton nodes retain their bind/local TRS; matching tracks
+    override them. RFSM bindings supply motion-node names when available.
+    """
+    samples = sample_motion_pose(motion, seconds)
+    by_name = {node['name']: pose for node, pose in zip(motion['nodes'], samples)
+               if node.get('name') is not None}
+    posed = []
+    for node in skeleton_nodes:
+        transform = dict(node)
+        if node['name'] in by_name:
+            transform.update(by_name[node['name']])
+        posed.append(transform)
+    return world_matrices(posed)
+
+
 def parse_motions(data):
     shared = archive.motion_archive(data)
     result = []
