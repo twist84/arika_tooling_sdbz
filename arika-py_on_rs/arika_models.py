@@ -118,19 +118,9 @@ def quaternion_from_matrix(matrix):
 
 
 def world_matrices(nodes):
-    result=[None]*len(nodes)
-    visiting=set()
-    def visit(i):
-        require(i not in visiting,'skeleton parent cycle')
-        if result[i] is not None:return result[i]
-        visiting.add(i)
-        node=nodes[i]
-        parent=identity() if node['parent']<0 else visit(node['parent'])
-        result[i]=multiply(parent,local_matrix(node))
-        visiting.remove(i)
-        return result[i]
-    for i in range(len(nodes)):visit(i)
-    return result
+    """Compute all skeleton world matrices with one native batch call."""
+    from arika_backend import skeleton_world_matrices
+    return skeleton_world_matrices(nodes)
 
 
 def string_list(data, count):
