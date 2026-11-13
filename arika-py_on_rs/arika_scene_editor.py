@@ -18,6 +18,7 @@ from arika_scene_project import c_scene_project,material_preview_document
 from arika_editor_settings import c_editor_settings
 from arika_import import c_gltf_reader
 from arika_models import identity,local_matrix,multiply
+from arika_animation_preview import c_animation_preview
 from arika_scene_state import node_state,hidden_nodes,selection_nodes,transform_locks
 
 NAVIGATION_HELP='MMB orbit · Shift+MMB pan · Ctrl+MMB zoom · Wheel zoom · Home frame all · Numpad . frame selected · Numpad 1/3/7 views · Numpad 5 perspective/ortho'
@@ -787,6 +788,8 @@ class c_scene_editor(W.QMainWindow):
         super().__init__();self.m_settings=c_editor_settings();self.m_project=None;self.m_project_path=None;self.m_index=None;self.m_material=-1;self.m_items={};self.m_color=[1,1,1,1];self.m_audio=-1
         self.m_transform_orientation='local';self.m_pivot_mode='median';self.m_cursor_location=[0.0,0.0,0.0];self.m_cursor_axes=[[1.,0.,0.],[0.,1.,0.],[0.,0.,1.]];self.m_custom_orientation_axes=None;self.m_snap_steps={'move':1.0,'rotate':15.0,'scale':0.1}
         self.m_audio_buffer=None;self.m_audio_playing=False;self.m_audio_timer=None;self.m_audio_duration_ms=0
+        self.m_animation_preview=None;self.m_animation_timer=C.QTimer(self);self.m_animation_timer.timeout.connect(self.animation_tick)
+        self.m_animation_clock=C.QElapsedTimer();self.m_animation_start=0.0
         self.setWindowTitle('Arika WebGPU scene editor');self.resize(1400,900);self.m_view=c_viewport();self.m_view.selection_requested.connect(self.select_view);self.m_view.selection_all.connect(self.select_all);self.m_view.delete_requested.connect(self.delete_selected);self.m_view.transform_changed.connect(self.sync_selection);self.m_view.gizmo_mode_requested.connect(self.set_gizmo_mode)
         self.m_views=W.QStackedWidget();self.m_views.addWidget(self.m_view);self.m_material_view=c_viewport();self.m_material_view.m_show_gizmo=False;self.m_material_view.m_options.update(grid=False,axes=False);self.m_views.addWidget(self.m_material_view)
         texture_panel=W.QWidget();texture_layout=W.QVBoxLayout(texture_panel);self.m_texture_info=W.QLabel('Choose a texture');texture_layout.addWidget(self.m_texture_info);self.m_texture_view=c_texture_view();texture_layout.addWidget(self.m_texture_view);self.m_views.addWidget(texture_panel)
@@ -915,6 +918,7 @@ class c_scene_editor(W.QMainWindow):
         self.m_audio_play=W.QPushButton('Play');self.m_audio_play.clicked.connect(self.play_audio);self.m_audio_play.setEnabled(False)
         audio_panel=W.QWidget();ap=W.QVBoxLayout(audio_panel);ap.setContentsMargins(0,0,0,0);ap.addWidget(self.m_audio_browser);ap.addWidget(self.m_audio_browser_info);ap.addWidget(self.m_audio_play)
         self.m_audio_dock=W.QDockWidget('Asset Browser — Audio',self);self.m_audio_dock.setObjectName('scene_audio');self.m_audio_dock.setWidget(audio_panel);self.addDockWidget(C.Qt.DockWidgetArea.BottomDockWidgetArea,self.m_audio_dock)
+        self.build_animation_timeline()
         self.setCorner(C.Qt.Corner.BottomRightCorner,C.Qt.DockWidgetArea.RightDockWidgetArea)
         self.build_menus()
         workspaces=self.addToolBar('Workspaces');workspaces.setObjectName('workspace_header');workspaces.setMovable(False)
@@ -934,6 +938,7 @@ class c_scene_editor(W.QMainWindow):
         file_menu=self.menuBar().addMenu('File')
         file_menu.addAction('Add character…').triggered.connect(self.add_character)
         file_menu.addAction('Add example Goku').triggered.connect(self.add_example_character)
+        file_menu.addAction('Add animated/skinned glTF…').triggered.connect(self.add_animated_character)
         file_menu.addSeparator()
         for title,shortcut,callback in [('Open stage…','Ctrl+O',self.open_stage),('Open project…','Ctrl+Shift+O',self.open_project)]:
             action=file_menu.addAction(title);action.triggered.connect(callback)
@@ -995,7 +1000,7 @@ class c_scene_editor(W.QMainWindow):
             meshes=character['meshes'];selected=list(range(len(meshes)))
             if choose:
                 dialog=W.QDialog(self);dialog.setWindowTitle('Character mesh variants');dialog.resize(440,480);layout=W.QVBoxLayout(dialog)
-                note=W.QLabel('Choose meshes to include. Alternate hands, hair or costumes may overlap. Static authored pose; no animation playback.');note.setWordWrap(True);layout.addWidget(note)
+                note=W.QLabel('Choose meshes to include. Alternate hands, hair or costumes may overlap. Static authored pose; use animated/skinned glTF import for playback.');note.setWordWrap(True);layout.addWidget(note)
                 items=W.QListWidget();layout.addWidget(items)
                 for mesh in meshes:
                     item=W.QListWidgetItem(mesh.get('name','Character mesh'));item.setCheckState(C.Qt.CheckState.Checked);items.addItem(item)
@@ -1008,6 +1013,124 @@ class c_scene_editor(W.QMainWindow):
             self.populate();self.select_view(index);self.m_workspaces.setCurrentIndex(3)
             self.statusBar().showMessage('Character added in authored pose. Unlock its root to place it. Save project retains it; STG does not include character instances.')
         except Exception as error:self.fail(error)
+
+    def add_animated_character(self):
+        if not self.m_project:
+            self.statusBar().showMessage('Open a stage or project first.');return
+        path,_=W.QFileDialog.getOpenFileName(self,'Import animated character','','glTF characters (*.gltf *.glb)')
+        if not path:return
+        try:
+            from arika_scene_characters import load_skinned_character
+            self.stop_animation_preview()
+            character=load_skinned_character(path)
+            if not character.get('animations'):
+                raise ValueError('This character contains no glTF animation clips')
+            index=self.m_project.add_character(
+                character,Path(path).stem,translation=[self.m_view.m_center[0],0,self.m_view.m_center[2]],
+                skinned=True,
+            )
+            self.populate();self.select_view(index)
+            self.m_animation_dock.show()
+            self.statusBar().showMessage('Animated character imported. Select a clip in the Animation Timeline.')
+        except Exception as error:self.fail(error)
+
+    def build_animation_timeline(self):
+        panel=W.QWidget();layout=W.QVBoxLayout(panel);layout.setContentsMargins(6,6,6,6)
+        controls=W.QHBoxLayout();self.m_animation_combo=W.QComboBox()
+        self.m_animation_combo.setMinimumWidth(180);self.m_animation_combo.currentIndexChanged.connect(self.select_animation_preview)
+        controls.addWidget(self.m_animation_combo,1)
+        self.m_animation_play=W.QPushButton('▶ Play');self.m_animation_play.clicked.connect(self.play_animation)
+        controls.addWidget(self.m_animation_play)
+        self.m_animation_stop=W.QPushButton('■ Stop');self.m_animation_stop.clicked.connect(self.stop_animation_preview)
+        controls.addWidget(self.m_animation_stop)
+        layout.addLayout(controls)
+        timeline=W.QHBoxLayout();self.m_animation_slider=W.QSlider(C.Qt.Orientation.Horizontal)
+        self.m_animation_slider.setRange(0,1000);self.m_animation_slider.valueChanged.connect(self.seek_animation)
+        timeline.addWidget(self.m_animation_slider,1)
+        self.m_animation_label=W.QLabel('0.00 / 0.00 s');timeline.addWidget(self.m_animation_label)
+        layout.addLayout(timeline)
+        self.m_animation_hint=W.QLabel('Read-only preview. Scrub or play glTF animation clips; Stop restores the authored pose.')
+        self.m_animation_hint.setWordWrap(True);layout.addWidget(self.m_animation_hint)
+        dock=W.QDockWidget('Animation Timeline',self);dock.setObjectName('scene_animation')
+        dock.setWidget(panel);self.addDockWidget(C.Qt.DockWidgetArea.BottomDockWidgetArea,dock)
+        self.m_animation_dock=dock
+        self.refresh_animation_list()
+
+    def refresh_animation_list(self):
+        if not hasattr(self,'m_animation_combo'):return
+        self.m_animation_combo.blockSignals(True);self.m_animation_combo.clear()
+        self.m_animation_combo.addItem('Select animation…',None)
+        if self.m_project:
+            for index,animation in enumerate(self.m_project.m_document.get('animations',[])):
+                self.m_animation_combo.addItem(animation.get('name','Animation %d'%index),index)
+        self.m_animation_combo.setCurrentIndex(0);self.m_animation_combo.blockSignals(False)
+        self.m_animation_play.setEnabled(self.m_animation_combo.count()>1)
+
+    def select_animation_preview(self,index):
+        self.stop_animation_preview()
+        if index<=0 or not self.m_project:return
+        try:
+            clip=self.m_animation_combo.itemData(index)
+            self.m_animation_preview=c_animation_preview(self.m_project.m_document,clip)
+            self.m_animation_slider.blockSignals(True);self.m_animation_slider.setValue(0);self.m_animation_slider.blockSignals(False)
+            self.m_view.m_show_gizmo=False;self.m_object_view.m_show_gizmo=False
+            self.m_tree.setEnabled(False);self.m_properties_tabs.setEnabled(False)
+            self.update_animation_pose(0.0)
+        except Exception as error:
+            self.stop_animation_preview();self.fail(error)
+
+    def update_animation_pose(self,seconds):
+        if self.m_animation_preview is None:return
+        duration=self.m_animation_preview.m_duration
+        seconds=self.m_animation_preview.seek(seconds)
+        fraction=int(round(1000*seconds/duration)) if duration>0 else 0
+        self.m_animation_slider.blockSignals(True);self.m_animation_slider.setValue(fraction);self.m_animation_slider.blockSignals(False)
+        self.m_animation_label.setText('%.2f / %.2f s'%(seconds,duration))
+        for view in (self.m_view,self.m_object_view):
+            view.set_project(self.m_animation_preview.m_project,geometry=False)
+        return seconds
+
+    def seek_animation(self,value):
+        if self.m_animation_preview is None:return
+        self.update_animation_pose(self.m_animation_preview.m_duration*value/1000.0)
+        if self.m_animation_timer.isActive():
+            self.m_animation_start=self.m_animation_preview.m_duration*value/1000.0
+            self.m_animation_clock.restart()
+
+    def play_animation(self):
+        if self.m_animation_preview is None:
+            if self.m_animation_combo.currentIndex()<=0:return
+            self.select_animation_preview(self.m_animation_combo.currentIndex())
+        if self.m_animation_preview is None:return
+        duration=self.m_animation_preview.m_duration
+        self.m_animation_start=duration*self.m_animation_slider.value()/1000.0
+        if self.m_animation_start>=duration:self.m_animation_start=0.0
+        self.m_animation_clock.start();self.m_animation_timer.start(33)
+        self.m_animation_play.setText('▶ Playing')
+
+    def animation_tick(self):
+        if self.m_animation_preview is None or not self.m_animation_clock.isValid():return
+        duration=self.m_animation_preview.m_duration
+        position=self.m_animation_start+self.m_animation_clock.elapsed()/1000.0
+        if position>=duration:
+            self.m_animation_timer.stop();self.m_animation_play.setText('▶ Play')
+            position=duration
+        self.update_animation_pose(position)
+
+    def stop_animation_preview(self):
+        if not hasattr(self,'m_animation_timer'):return
+        self.m_animation_timer.stop();self.m_animation_clock.invalidate()
+        preview=self.m_animation_preview;self.m_animation_preview=None
+        if hasattr(self,'m_animation_play'):self.m_animation_play.setText('▶ Play')
+        if hasattr(self,'m_animation_label'):self.m_animation_label.setText('0.00 / 0.00 s')
+        if hasattr(self,'m_animation_slider'):
+            self.m_animation_slider.blockSignals(True);self.m_animation_slider.setValue(0);self.m_animation_slider.blockSignals(False)
+        if not preview:return
+        self.m_view.m_show_gizmo=True
+        self.m_object_view.m_show_gizmo=True
+        self.m_tree.setEnabled(True);self.m_properties_tabs.setEnabled(True)
+        for view in (self.m_view,self.m_object_view):
+            view.set_project(self.m_project,geometry=False)
 
     def reset_layout(self):
         for dock in (self.m_outliner_dock,self.m_properties_dock,self.m_assets_dock):dock.setFloating(False);dock.show()
@@ -1096,6 +1219,7 @@ class c_scene_editor(W.QMainWindow):
         path,_=W.QFileDialog.getOpenFileName(self,'Open project',self.m_settings.last_directory('project'),'Arika project (*.arika-scene.json)')
         if path:self.load_scene_file(path,'project')
     def populate(self,fit=False):
+        self.stop_animation_preview()
         previous=set(self.m_view.m_selection) if not fit else set();active=self.m_index
         self.m_tree.blockSignals(True);self.m_tree.clear();self.m_items={};doc=self.m_project.m_document
         self.m_scene_status.setText('%d objects | %d materials | %d textures | %d audio'%(len(doc.get('nodes',[])),len(doc.get('materials',[])),len(doc.get('textures',[])),len(doc.get('audios',[]))))
@@ -1116,7 +1240,7 @@ class c_scene_editor(W.QMainWindow):
         self.m_materials.blockSignals(False);self.m_view.set_project(self.m_project,fit);self.m_object_view.set_project(self.m_project,True);self.m_index=None;self.m_material=-1;self.m_audio=-1;self.refresh_texture_browser();self.refresh_audio_browser()
         if fit:self.m_view.m_isolated=None
         if doc['materials']:self.m_materials.setCurrentRow(0)
-        self.sync_selection()
+        self.sync_selection();self.refresh_animation_list()
     def select_view(self,index,additive=False):
         self.m_tree.blockSignals(True)
         if not additive:self.m_tree.clearSelection()
