@@ -51,6 +51,23 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertIn('Dragon Summoning', editor.m_navigation_status.text())
         self.assertIn('Shenron', editor.m_navigation_status.toolTip())
 
+    def test_render_changes_with_selected_item(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        self.assertIsNotNone(editor.m_data, 'bundled 2D preview should load from repo root')
+
+        def draw():
+            image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            image.fill(G.QColor('black'))
+            painter = G.QPainter(image)
+            editor.render(painter, C.QRect(0, 0, 512, 448))
+            painter.end()
+            return bytes(image.constBits())
+
+        original = draw()
+        self.assertTrue(editor.navigate(3))
+        self.assertNotEqual(original, draw(), 'switching item should change the actual canvas')
+ 
     def test_preview_keyboard_navigation_and_confirm_cancel(self):
         from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
         editor = self.m_editor
