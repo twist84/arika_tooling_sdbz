@@ -83,10 +83,13 @@ class c_strip_oracle:
         for _ in range(4096):
             if pc==0xf00000:return
             word=self.m_code[pc];op=word>>26;rs=(word>>21)&31;rt=(word>>16)&31;fn=word&63
-            is_branch=op in (4,5,6) or (op==17 and rs==8)
+            is_branch=op in (1,4,5,6) or (op==17 and rs==8)
             is_jump=op==0 and fn in (8,9)
             if is_branch:
-                if op==4:take=r[rs]==r[rt]
+                if op==1:
+                    if rt != 0:raise AssertionError('unsupported REGIMM branch 0x%08X'%word)
+                    take=r[rs]<0
+                elif op==4:take=r[rs]==r[rt]
                 elif op==5:take=r[rs]!=r[rt]
                 elif op==6:take=r[rs]<=0
                 else:take=self.m_condition==bool(rt&1)
