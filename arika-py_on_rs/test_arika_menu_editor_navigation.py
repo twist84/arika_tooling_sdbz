@@ -113,6 +113,42 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertFalse(editor.load_textures(None))
         self.assertIsNone(editor.m_help_panel_uv)
 
+    def test_reference_pose_match_restores_display_and_ranks_samples(self):
+        from PIL import Image
+        from arika_menu_frame_match import normalize_reference
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        for index in range(13):
+            pixmap = G.QPixmap(512, 512)
+            pixmap.fill(G.QColor.fromHsv(index * 17, 190, 220))
+            editor.m_textures[index] = pixmap
+        editor.m_help_panel = False
+        editor.m_time = 70.0
+        old_mode = editor.m_presentation
+        editor.m_presentation = 'tv_4_3'
+        image = G.QImage(512, 384, G.QImage.Format.Format_RGBA8888)
+        image.fill(G.QColor('#10151c'))
+        painter = G.QPainter(image)
+        editor.render(painter, C.QRect(0, 0, 512, 384))
+        painter.end()
+        reference = normalize_reference(
+            Image.frombytes('RGBA', (512, 384), bytes(image.constBits())))
+        editor.m_presentation = old_mode
+        editor.m_selection_age = 2.0
+
+        editor.match_reference_image(reference)
+        self.assertEqual(editor.m_presentation, old_mode)
+        self.assertEqual(editor.m_selection_age, 2.0)
+        self.assertEqual(len(editor.m_reference_matches), 5)
+        self.assertLessEqual(editor.m_reference_matches[0][0], 0.01)
+        self.assertIn('Match 1/5:', editor.m_match_status.text())
+        self.assertEqual(editor.m_time,
+                         float(editor.m_reference_matches[0][1]))
+        editor.next_reference_match()
+        self.assertEqual(editor.m_reference_match_index, 1)
+        self.assertIn('Match 2/5:', editor.m_match_status.text())
+        editor.m_timer.stop()
+
     def test_presentation_mode_changes_display_only(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
