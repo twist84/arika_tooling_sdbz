@@ -6394,7 +6394,170 @@
     ]
   },
   "first_components": {
-    "version": 1,
+    "version": 2,
+    "animation": {
+      "entry": {
+        "values_address": 5219720,
+        "times_address": 5219712,
+        "values": [
+          128,
+          0
+        ],
+        "times": [
+          0,
+          5
+        ]
+      },
+      "bounce": {
+        "values_address": 4890064,
+        "times_address": 4890000,
+        "values": [
+          0,
+          3,
+          6,
+          3,
+          0,
+          2,
+          4,
+          2,
+          0,
+          1,
+          2,
+          1,
+          0
+        ],
+        "times": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ]
+      },
+      "exit": {
+        "values_address": 5219752,
+        "times_address": 5219744,
+        "values": [
+          0,
+          512
+        ],
+        "times": [
+          0,
+          10
+        ]
+      },
+      "emphasis": {
+        "wave": {
+          "values_address": 4890144,
+          "times_address": 4890128,
+          "values": [
+            0,
+            1,
+            2,
+            1
+          ],
+          "times": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "envelope": {
+          "values_address": 5219736,
+          "times_address": 5219728,
+          "values": [
+            6,
+            0
+          ],
+          "times": [
+            0,
+            15
+          ]
+        },
+        "period": 4
+      },
+      "reset_position": [
+        0,
+        0
+      ],
+      "components": [
+        {
+          "item": 0,
+          "init_callback": 3621840,
+          "phase_two_callback": 3621904,
+          "direction": [
+            -1,
+            -1
+          ]
+        },
+        {
+          "item": 1,
+          "init_callback": 3622688,
+          "phase_two_callback": 3622736,
+          "direction": [
+            -1,
+            0
+          ]
+        },
+        {
+          "item": 2,
+          "init_callback": 3646896,
+          "phase_two_callback": 3646944,
+          "direction": [
+            0,
+            1
+          ]
+        },
+        {
+          "item": 3,
+          "init_callback": 3647440,
+          "phase_two_callback": 3647584,
+          "direction": [
+            1,
+            -1
+          ]
+        },
+        {
+          "item": 4,
+          "init_callback": 3623200,
+          "phase_two_callback": 3623264,
+          "direction": [
+            -1,
+            1
+          ]
+        },
+        {
+          "item": 5,
+          "init_callback": 3651040,
+          "phase_two_callback": 3651088,
+          "direction": [
+            1,
+            0
+          ]
+        },
+        {
+          "item": 6,
+          "init_callback": 3652752,
+          "phase_two_callback": 3652800,
+          "direction": [
+            1,
+            1
+          ]
+        }
+      ],
+      "entry_address": 3620192,
+      "exit_address": 3620448,
+      "phase_two_dispatch": 3619528
+    },
     "groups": [
       {
         "item": 0,
