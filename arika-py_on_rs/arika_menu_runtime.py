@@ -67,6 +67,12 @@ class c_menu_runtime:
         self.reset()
 
     def reset(self):
+        # The editor's reset represents destruction/reconstruction of the
+        # native menu object, not a selection transition. 0x37A820 tears
+        # down the one global pool before 0x37A7D0 constructs a new one.
+        previous_pool = getattr(self, 'm_particle_pool', None)
+        if previous_pool is not None and previous_pool.m_alive:
+            previous_pool.close()
         self.m_navigation = c_menu_navigation(self.m_report)
         self.m_navigation.m_selected = -1
         self.m_navigation.m_previous = -1
