@@ -49,7 +49,29 @@ class c_dragon_particle_pool:
         self.m_slots = []
         self.m_random_draws = []
         self.m_total_draws = 0
+        self.m_alive = True
+        # The ELF startup constructor zero-fills 0x4FC990/0x4FC994.
+        # Later writes must be supplied explicitly before teardown.
+        self.m_reset_position = [0.0, 0.0]
         self._initialize()
+
+    def _ensure_live(self):
+        if not self.m_alive:
+            raise RuntimeError('native Dragon particle pool was destroyed')
+
+    def close(self):
+        """0x37A820 -> 0x37AF60 -> 0x37AD10, once per object lifetime.
+
+        Native 0x37AF60 resets all six embedded sprites in ascending
+        address order. 0x37AD10 destroys/frees the allocation but does
+        not clear the stale 0x4FDC64 pointer; the isolated host model
+        deliberately invalidates the object instead of keeping a dangling
+        accessible allocation. No RNG is consumed by the destructor.
+        """
+        self._ensure_live()
+        for slot in self.m_slots:
+            self._retire(slot)
+        self.m_alive = False
 
     def _rand(self, role):
         value = self.m_rng.next()
@@ -100,7 +122,9 @@ class c_dragon_particle_pool:
     def _retire(self, slot):
         # 0x37B328..0x37B350: sprite reset, flag/speed zero, reset XY.
         # The native sprite may retain metadata while inactive.
-        slot.update(active=False, speed=0.0, x=0.0, y=0.0)
+        slot.update(active=False, speed=0.0,
+                    x=self.m_reset_position[0],
+                    y=self.m_reset_position[1])
 
     def _update_slot(self, slot):
         if not slot['active']:
@@ -129,6 +153,7 @@ class c_dragon_particle_pool:
         Exhausted pools consume only the timer RNG; a free slot consumes
         three additional RNG values before the timer value.
         """
+        self._ensure_live()
         self.m_random_draws = []
         # 0x37A880 with the 0x37A88C branch-delay store.
         timer = f32(f32(timer) - f32(1.0))
@@ -159,7 +184,8 @@ class c_dragon_particle_pool:
             rng_state=self.m_rng.get_state(),
             random_draws=tuple(self.m_random_draws),
             total_random_draws=self.m_total_draws,
-            clip_boundary=self.m_clip_boundary)
+            clip_boundary=self.m_clip_boundary,
+            alive=self.m_alive)
 
     def geometry(self, component_offset=(0.0, 0.0), depth=0.0):
         """Pure draw-command inspection for active sprites, slots 0..5.
@@ -168,6 +194,7 @@ class c_dragon_particle_pool:
         drawing. The preview computes those presentation values without
         persisting a competing mutable simulation or consuming RNG.
         """
+        self._ensure_live()
         result = []
         for slot in self.m_slots:
             if not slot['active']:
