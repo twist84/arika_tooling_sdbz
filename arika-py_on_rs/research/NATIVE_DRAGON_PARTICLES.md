@@ -178,13 +178,92 @@ The tests in `test_arika_menu_particle_teardown.py` and
 resource/destructor callbacks. The new tests are part of Windows/Linux CI.
 Check the current head's Action run before marking this checkpoint green.
 
+## Texture-backed sprite UV setter and shared RNG scheduling
+
+The DRAGON SUMMONING embedded sprite uses the subclass vtable at
+`0x004EDCB0`, constructed by `0x002FCCB0`:
+
+| Virtual entry | Native function | Recovered behavior |
+| --- | --- | --- |
+| +0x18 | `0x002FCDD0` | Convert XYWH sprite template to endpoint UVs |
+| +0x1C | `0x002FCE20` | Call base `0x002FD9E0` to update four signed 16-bit UV endpoints, then recalculate texture-coordinate floats if a texture is attached |
+| +0x24 | `0x002FDA00` | Clear the four short UV endpoints and reset sprite fields; the existing normalized floats remain in the inactive allocation |
+
+A nonzero texture pointer at sprite +`0x44` supplies dimensions via its
+vtable +`0x40` (width) and +`0x44` (height). The setter writes the
+following eight `float32` fields, using the width and height retrieved
+from the native texture object:
+
+| Sprite offset | Derived float |
+| --- | --- |
+| +0x60 | left / width |
+| +0x64 | top / height |
+| +0x68 | right / width |
+| +0x6C | top / height |
+| +0x70 | left / width |
+| +0x74 | bottom / height |
+| +0x78 | right / width |
+| +0x7C | bottom / height |
+
+`test_arika_menu_particle_uv.py` interprets the native `0x2FCE20`
+instructions with controlled resource width/height getters and checks all
+eight float fields across 36 endpoint/texture-size combinations. It also
+tests the null-texture early exit and executes the `0x2FDA00` reset.
+The test-only scalar interpreter gained `SRL` to run the positive-texture
+code path. The test substitutes resource getters, not native GS rendering.
+
+The Python particle pool now records the four distinct normalized values
+as **derived presentation metadata** in `uv_normalized`, and retains them
+through retirement while clearing the short UV fields as the native reset
+does. A missing texture has explicit unknown normalized metadata. The Qt
+editor reads the **actual decoded TIM2 dimensions of texture entry 11** from
+an opened `dis/main_menu.pix`; there is no hardcoded 512x512 assumption
+or relation to the separate 512x448 menu display. Supplying dimensions
+does not advance simulation or consume the RNG.
+
+The shared context RNG call order is not only local to the six particle
+slots. The recovered menu update is:
+
+```text
+0x00379A40 outer component update
+  -> 0x00377DE0 shared scheduler
+     -> 0x00376080 ten-slot companion owner update
+        -> (owner phase 2) 0x003761B0 active callback
+           -> 0x003766C0 first-free companion spawn search
+              -> 0x00190450 global RNG (template/Y/speed when free)
+           -> 0x00190450 global RNG (event timer on expiry)
+  -> pending item and current item update
+     -> 0x00373A10 first-component phase dispatcher
+        -> 0x0037A860 DRAGON SUMMONING phase-2 callback
+           -> 0x00190450 shared global RNG
+```
+
+The shared entry callback `0x00377FB0` issues
+`0x00376390` to start the inner companion owner. The runtime now
+executes those **already-recovered** `update_owner` and `start_owner`
+callbacks in `step_shared`, with the ten-slot companion state
+`initialize_owner/step_owner` and the six-slot Dragon pool consuming the
+*same* `c_native_rng` instance. The companion update occurs before the
+selected-item particle callback. A seeded unit test checks both the shared
+entry/update ordering and same-frame competition for template/height/speed/
+timer RNG outputs, as well as deterministic reset, snapshot purity, and
+unseeded unresolved state. The isolated seed (1 in the Qt diagnostic
+preview) is not the game's captured active-context seed; other systems can
+also consume this context RNG and have not all been accounted for.
+
+These changes reconstruct logical owner/RNG ordering only. They do not yet
+render the companions through Qt's native mode, claim pixel-exact GS
+blending, or establish actual in-game seed/state/call-count parity.
+
 ## Remaining before Phase A can be signed off
 
 - [x] Verify pool reset/destructor ordering and document dangling global-pointer behavior; the host representation explicitly invalidates the object and the indirect owner destruction timing beyond its vtable remains runtime-dependent.
-- [ ] Recover all sprite UV setter side effects, overflow CVT.W.S branches and EE hardware float-to-short behavior; host-chop fractional instruction tests are added but are not a full hardware oracle.
+- [x] Recover subclass sprite UV setter, attached-texture normalization, and UV reset side effects; 36 interpreted sprite-setter cases and texture-size-aware Qt plumbing added.
+- [ ] Verify remaining CVT.W.S overflow branches, EE hardware float-to-short behavior, and GS texture setup; host-chop fractional tests are not a full hardware oracle.
 - [x] Establish the unique direct GP-relative initializer at `0x4E23CC` (`249 - 10 = 239`), and mark pointer-based runtime writers unresolved.
 - Validate `ADDA.S/MADD.S` float32/ACC precision against interpreted instructions.
-- Confirm real runtime seed/context sharing with other systems; explicit seeded replay is not the same as a captured game.
+- [x] Couple the recovered ten-slot companion owner and six-slot Dragon pool to the same isolated context RNG, respecting shared-before-item callback order.
+- [ ] Capture actual live-context RNG seed and other consumers; injected seed replay is not equivalent to a running game.
 - Confirm draw ordering relative to the item's other first-layer sprite draws and resource depth/blending.
 
 No sample-23/sample-120 or FPS assumptions have been introduced. Ownership, input branches, and exact callback counts above are sufficient to build a **seed-injected isolated logical simulation** while leaving unresolved graphics and live-context synchronization explicit.
