@@ -57,11 +57,28 @@ The preview now requests repaint on its actual `c_menu_canvas` child whenever
 a frame, item or layer changes. Previously it called `update()` only on the
 editor container, which could leave the textured canvas visually stale.
 
+
+## Arrow and help-box rendering (screenshot comparison)
+
+The reference screenshots show each item with a bottom help frame containing
+four lines and direction arrows that are part of the menu image, not external
+Qt controls. The editor now draws the four original ELF-extracted strings in
+its 512×448 canvas. The decorative frame, cloud accents, and font selection are
+**temporary QPainter approximations**; native UVs/font rendering remain to be
+recovered. The existing Qt help label is retained as an inspection aid.
+
+Arrow UVs, base coordinates, and the history-dependent variants are taken from
+`arrow_baselines` in `main_menu_map.json`. The visual bob is an authored
+32-sample sine displacement (3 canvas pixels), not yet the original arrow
+animation routine. The **Arrow bob (preview)** and **Help panel** checkboxes
+allow individual visual comparison. No captured artwork or screenshots are
+embedded in the repo; arrow sprites still load from the user's FPIX atlas.
+
 ## Validation and next research
 
 ```sh
 cd arika-py_on_rs
-python -m unittest test_arika_menu_navigation test_arika_menu_selection_effect test_arika_menu_editor_navigation -v
+python -m unittest test_arika_menu_navigation test_arika_menu_selection_effect test_arika_menu_arrow_preview test_arika_menu_editor_navigation -v
 ```
 
 The CI matrix also runs these checks headlessly on Windows and Ubuntu. Native
