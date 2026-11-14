@@ -133,11 +133,16 @@ class c_dragon_particle_pool:
         slot['x'] = f32(slot['x'] - slot['speed'])
         if slot['x'] < self.m_clip_boundary:
             # 0x37B26C..0x37B324: crop UV-left and compensate X.
-            # EE CVT.W.S uses FCR31 rounding; for host comparisons the
-            # caller's effective FCR31 rounding mode must be established.
-            # Default nearest-even is used here and is not yet a fully
-            # validated arbitrary-FCR31 native oracle.
-            amount = int(round(f32(self.m_clip_boundary - slot['x'])))
+            # 0x37B288 converts the positive float32 clip delta with
+            # CVT.W.S. The EE FPU chops fractional bits toward zero,
+            # unlike Python round() (banker's rounding). 0x37B290 then
+            # masks the result to the low unsigned 16 bits.
+            # Precision beyond host float32 and values >= 2**31 remain
+            # outside the currently validated game-coordinate range.
+            delta = f32(self.m_clip_boundary - slot['x'])
+            if not 0.0 <= delta < 2147483648.0:
+                raise ValueError('particle clip delta outside verified range')
+            amount = int(delta)
             amount = amount & 0xffff
             slot['uv'][0] = signed16(slot['uv'][0] + signed16(amount))
             slot['x'] = f32(slot['x'] + f32(amount))
