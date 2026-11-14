@@ -31,12 +31,13 @@ The allocation and timer lifetimes are *not identical*: constructor/setup `0x003
        if new timer > 0:
           0x0037AC00 -> 0x0037AE80 update all six slots
        else:
-          0x0037AC00 -> 0x0037AE80 update all six slots
           0x0037AC00 -> 0x0037AFC0 scan first inactive slot
              if free: 0x00190450 RNG(template)
                       -> 0x0037B0A0 (RNG Y, then RNG speed)
              0x00190450 RNG(timer) ALWAYS after scan
              +0x320 = 90.0f + 120.0f * normalized(timer_rng)
+             branch 0x0037A8F4 -> 0x0037A890
+          0x0037AC00 -> 0x0037AE80 update all six slots
 
 0x0037A910 item first-layer draw
   -> 0x0037AC00 -> 0x0037AEE0 loop all six
@@ -48,7 +49,7 @@ The allocation and timer lifetimes are *not identical*: constructor/setup `0x003
   -> 0x0037AD10 destroy pool
 ```
 
-`0x0037A860` branch `0x0037A888` chooses the expired branch. Its `0x0037A88C` delay slot *always* stores the decremented timer. The non-expired path is `0x0037A890..0x0037A8A4`; the expired path begins `0x0037A8A8` and loops to `0x0037A890` **after** resetting `+0x320` in the `0x0037A8F8` branch delay slot. Thus even an expired callback updates every slot **once**, not twice.
+`0x0037A860` branch `0x0037A888` chooses the expired branch. Its `0x0037A88C` delay slot *always* stores the decremented timer. The non-expired path is `0x0037A890..0x0037A8A4`; the expired path begins `0x0037A8A8` and loops to `0x0037A890` **after** resetting `+0x320` in the `0x0037A8F8` branch delay slot. Thus even an expired callback updates every slot **once**, not twice. The common update is **after** the spawn attempt; a new slot moves on the same callback, while a slot retired during movement cannot be respawned until a later expired callback. The initial implementation mistakenly swapped this order, corrected in `7c487533`.
 
 `0x0037AEE0` walks slots 0..5 in ascending order with +0xB0 stride. It is called by the item draw callback; Qt repaint must not run the particle logical updater or consume RNG.
 
