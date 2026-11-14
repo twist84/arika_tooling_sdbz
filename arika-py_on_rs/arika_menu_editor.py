@@ -11,6 +11,7 @@ from arika_menu_navigation import c_menu_navigation, MENU_ITEM_NAMES, DIRECTION_
 from arika_menu_selection_effect import EMPHASIS_DURATION, emphasis_geometry, emphasis_sample
 from arika_menu_arrow_preview import arrow_parts, bobbed_arrow_geometry
 from arika_menu_navigation import read_menu_report
+import arika_ffon
 
 
 def lerp_values(a, b, t):
@@ -89,6 +90,9 @@ class c_menu_editor(W.QWidget):
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
         self.m_menu_report = read_menu_report()
+        self.m_help_font = None
+        self.m_help_font_data = None
+        self.m_help_lines_pixmaps = {}
         self.m_selection_age = None
         self.m_selection_effect = True
         self.m_playing = False
@@ -217,6 +221,26 @@ class c_menu_editor(W.QWidget):
         self.m_time = min(self.m_time, len(frames) - 1)
         self.m_time_slider.setValue(int(self.m_time))
         self.m_canvas.update()
+
+    def load_help_font(self, font_data=None):
+        """Use the same native FFON decoder as the existing Fonts panel."""
+        self.m_help_font = None
+        self.m_help_font_data = None
+        self.m_help_lines_pixmaps.clear()
+        if font_data:
+            self.m_help_font = arika_ffon.parse_ffon(font_data)
+            self.m_help_font_data = font_data
+        self.m_canvas.update()
+        return self.m_help_font is not None
+
+    def help_line_pixmap(self, text):
+        if self.m_help_font is None or self.m_help_font_data is None:
+            return None
+        if text not in self.m_help_lines_pixmaps:
+            image = arika_ffon.render_text(self.m_help_font, self.m_help_font_data,
+                                          text, spacing=3)
+            self.m_help_lines_pixmaps[text] = arika_ffon.image_to_qpixmap(image)
+        return self.m_help_lines_pixmaps[text]
 
     def load_textures(self, pix_data=None):
         """Decode dis/main_menu.pix from an opened game archive, entirely in memory.
@@ -469,48 +493,25 @@ class c_menu_editor(W.QWidget):
         painter.restore()
 
     def draw_help_panel(self, painter):
-        """Diagnostic help box using recovered ELF strings and authored styling.
+        """Draw recovered help strings with the archive's native FFON font.
 
-        The original frame texture coordinates / font renderer are not yet
-        recovered. Keep this separate from game-texture sprites so it can be
-        replaced without changing the navigation or text source.
+        The frame itself must use recovered PIX sprite UVs; no QPainter
+        imitation of copyrighted texture art or system font substitution.
         """
-        lines = self.m_navigation.help_lines()
+        if self.m_help_font is None:
+            return
         painter.save()
-        painter.setRenderHint(G.QPainter.RenderHint.Antialiasing, False)
-        # Stylised placeholder for the red/orange stepped border in the captures.
-        border = G.QPainterPath()
-        for x, y in ((30, 283), (70, 283), (70, 294), (199, 294),
-                     (199, 282), (309, 282), (309, 294), (439, 294),
-                     (439, 283), (476, 283), (476, 309), (457, 309),
-                     (457, 348), (467, 348), (467, 400), (457, 400),
-                     (457, 448), (436, 448), (436, 420), (77, 420),
-                     (77, 448), (52, 448), (52, 400), (42, 400),
-                     (42, 348), (52, 348), (52, 309), (30, 309)):
-            if border.elementCount() == 0:
-                border.moveTo(x, y)
-            else:
-                border.lineTo(x, y)
-        border.closeSubpath()
-        painter.setPen(G.QPen(G.QColor('#1a100d'), 4))
-        painter.setBrush(G.QColor('#e64a18'))
-        painter.drawPath(border)
-        painter.setPen(G.QPen(G.QColor('#140c1b'), 3))
-        painter.setBrush(G.QColor(160, 45, 135, 228))
-        painter.drawRect(C.QRectF(76, 313, 359, 115))
-        painter.setPen(G.QPen(G.QColor(120, 23, 102, 130), 1))
-        painter.setBrush(C.Qt.BrushStyle.NoBrush)
-        # Decorative cloud contours are editor-authored, not extracted artwork.
-        for index in range(14):
-            x = 89 + (index % 7) * 51
-            y = 350 + (index // 7) * 39
-            painter.drawEllipse(C.QRectF(x, y, 62, 26))
-        font = G.QFont('Consolas', 14, G.QFont.Weight.Bold)
-        font.setStyleHint(G.QFont.StyleHint.TypeWriter)
-        painter.setFont(font)
-        painter.setPen(G.QColor('#ffffff'))
-        for index, text in enumerate(lines[:4]):
-            painter.drawText(C.QPointF(87, 339 + 25 * index), text)
+        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, False)
+        painter.setClipRect(C.QRectF(76, 312, 359, 116))
+        for index, text in enumerate(self.m_navigation.help_lines()[:4]):
+            pixmap = self.help_line_pixmap(text)
+            if pixmap is None or pixmap.isNull():
+                continue
+            # Original FFON glyphs are 24 pixels high. Preserve native
+            # nearest-neighbour appearance while fitting the four-line box.
+            width = min(pixmap.width(), 337)
+            painter.drawPixmap(C.QRectF(87, 320 + index * 28, width, 24),
+                               pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
         painter.restore()
 
     def draw_sprite(self, painter, entry, geometry, alpha):
