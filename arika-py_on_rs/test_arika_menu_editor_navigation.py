@@ -614,6 +614,12 @@ class MenuEditorNavigationTests(unittest.TestCase):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
         self.assertTrue(editor.load_textures(synthetic_menu_pix()))
+        # The atlas must contain the native UV region. A 2x2-only dummy
+        # texture has no texels at most recovered sprite coordinates.
+        for index in range(13):
+            pixmap = G.QPixmap(512, 512)
+            pixmap.fill(G.QColor.fromHsv(index * 19, 200, 255))
+            editor.m_textures[index] = pixmap
         editor.m_background = False
         editor.m_motion = False
         editor.m_tint = False
