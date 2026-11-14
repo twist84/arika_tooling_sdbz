@@ -11,7 +11,7 @@ import struct
 
 
 def load_segments(data):
-    if len(data) < 52 or data[:4] != b'\\x7fELF':
+    if len(data) < 52 or data[:4] != bytes((127, 69, 76, 70)):
         raise ValueError('not an ELF')
     if data[4] != 1 or data[5] != 1 or struct.unpack_from('<H', data, 18)[0] != 8:
         raise ValueError('expected 32-bit little-endian MIPS ELF')
