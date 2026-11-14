@@ -185,16 +185,17 @@ class c_menu_editor(W.QWidget):
         controls.addWidget(self.m_presentation_combo)
         controls.addWidget(self.m_scan_combo)
 
-        match_button = W.QPushButton('Match pose...')
-        match_button.setToolTip(
+        self.m_match_button = W.QPushButton('Match pose...')
+        self.m_match_button.setToolTip(
             'Compare the character region against a cropped 4:3 game screenshot. '
             'This finds the nearest preview sample, not the native animation time.')
-        match_button.clicked.connect(self.match_reference_pose)
-        controls.addWidget(match_button)
-        next_match_button = W.QPushButton('Next match')
-        next_match_button.setToolTip('Inspect the next-best matching animation sample')
-        next_match_button.clicked.connect(self.next_reference_match)
-        controls.addWidget(next_match_button)
+        self.m_match_button.clicked.connect(self.match_reference_pose)
+        controls.addWidget(self.m_match_button)
+        self.m_next_match_button = W.QPushButton('Next match')
+        self.m_next_match_button.setToolTip(
+            'Inspect the next-best diagnostic animation sample')
+        self.m_next_match_button.clicked.connect(self.next_reference_match)
+        controls.addWidget(self.m_next_match_button)
         self.m_match_status = W.QLabel('')
         self.m_match_status.setToolTip(
             'Lower score means a closer visual match; the screenshot may have '
@@ -509,6 +510,10 @@ class c_menu_editor(W.QWidget):
         self.m_rate_combo.setEnabled(not native)
         self.m_native_step_button.setEnabled(native)
         self.m_native_reset_button.setEnabled(native)
+        # Screenshot matching uses the authored 140-frame diagnostic clock
+        # and must never mix it with the stateful native component poses.
+        self.m_match_button.setEnabled(not native)
+        self.m_next_match_button.setEnabled(not native)
         if native:
             self.reset_native()
             # The neutral pose is diagnostic geometry only, not a native
@@ -628,6 +633,8 @@ class c_menu_editor(W.QWidget):
 
     def match_reference_pose(self):
         """Seek to the best visual match, without modifying recovered frames."""
+        if self.m_native_mode:
+            return
         filename, _filter = W.QFileDialog.getOpenFileName(
             self, 'Choose cropped 4:3 menu screenshot', '',
             'Images (*.png *.jpg *.jpeg *.bmp)')
@@ -642,6 +649,9 @@ class c_menu_editor(W.QWidget):
 
     def match_reference_image(self, reference):
         """Compare settled samples 23..119 in the 4:3 presentation only."""
+        if self.m_native_mode:
+            raise ValueError(
+                'Switch to Diagnostic timeline for screenshot matching')
         if not self.m_data or not self.m_textures:
             raise ValueError('load the main-menu PIX textures first')
         if reference.size != (256, 192):
