@@ -120,11 +120,19 @@ USA 0x004AC380. The reproducible `elf_tooling/elf_menu_arrows.py` probe
 identifies these data addresses without embedding an ELF or game assets.
 Unit tests validate both keyframe interpolation and directional translation.
 
-**Remaining limitation:** the editor uses its preview sample clock as the
-helper's +0xB0 animation age. The exact native per-object clock origin and
-reset/activation schedule have not been traced across the full main-menu
-lifecycle. The amplitude/shape/period and direction are recovered, but
-their phase relative to a particular original-game screenshot may differ. The **Arrow bob (preview)** and **Help panel** checkboxes
+The arrow object's clock initialization and update are also traced:
+`0x00374F38` clears `+0xB0` to float zero; `0x00374FC8–0x00374FF0`
+increments it by float `1.0` during the active update and wraps ages
+above `99999.0` by subtracting `99999.0` at
+`0x003750DC–0x003750E4`. The displacement helper uses that stored age.
+
+**Remaining limitation:** the editor currently feeds its preview sample
+clock into the recovered displacement function, rather than reproducing
+the full component activation lifecycle. The native clock's increment,
+reset and wrap are verified, but the item's activation time relative
+to a particular reference screenshot remains to be established.
+Consequently the animation **shape, direction and period are native**,
+while its initial displayed phase may still differ. The **Arrow bob (preview)** and **Help panel** checkboxes
 allow individual visual comparison. No captured artwork or screenshots are
 embedded in the repo; arrow sprites still load from the user's FPIX atlas.
 
