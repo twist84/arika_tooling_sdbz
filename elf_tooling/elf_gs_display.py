@@ -59,7 +59,7 @@ def find_display2_packers(segments):
     for base, blob in segments:
         size = len(blob) // 4
         words = struct.unpack_from('<%dI' % size, blob)
-        for i in range(size - 16):
+        for i in range(max(0, size - 14)):
             if words[i] != 0x240409ff or words[i+1] != 0x0004283c:
                 continue
             # lui v1,0x1200 / sd a0,0xa0(v1); in a delay slot.
