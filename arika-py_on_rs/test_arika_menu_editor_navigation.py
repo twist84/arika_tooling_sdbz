@@ -459,5 +459,64 @@ class MenuEditorNavigationTests(unittest.TestCase):
 
 
 
+    def test_switching_back_restores_diagnostic_selection_history(self):
+        editor = self.m_editor
+        editor.m_time_slider.setValue(37)
+        editor.m_item_combo.setCurrentIndex(2)
+        self.assertEqual((editor.m_item, editor.m_navigation.m_previous),
+                         (2, 0))
+        previous_age = editor.m_selection_age
+
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        for _ in range(100):
+            state = editor.step_native()
+            if state['outer_phase'] == 2:
+                break
+        self.assertEqual(state['selected'], 0)
+        editor.navigate(3)
+        self.assertEqual(editor.step_native()['selected'], 1)
+
+        editor.m_lifecycle_combo.setCurrentIndex(0)
+        self.assertFalse(editor.m_native_mode)
+        self.assertEqual(editor.m_item, 2)
+        self.assertEqual(editor.m_item_combo.currentIndex(), 2)
+        self.assertEqual(
+            (editor.m_navigation.m_selected, editor.m_navigation.m_previous),
+            (2, 0))
+        self.assertEqual(editor.m_time, 37.0)
+        self.assertEqual(editor.m_selection_age, previous_age)
+
+    def test_native_render_omits_unselected_and_completed_item_layers(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        self.assertTrue(editor.load_textures(synthetic_menu_pix()))
+        editor.m_background = False
+        editor.m_motion = False
+        editor.m_tint = False
+        editor.m_help_panel = False
+        editor.m_bounds = False
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+
+        def render():
+            image = G.QImage(512, 384, G.QImage.Format.Format_ARGB32)
+            image.fill(G.QColor('#10151c'))
+            painter = G.QPainter(image)
+            editor.render(painter, C.QRect(0, 0, 512, 384))
+            painter.end()
+            return bytes(image.constBits())
+
+        empty = render()
+        self.assertEqual(editor.m_native_runtime.m_selected, -1)
+        # No item exists yet in 0x379E60's current/pending draw slots.
+        for _ in range(100):
+            state = editor.step_native()
+            if state['outer_phase'] == 2:
+                break
+        self.assertEqual(state['selected'], 0)
+        self.assertNotEqual(render(), empty)
+        editor.m_native_runtime.m_outer_phase = 4
+        self.assertEqual(render(), empty)
+
+
 if __name__ == '__main__':
     unittest.main()
