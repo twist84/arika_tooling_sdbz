@@ -75,18 +75,16 @@ cropped to its nontransparent alpha bounds before being fitted to the
 help-panel destination; stretching the entire 512x512 atlas compressed the
 visible frame to a narrow strip. The game viewport and all sprite/text clips
 are intersected so clouds and borders cannot leak into the Qt editor margins.
-The original main-menu screen is 512×512, not 512×448: the Qt viewport
-now uses square scaling and the help panel spans 199 pixels
-starting at canvas y=301, with text starting at y=358 (raised 12px
-as a screenshot-based alignment adjustment). These help-panel
-coordinates are screenshot-aligned and still require native draw-call proof.
-The recovered cloud tile draw helper uses y=320 and height=128, ending at
-448. The editor now gives these quads a **presentation-only +64 Y offset**
-so their bottom edge reaches y=512 as in the supplied screenshot. The
-underlying ELF-derived tile geometry and native comparison tests remain
-unchanged. This offset is a screenshot alignment, **not** a recovered
-native transform; it needs verification against the game's final draw path. Native exact
-frame draw geometry remains an open reverse-engineering task. The existing Qt help
+The recovered menu sprite coordinates and cloud helper use a **512×448
+logical canvas**; the original screenshots are square 512×512 presentations.
+The Qt renderer now scales X by the square-view fit and Y by an additional
+512/448, rather than rewriting the underlying game coordinates. The original
+tile at y=320–448 reaches the display bottom without a speculative +64 Y
+offset. The help texture is currently at logical (30,282) sized 450×175,
+with FFON text beginning at y=320 and advancing 25 pixels per line.
+These panel coordinates are screenshot-aligned, not yet recovered from the
+native draw helper. Native exact frame draw geometry remains an open
+reverse-engineering task. The existing Qt help
 label remains an inspection aid.
 
 Arrow UVs, base coordinates, and the history-dependent variants are taken from
