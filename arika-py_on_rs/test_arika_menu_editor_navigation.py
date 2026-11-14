@@ -123,6 +123,25 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertTrue(editor.navigate(3))
         self.assertNotEqual(original, draw(), 'switching item should change the actual canvas')
  
+    def test_selection_pulse_uses_independent_event_clock(self):
+        editor = self.m_editor
+        editor.m_time = 30.0
+        self.assertIsNone(editor.m_selection_age)
+        self.assertTrue(editor.navigate(3))
+        self.assertEqual(editor.m_selection_age, 0.0)
+        self.assertTrue(editor.m_timer.isActive())
+        editor.advance()
+        self.assertGreater(editor.m_selection_age, 0)
+        self.assertEqual(editor.m_time, 30.0, 'selection event must not scrub the global timeline')
+        for _ in range(200):
+            editor.advance()
+        self.assertIsNone(editor.m_selection_age)
+        self.assertFalse(editor.m_timer.isActive())
+        self.assertEqual(editor.m_time, 30.0)
+        editor.m_item_combo.setCurrentIndex(2)
+        self.assertEqual(editor.m_selection_age, 0.0)
+        editor.m_timer.stop()
+
     def test_preview_keyboard_navigation_and_confirm_cancel(self):
         from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
         editor = self.m_editor
