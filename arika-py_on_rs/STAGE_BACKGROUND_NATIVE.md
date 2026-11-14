@@ -81,7 +81,83 @@ included in the repository.
 - The renderer already converts sRGB picker colours to linear when clearing
   sRGB attachments; use the recovered byte values without gamma-compensating twice.
 
-**Still to validate visually:** screenshots from actual gameplay under both
-normal and alternate runtime states against the Qt editor. This research covers
-the flat background/clear colour, not all possible textured sky geometry,
-fog, lighting, or environmental effects.
+The user compared the new native background presets to gameplay and confirmed
+the editor result looks correct. Alternate runtime states have not all been
+checked individually. This research covers the flat background/clear colour,
+not all possible textured sky geometry, fog, lighting, or environmental effects.
+
+## Actual PIX texture-colour comparison
+
+An independent investigation decoded every numbered-stage `.pix` texture from
+a user-supplied `sdbz_eu_beta.7z` archive. **Despite its filename, the
+archive contains `SLUS_214.42` and a US (`0xC2`) INFO.DAT signature.**
+The unpacked GAME.DAT includes 15 stage PIX packs, with **550 decoded
+XPIX/TIM2 textures**, no decode failures. The results below refer to this
+archive, not an assumed EU-beta asset set.
+
+All 550 RGBA textures were compared to their stage class's recovered ELF
+background RGB using Euclidean distance in **decoded 8-bit RGB**. Only
+visible pixels (alpha >= 16) were counted; the edge test samples the outermost
+four pixels on each side. The near-match threshold is distance <= 3.
+
+| PIX / state | ELF RGB | Nearest visible pixel distance | Pixels within 3 | Edge pixels within 3 |
+|---|---|---:|---:|---:|
+| s00a / 0 | #1F1F1F | 137.35 | 0 | 0 |
+| s01a / 0 | #1EA4D4 | 2.83 | 48,844 | 3,789 |
+| s02a / 0 | #1F9FEA | 2.24 | 1,419 | 0 |
+| s03a / 0 | #EBDDFF | 1.41 | 6 | 0 |
+| s03b / 1 | #00D7DA | 1.41 | 43,041 | 3,045 |
+| s04a / 0 | #C459F3 | 1.41 | 3,601 | 932 |
+| s04b / 1 | #C459F3 | 1.41 | 9,540 | 2,768 |
+| s05a / 0 | #5AA436 | 2.24 | 6,063 | 849 |
+| s05a / 1 | #1F4728 | **0.00** | 1,849 | 838 |
+| s06a / 0 | #23B0E6 | 2.83 | 44,758 | 3,225 |
+| s07a / 0 | #7DA7D9 | 2.24 | 275 | 41 |
+| s08a / 0 | #14041D | 1.00 | 64,612 | 4,013 |
+| s09a / 0 | #13205E | 2.24 | 420 | 0 |
+| s10a / 0 | #1F1F1F | 1.00 | 257 | 84 |
+| s11a / 0 | #1EA4D4 | 2.83 | 48,844 | 3,789 |
+| s12a / 0 | #EB84EB | 1.41 | 5,294 | 924 |
+
+**15/16** presets have at least one near-matching texture pixel; **12/16**
+have matching edge pixels; only `s00a` has no near-matching pixel.
+For `s05a` state 1, **107 individual pixels match exactly**.
+Texture `s08a.pix[42]` contains a large star-field background whose predominant
+dark-purple colour matches ELF `#14041D` within one unit.
+`s01a.pix[42]` and `s11a.pix[42]` are cloud/blue-sky textures with
+predominant `#20A2D4`, close to ELF `#1EA4D4`.
+`s03b.pix[4]` is a cyan sky image strongly matching `#00D7DA`.
+
+Counterexamples matter: `s02a` and `s09a` have some internally matching
+pixels in a building/urban texture atlas but **zero matching pixels on
+texture borders**. `s03a` only has six near-matching pixels spread among
+cloud and scenery textures. `s00a` has only three textures, none remotely
+matching its dark-grey clear colour. These cases refute a single universal
+"sample a PIX edge" rule.
+
+Whole-chunk checks: the `s01a` and `s11a` packs contain the same 49 unique
+XPIX/TIM2 chunks, although indices are reordered (27 match at the same index).
+`s01a` versus `s08a`, and `s02a` versus `s09a`, share **no identical
+texture chunks** despite related scene layouts. Their differing stage presets
+therefore make artistic sense.
+
+**Interpretation:** the explicit ELF constants appear deliberately chosen to
+blend with sky textures or other art, but the runtime getter uses a static
+stage/state table. Correlation with texture pixels is **not** evidence of
+runtime colour computation. Avoid replacing the ELF-derived presets with a
+texture-edge heuristic.
+
+### Reproducing the PIX comparison
+
+After extracting assets from your own GAME.DAT:
+
+```sh
+python elf_tooling/stage_texture_color_compare.py extracted/stg --output stage_color_audit
+```
+
+This can use the original `s01a.pix` files (with a built Rust backend) or
+pre-decoded `s01a.pix.000.png` PNG dumps (without the backend).
+It emits per-texture measurements in `stage_texture_pixels.csv` and the
+per-stage report in `stage_texture_summary.json`. The game archives and
+copyrighted textures are not committed to this repository.
+
