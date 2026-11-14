@@ -563,8 +563,12 @@ class c_menu_editor(W.QWidget):
         self.m_native_status.setToolTip(
             label +
             '\\nPer-item phases: %s\\nPer-item arrow ages: %s'
+            '\\nFirst phases: %s\\nCharacter phases: %s'
+            '\\nCharacter ages: %s'
             '\\nLabel phases: %s\\nLabel ages: %s'
             % (state['item_phases'], state['item_ages'],
+               state['first_phases'], state['character_phases'],
+               state['character_ages'],
                state['label_phases'], state['label_ages']))
         if action:
             self.m_navigation_status.setText('Native: ' + action)
@@ -783,8 +787,14 @@ class c_menu_editor(W.QWidget):
             enqueue(8, self.m_data['tint'], 10, frame['alpha'])
 
         active_characters = frame['idle_characters' if self.m_idle else 'characters'][self.m_item]
+        if self.m_native_mode and self.m_character_motion:
+            native_characters = self.m_native_runtime.character_geometry(self.m_item)
+            if native_characters is not None:
+                active_characters = native_characters
         active_labels = frame['labels']
-        selection_sample = emphasis_sample(self.m_data['frames'], self.m_selection_age) if self.m_selection_effect else None
+        # Diagnostic emphasis samples are not the native selection clock.
+        selection_sample = (emphasis_sample(self.m_data['frames'], self.m_selection_age)
+                            if self.m_selection_effect and not self.m_native_mode else None)
 
         if self.m_middle:
             group_checked = True
@@ -838,14 +848,18 @@ class c_menu_editor(W.QWidget):
             for p in frame['strips'][self.m_item]:
                 enqueue(p['texture_entry'], p['geometry'], 45)
 
-        if self.m_native_mode and self.m_overlay and self.m_label_motion:
-            # 0x379E60 draws the pending previous item before the current
-            # item. Its label keeps its own exit clock while pending.
+        if self.m_native_mode:
+            # 0x379E60 draws the pending old item before the current item.
+            # Its character and label have independent native exit ages.
             pending = self.m_native_runtime.m_pending
             if pending >= 0:
-                geometry = self.m_native_runtime.label_geometry(pending)
-                for part in self.m_data['items'][pending]['overlay']:
-                    enqueue(part['texture_entry'], geometry, 70)
+                if self.m_middle and self.m_character_motion:
+                    for part in self.m_native_runtime.character_geometry(pending) or []:
+                        enqueue(part['texture_entry'], part['geometry'], 60)
+                if self.m_overlay and self.m_label_motion:
+                    geometry = self.m_native_runtime.label_geometry(pending)
+                    for part in self.m_data['items'][pending]['overlay']:
+                        enqueue(part['texture_entry'], geometry, 70)
 
         draw_queue.sort(key=lambda q: q['depth'])
 
