@@ -113,6 +113,28 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertFalse(editor.load_textures(None))
         self.assertIsNone(editor.m_help_panel_uv)
 
+    def test_logical_448_background_fills_square_presentation(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        background = G.QPixmap(512, 512)
+        background.fill(G.QColor('#47aabb'))
+        editor.m_textures[1] = background
+        editor.m_background = True
+        editor.m_motion = False
+        editor.m_tint = False
+        editor.m_first = False
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+        image = G.QImage(512, 512, G.QImage.Format.Format_ARGB32)
+        image.fill(G.QColor('#10151c'))
+        painter = G.QPainter(image)
+        editor.render(painter, C.QRect(0, 0, 512, 512))
+        painter.end()
+        self.assertEqual(image.pixelColor(256, 500), G.QColor('#47aabb'))
+        self.assertEqual(editor.m_data['background']['bounds'][3], 448)
+
     def test_cloud_tiles_fill_bottom_of_square_menu(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
