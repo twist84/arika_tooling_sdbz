@@ -23,6 +23,27 @@ class SceneProjectTests(unittest.TestCase):
             self.assertEqual(project.m_document['buffers'][0]['byteLength'],0)
             self.assertTrue(project.m_document['buffers'][0]['uri'].startswith('data:application/octet-stream;base64,'))
 
+    def test_native_stage_background_persists_through_project_and_undo(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'s05a.stg';path.write_bytes(stg_fixture())
+            with patch('arika_scene_project.build_stage_gltf',return_value=(c_gltf(),{})):
+                project=c_scene_project(path)
+            self.assertEqual(project.m_background_preset,'CStage05:0')
+            self.assertEqual(project.background_rgba(),(90/255,164/255,54/255,1))
+            project.set_background_preset('CStage05:1')
+            self.assertTrue(project.m_changed)
+            self.assertEqual(project.background_rgba(),(31/255,71/255,40/255,1))
+            with self.assertRaises(ValueError):
+                project.set_background_preset('CStage08:0')
+            project.undo();self.assertEqual(project.m_background_preset,'CStage05:0')
+            project.redo();self.assertEqual(project.m_background_preset,'CStage05:1')
+            target=Path(tmp)/'test.arika-scene.json';project.save(target)
+            self.assertEqual(json.loads(target.read_text())['stage_background'],'CStage05:1')
+            reloaded=c_scene_project.load(target)
+            self.assertEqual(reloaded.m_background_preset,'CStage05:1')
+            self.assertEqual(reloaded.background_rgba(),project.background_rgba())
+
     def test_transform_axis_locks_persist_and_undo(self):
         from arika_scene_state import transform_locks
         with tempfile.TemporaryDirectory() as tmp:
