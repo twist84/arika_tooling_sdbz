@@ -498,10 +498,18 @@ class c_menu_editor(W.QWidget):
         The frame itself must use recovered PIX sprite UVs; no QPainter
         imitation of copyrighted texture art or system font substitution.
         """
-        if self.m_help_font is None:
-            return
         painter.save()
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, False)
+        # Atlas 4 is the native framed help panel (research/TEXTURED_MENU.md).
+        # Placement/crop are provisional until its draw helper is traced.
+        # Render the game texture, never a synthetic QPainter border.
+        panel = self.m_textures.get(4)
+        if panel is not None and not panel.isNull():
+            painter.drawPixmap(C.QRectF(30, 282, 450, 175), panel,
+                               C.QRectF(0, 0, panel.width(), panel.height()))
+        if self.m_help_font is None:
+            painter.restore()
+            return
         painter.setClipRect(C.QRectF(76, 312, 359, 116))
         for index, text in enumerate(self.m_navigation.help_lines()[:4]):
             pixmap = self.help_line_pixmap(text)
@@ -509,8 +517,10 @@ class c_menu_editor(W.QWidget):
                 continue
             # Original FFON glyphs are 24 pixels high. Preserve native
             # nearest-neighbour appearance while fitting the four-line box.
-            width = min(pixmap.width(), 337)
-            painter.drawPixmap(C.QRectF(87, 320 + index * 28, width, 24),
+            scale = min(1.0, 337.0 / pixmap.width())
+            painter.drawPixmap(C.QRectF(87, 320 + index * 28,
+                                       pixmap.width() * scale,
+                                       pixmap.height() * scale),
                                pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
         painter.restore()
 
