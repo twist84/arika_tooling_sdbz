@@ -146,7 +146,11 @@ The only direct GP-relative write to `gp-0x1710 = 0x4FDC60` in the
 file-backed EU-beta image occurs at `0x004E23CC`, a **return delay-slot**
 of initialization function `0x004E23B0`. It loads `249.0f` from
 `gp-0x4C78 = 0x4FA6F8`, subtracts literal `10.0f`, and stores
-`239.0f`. The direct reader is `0x0037B23C`. This exhaustive direct
+`239.0f`. The same initializer writes the adjacent second-sprite Y field
+`gp-0x1714 = 0x4FDC5C` at `0x004E23C4` using the value `204.0f`
+from `gp-0x4C70 = 0x4FA700`. The direct reader is `0x0037B23C`.
+An ELF-word oracle now tests both stores, including the JR delay slot.
+This exhaustive direct
 GP-access scan does not exclude pointer-based aliases or external writes;
 therefore it establishes the initializer, not a proof that the field is
 globally immutable at runtime.
