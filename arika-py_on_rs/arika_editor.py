@@ -928,7 +928,6 @@ class c_font_panel(W.QWidget):
         bar.addWidget(W.QLabel('T:'));self.m_margin_t=W.QSpinBox();self.m_margin_t.setRange(0,512);self.m_margin_t.setValue(16);self.m_margin_t.setToolTip('Top');self.m_margin_t.valueChanged.connect(lambda *_:self._render());bar.addWidget(self.m_margin_t)
         bar.addWidget(W.QLabel('B:'));self.m_margin_b=W.QSpinBox();self.m_margin_b.setRange(0,512);self.m_margin_b.setValue(16);self.m_margin_b.setToolTip('Bottom');self.m_margin_b.valueChanged.connect(lambda *_:self._render());bar.addWidget(self.m_margin_b)
         bar.addStretch(1);layout.addLayout(bar)
-        bar.addStretch(1);layout.addLayout(bar)
         self.m_output=W.QLabel('No font loaded.');self.m_output.setAlignment(C.Qt.AlignmentFlag.AlignCenter)
         self.m_output.setStyleSheet('QLabel { background:#282828; color:#dedede; }')
         self.m_output.setSizePolicy(W.QSizePolicy.Policy.Expanding,W.QSizePolicy.Policy.Expanding)
@@ -1000,7 +999,18 @@ class c_outliner_pinned_columns(W.QWidget):
         tree.itemChanged.connect(lambda *_:self.update())
 
     def eventFilter(self,watched,event):
-        if watched in (self.m_tree.viewport(),self.m_tree.header()):
+        # Qt may deliver events to the header/viewport as the tree is torn
+        # down. The Python wrapper can outlive the underlying C++ QTreeWidget.
+        # Never call viewport() or header() on an invalid wrapper.
+        import shiboken6
+        if not shiboken6.isValid(self.m_tree):
+            return False
+        try:
+            viewport=self.m_tree.viewport()
+            header=self.m_tree.header()
+        except RuntimeError:
+            return False
+        if watched in (viewport,header):
             if event.type()==C.QEvent.Type.Resize:
                 C.QTimer.singleShot(0,self.m_tree.update_outliner_layout)
             elif event.type()==C.QEvent.Type.Paint:
