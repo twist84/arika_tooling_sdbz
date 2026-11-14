@@ -497,6 +497,7 @@ class c_menu_editor(W.QWidget):
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth)
         painter.translate(offset_x, offset_y)
         painter.scale(scale, scale)
+        painter.setClipRect(C.QRectF(0, 0, 512, 448))
 
         for q in draw_queue:
             self.draw_sprite(painter, q['entry'], q['geometry'], q['alpha'])
