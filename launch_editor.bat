@@ -1,9 +1,8 @@
 @echo off
 setlocal
-rem Build the arika_backend shared library if needed
-if not exist "%~dp0arika-py_on_rs\arika_backend.dll" (
-    echo Building arika_backend.dll...
-    py -3 "%~dp0arika-py_on_rs\build.py"
-    if errorlevel 1 exit /b %errorlevel%
-)
+rem Cargo rebuilds only when Rust sources or dependencies have changed.
+rem Checking only if the DLL exists can leave an incompatible binary.
+py -3 "%~dp0arika-py_on_rs\build.py"
+if errorlevel 1 exit /b 1
 py -3 "%~dp0arika-py_on_rs\arika_editor.py" %*
+exit /b %errorlevel%
