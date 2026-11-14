@@ -48,6 +48,10 @@ class c_menu_runtime:
         self.m_child_callback = child_callback
         self.m_item_update = item_update
         self.m_character_kernel = report.get('item_character_animation')
+        self.m_idle_components = {
+            component['item']: component
+            for component in report.get('character_idle', {}).get(
+                'components', [])}
         self.m_character_emphasis = (
             report.get('item_emphasis', {}).get('kernels', {}).get('characters'))
         self.m_native_children = (
@@ -104,7 +108,8 @@ class c_menu_runtime:
                 step_first(first)
                 step_character(
                     character, self.m_character_kernel['components'][index],
-                    self.m_character_kernel, self.m_character_emphasis)
+                    self.m_character_kernel, self.m_character_emphasis,
+                    self.m_idle_components.get(index))
                 self._emit('first_update', index=index,
                            phase=first['phase'], age=first['age'])
                 self._emit('character_update', index=index,
