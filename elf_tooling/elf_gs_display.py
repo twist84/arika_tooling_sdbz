@@ -66,7 +66,7 @@ def find_display2_packers(segments):
             if words[i+8] != 0x3c031200 or words[i+14] != 0xfc6400a0:
                 continue
             # dsll32 a0,a0,12 / or a0,a0,a1
-            if words[i+11] != 0x0004233c or words[i+13] != 0x00852025:
+            if words[i+11] != 0x0004233c or words[i+12] != 0x00852025:
                 continue
             results.append(dict(dw_constant_va='0x%08X' % (base+i*4),
                                 register_write_va='0x%08X' % (base+(i+14)*4),
