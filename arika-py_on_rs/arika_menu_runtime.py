@@ -358,6 +358,10 @@ class c_menu_runtime:
                                     for state in self.m_character_states),
             'character_offsets': tuple(tuple(state['offset'])
                                        for state in self.m_character_states),
+            'character_part_offsets': tuple(
+                tuple(tuple(offset) for offset in
+                      state.get('part_offsets', ()))
+                for state in self.m_character_states),
             'label_phases': tuple(state['phase']
                                   for state in self.m_label_states),
             'label_ages': tuple(state['age']
