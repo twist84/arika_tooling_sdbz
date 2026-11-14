@@ -39,11 +39,16 @@ class EditorShutdownTests(unittest.TestCase):
     def test_filter_handles_deleted_tree_wrapper_during_shutdown(self):
         from PySide6 import QtCore as C,QtWidgets as W
         import shiboken6
-        from arika_editor import c_outliner_pinned_columns
+        from arika_editor import c_outliner_pinned_columns,c_outliner_tree
 
-        tree=W.QTreeWidget()
+        tree=c_outliner_tree(SimpleNamespace(sync_outliner_scrollbar=lambda:None))
         tree.setHeaderLabels(['Scene / object','Show','Lock'])
+        tree.set_pinned_columns()
+        tree.resize(300,180)
+        tree.show()
+        self.m_app.processEvents()
         shiboken6.delete(tree)
+        self.m_app.processEvents()
         self.assertFalse(shiboken6.isValid(tree))
 
         # The Qt event dispatcher can invoke the installed Python event
