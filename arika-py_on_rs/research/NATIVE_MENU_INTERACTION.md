@@ -80,8 +80,11 @@ logical canvas**; the original screenshots are square 512×512 presentations.
 The Qt renderer now scales X by the square-view fit and Y by an additional
 512/448, rather than rewriting the underlying game coordinates. The original
 tile at y=320–448 reaches the display bottom without a speculative +64 Y
-offset. The help texture is currently at logical (30,282) sized 450×175,
+offset. The help texture is currently at logical (30,275) sized 450×175,
 with FFON text beginning at y=320 and advancing 25 pixels per line.
+All four FFON lines now share one scale derived from their longest line,
+instead of each being expanded independently to the same width. The
+frame was moved up seven logical pixels based on the supplied comparison.
 These panel coordinates are screenshot-aligned, not yet recovered from the
 native draw helper. Native exact frame draw geometry remains an open
 reverse-engineering task. The existing Qt help
