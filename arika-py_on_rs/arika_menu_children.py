@@ -36,6 +36,11 @@ def initialize_child():
 
 def first_offset(age, component, kernel, exiting=False):
     """Common first-layer (+0x0C/+0x10) displacement recovered from ELF."""
+    if not exiting and age >= FIRST_ENTRY_AGE:
+        # 0x373E14 explicitly copies two +0.0 reset floats at completion.
+        # Multiplying an interpolated +0.0 by direction -1 instead
+        # produces -0.0; the EE callback overwrites that sign bit.
+        return list(kernel['reset_position'])
     if exiting:
         value = sample_curve(kernel['exit'], age)
     else:
