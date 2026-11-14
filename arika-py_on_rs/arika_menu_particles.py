@@ -29,6 +29,27 @@ def random_unit(value):
     return f32(f32(value & 0x7fff) * RNG_NORMALIZER)
 
 
+def normalized_sprite_uv(uv, texture_dimensions):
+    """0x2FCE20: four distinct UV fractions for the texture-backed sprite.
+
+    The native subclass calls 0x2FD9E0 to set signed-16 endpoints, then
+    queries its texture handle's vtable +0x40/+0x44 (width, height).
+    These four floats are written twice each to the eight coordinates
+    at sprite +0x60..+0x7C. No implicit 512px texture is assumed.
+    """
+    width, height = texture_dimensions
+    if (not isinstance(width, int) or not isinstance(height, int) or
+            width <= 0 or height <= 0):
+        raise ValueError('native texture dimensions must be positive integers')
+    left, top, right, bottom = (signed16(value) for value in uv)
+    return (
+        f32(f32(left) / f32(width)),
+        f32(f32(top) / f32(height)),
+        f32(f32(right) / f32(width)),
+        f32(f32(bottom) / f32(height)),
+    )
+
+
 class c_dragon_particle_pool:
     """Single authoritative, runtime-scoped abstraction of the global pool.
 
@@ -36,7 +57,8 @@ class c_dragon_particle_pool:
     Supplying an independent RNG to each particle is *not* permitted.
     """
 
-    def __init__(self, specification, rng, clip_boundary):
+    def __init__(self, specification, rng, clip_boundary,
+                 texture_dimensions=None):
         if specification['slot_count'] != 6 or specification['slot_stride'] != 176:
             raise ValueError('unexpected native particle pool layout')
         if len(specification['templates']) != 4:
@@ -53,6 +75,10 @@ class c_dragon_particle_pool:
         # The ELF startup constructor zero-fills 0x4FC990/0x4FC994.
         # Later writes must be supplied explicitly before teardown.
         self.m_reset_position = [0.0, 0.0]
+        self.m_texture_dimensions = None
+        if texture_dimensions is not None:
+            normalized_sprite_uv((0, 0, 0, 0), texture_dimensions)
+            self.m_texture_dimensions = tuple(texture_dimensions)
         self._initialize()
 
     def _ensure_live(self):
@@ -73,6 +99,26 @@ class c_dragon_particle_pool:
             self._retire(slot)
         self.m_alive = False
 
+    def set_texture_dimensions(self, dimensions):
+        """Supply real decoded TIM2 atlas dimensions, never a guessed size.
+
+        The editor may load the texture after constructing its diagnostic
+        particle pool. Recompute only derived presentation UV fractions;
+        logical slot positions, timers and the context RNG remain untouched.
+        None means the texture dimensions are not available, so normalized
+        fields are explicitly unknown rather than assumed to be 512x512.
+        """
+        self._ensure_live()
+        if dimensions is not None:
+            normalized_sprite_uv((0, 0, 0, 0), dimensions)
+            dimensions = tuple(dimensions)
+        self.m_texture_dimensions = dimensions
+        for slot in self.m_slots:
+            slot['uv_normalized'] = (
+                normalized_sprite_uv(slot['uv'], dimensions)
+                if dimensions is not None and slot['template'] is not None
+                else None)
+
     def _rand(self, role):
         value = self.m_rng.next()
         self.m_random_draws.append((role, value))
@@ -81,7 +127,8 @@ class c_dragon_particle_pool:
 
     def _empty_slot(self, index):
         return dict(index=index, active=False, template=None,
-                    uv=[0, 0, 0, 0], x=0.0, y=0.0,
+                    uv=[0, 0, 0, 0], uv_normalized=None,
+                    x=0.0, y=0.0,
                     speed=0.0, depth_step=0.0)
 
     def _initialize(self):
@@ -118,11 +165,16 @@ class c_dragon_particle_pool:
                 signed16(uv_x + width), signed16(uv_y + height)],
             x=f32(512.0), y=y, speed=speed,
             depth_step=f32(SPEED_DEPTH_SCALE * speed))
+        if self.m_texture_dimensions is not None:
+            slot['uv_normalized'] = normalized_sprite_uv(
+                slot['uv'], self.m_texture_dimensions)
 
     def _retire(self, slot):
         # 0x37B328..0x37B350: sprite reset, flag/speed zero, reset XY.
-        # The native sprite may retain metadata while inactive.
-        slot.update(active=False, speed=0.0,
+        # vtable +0x24 = 0x2FDA00 clears all four s16 UV edges
+        # (but NOT normalized float fields +0x60..+0x7C).
+        # Keep the last normalized values as dormant metadata.
+        slot.update(active=False, speed=0.0, uv=[0, 0, 0, 0],
                     x=self.m_reset_position[0],
                     y=self.m_reset_position[1])
 
@@ -145,6 +197,11 @@ class c_dragon_particle_pool:
             amount = int(delta)
             amount = amount & 0xffff
             slot['uv'][0] = signed16(slot['uv'][0] + signed16(amount))
+            # The native subclass's +0x1C setter (0x2FCE20) computes
+            # texture fractions again after updating the left endpoint.
+            if self.m_texture_dimensions is not None:
+                slot['uv_normalized'] = normalized_sprite_uv(
+                    slot['uv'], self.m_texture_dimensions)
             slot['x'] = f32(slot['x'] + f32(amount))
         # 0x37B250..0x37B260, 0x37B328: retire when UV exhausted.
         if slot['uv'][0] >= slot['uv'][2]:
@@ -183,13 +240,15 @@ class c_dragon_particle_pool:
         return dict(
             slots=tuple(dict(
                 index=s['index'], active=s['active'], template=s['template'],
-                uv=tuple(s['uv']), x=s['x'], y=s['y'],
+                uv=tuple(s['uv']), uv_normalized=s['uv_normalized'],
+                x=s['x'], y=s['y'],
                 speed=s['speed'], depth_step=s['depth_step'])
                 for s in self.m_slots),
             rng_state=self.m_rng.get_state(),
             random_draws=tuple(self.m_random_draws),
             total_random_draws=self.m_total_draws,
             clip_boundary=self.m_clip_boundary,
+            texture_dimensions=self.m_texture_dimensions,
             alive=self.m_alive)
 
     def geometry(self, component_offset=(0.0, 0.0), depth=0.0):
