@@ -10,6 +10,17 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 _HAS_QT = importlib.util.find_spec('PySide6') is not None
 
 
+def synthetic_ffon():
+    """Minimal 4-bpp FFON with one mapped ASCII glyph, no proprietary art."""
+    data = bytearray(0x160 + 2)
+    data[:4] = b'FFON'
+    struct.pack_into('<III', data, 0x10, 1, 95, 1)
+    data[0x1C:0x20] = bytes((2, 2, 4, 1))
+    struct.pack_into('<H', data, 0xA0 + 2 * (ord('J') - 0x20), 1)
+    data[0x160:] = b'\\xff\\xff'
+    return bytes(data)
+
+
 def synthetic_menu_pix(count=13):
     """Create tiny unlicensed 2x2 XPIX/TIM2 images for renderer tests."""
     chunks = []
@@ -159,8 +170,9 @@ class MenuEditorNavigationTests(unittest.TestCase):
         actual = arrow_parts(report, editor.m_item, editor.m_navigation.m_previous)
         self.assertEqual(actual, report['arrow_baselines']['items'][0]['variants'][1])
 
-        # With synthetic textures supplied, the help panel must affect
-        # actual pixels on the canvas rather than just the Qt text label.
+        # Native FFON render path must affect pixels, not just the Qt label.
+        self.assertTrue(editor.load_help_font(synthetic_ffon()))
+        self.assertIsNotNone(editor.help_line_pixmap('Just like the arcade version of'))
         for index in range(13):
             pixmap = G.QPixmap(512, 512)
             pixmap.fill(G.QColor('#202020'))
@@ -176,8 +188,10 @@ class MenuEditorNavigationTests(unittest.TestCase):
         with_panel = draw()
         editor.m_help_panel = False
         without_panel = draw()
-        self.assertNotEqual(with_panel.pixelColor(100, 320),
-                            without_panel.pixelColor(100, 320))
+        self.assertNotEqual(with_panel.pixelColor(87, 320),
+                            without_panel.pixelColor(87, 320))
+        self.assertFalse(editor.load_help_font(None))
+        self.assertEqual(editor.m_help_lines_pixmaps, {})
 
     def test_preview_keyboard_navigation_and_confirm_cancel(self):
         from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
