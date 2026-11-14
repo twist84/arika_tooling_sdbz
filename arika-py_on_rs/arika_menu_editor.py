@@ -788,7 +788,8 @@ class c_menu_editor(W.QWidget):
 
         active_characters = frame['idle_characters' if self.m_idle else 'characters'][self.m_item]
         if self.m_native_mode and self.m_character_motion:
-            native_characters = self.m_native_runtime.character_geometry(self.m_item)
+            native_characters = self.m_native_runtime.character_geometry(
+                self.m_item, include_idle=self.m_idle)
             if native_characters is not None:
                 active_characters = native_characters
         active_labels = frame['labels']
@@ -854,7 +855,8 @@ class c_menu_editor(W.QWidget):
             pending = self.m_native_runtime.m_pending
             if pending >= 0:
                 if self.m_middle and self.m_character_motion:
-                    for part in self.m_native_runtime.character_geometry(pending) or []:
+                    for part in (self.m_native_runtime.character_geometry(
+                            pending, include_idle=self.m_idle) or []):
                         enqueue(part['texture_entry'], part['geometry'], 60)
                 if self.m_overlay and self.m_label_motion:
                     geometry = self.m_native_runtime.label_geometry(pending)
