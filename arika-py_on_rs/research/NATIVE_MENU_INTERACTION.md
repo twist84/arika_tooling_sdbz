@@ -105,8 +105,13 @@ label remains an inspection aid.
 
 Arrow UVs, base coordinates, and the history-dependent variants are taken from
 `arrow_baselines` in `main_menu_map.json`. The visual bob is an authored
-32-sample sine displacement (3 canvas pixels), not yet the original arrow
-animation routine. The **Arrow bob (preview)** and **Help panel** checkboxes
+32-sample sine displacement (3 canvas pixels) along each arrow's orientation:
+left/right sprites oscillate on X, up/down sprites on Y, with the sign
+recovered from the sprite's mirrored UV endpoints. A previous preview bug
+applied a Y displacement to all four arrows. Regression tests validate all
+four cardinal directions and every extracted arrow layout variant. The wave
+shape and period remain preview approximations, not yet the original
+arrow animation routine. The **Arrow bob (preview)** and **Help panel** checkboxes
 allow individual visual comparison. No captured artwork or screenshots are
 embedded in the repo; arrow sprites still load from the user's FPIX atlas.
 
