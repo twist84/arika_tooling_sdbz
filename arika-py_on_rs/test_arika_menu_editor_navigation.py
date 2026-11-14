@@ -691,12 +691,20 @@ class MenuEditorNavigationTests(unittest.TestCase):
 
         # Isolate the six recovered sprites from the item's other opaque
         # first-layer sprites, so their contribution to Qt pixels is clear.
+        source_parts = editor.m_data['items'][3]['first']
         editor.m_data['items'][3]['first'] = []
         editor.m_item = 3
         runtime.m_selected = 3
         runtime.m_item_phases[3] = 2
         runtime.m_first_states[3].update(phase=2, offset=[0.0, 0.0],
                                          depth=15.0)
+        literal = runtime.first_geometry(
+            3, source_parts[0]['geometry'], component_index=0)
+        decoration = runtime.first_geometry(
+            3, source_parts[2]['geometry'], component_index=2)
+        particle = runtime.particle_geometry(3)[0]['geometry']
+        self.assertLess(literal['depth'], particle['depth'])
+        self.assertLess(particle['depth'], decoration['depth'])
 
         def render():
             image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
