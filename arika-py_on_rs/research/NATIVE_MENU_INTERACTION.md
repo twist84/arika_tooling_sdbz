@@ -62,10 +62,14 @@ editor container, which could leave the textured canvas visually stale.
 
 The reference screenshots show each item with a bottom help frame containing
 four lines and direction arrows that are part of the menu image, not external
-Qt controls. The editor now draws the four original ELF-extracted strings in
-its 512×448 canvas. The decorative frame, cloud accents, and font selection are
-**temporary QPainter approximations**; native UVs/font rendering remain to be
-recovered. The existing Qt help label is retained as an inspection aid.
+Qt controls. The editor draws the four original ELF-extracted strings in its
+512×448 canvas through the existing native FFON decoder, using the archive's
+`font/5-24-2.fon` automatically on archive load. Text rasterisation shares
+`arika_ffon.render_text` with the Fonts panel; the temporary QPainter
+frame and system-font substitutions have been removed. **The native textbox
+border/background texture is still pending its exact PIX atlas UVs and
+geometry** and must not be represented as complete. The existing Qt help
+label remains an inspection aid.
 
 Arrow UVs, base coordinates, and the history-dependent variants are taken from
 `arrow_baselines` in `main_menu_map.json`. The visual bob is an authored
