@@ -124,16 +124,14 @@ class c_dragon_particle_pool:
     def step(self, timer):
         """One 0x37A860 callback. Return first-instance +0x320 timer.
 
-        Slot updates occur once, before the spawn check. Exhausted pools
-        consume only the timer RNG; an available slot consumes three
-        additional RNG values before the timer value.
+        On timer expiry, spawn and timer RNG occur BEFORE the one shared
+        slot-update pass (0x37A8F4 branches back to 0x37A890).
+        Exhausted pools consume only the timer RNG; a free slot consumes
+        three additional RNG values before the timer value.
         """
         self.m_random_draws = []
         # 0x37A880 with the 0x37A88C branch-delay store.
         timer = f32(f32(timer) - f32(1.0))
-        # 0x37AE80 always updates all six, in native array order.
-        for slot in self.m_slots:
-            self._update_slot(slot)
         if not (timer > 0.0):
             # 0x37AFC0 scans in ascending order and takes the first
             # inactive slot; a full pool does not draw a template RNG.
@@ -144,6 +142,10 @@ class c_dragon_particle_pool:
             # 0x37A8B8 happens after the spawn attempt in either case.
             timer_fraction = random_unit(self._rand('timer'))
             timer = f32(f32(f32(120.0) * timer_fraction) + f32(90.0))
+        # 0x37A8F4 branches to 0x37A890 after the timer store.
+        # Both branches reach exactly one 0x37AE80 pass, AFTER spawning.
+        for slot in self.m_slots:
+            self._update_slot(slot)
         return timer
 
     def snapshot(self):
