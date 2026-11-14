@@ -395,5 +395,115 @@ class MenuDragonParticleTests(unittest.TestCase):
         self.assertEqual(oracle.read_int(0x1000 + 5 * 0xb0 + 0xa0, 4), 0)
 
 
+    def test_elf_sprite_initialize_numeric_fields(self):
+        """Execute 0x37B0A0 with only renderer/resource calls stubbed.
+
+        The sprite UV setter is a controlled memory store, not an emulated
+        GS draw. Numeric particle fields and RNG call order are compared
+        after running the native instructions.
+        """
+        import struct
+        from menu_strip_oracle import c_strip_oracle, bits
+
+        words = [
+            666763216, 1006764107, 4290707488, 399616,
+            2142306320, 608346208, 2142240768, 10520621,
+            202232696, 4423713, 4202541, 202230136,
+            604307467, 4204589, 35659821, 12333,
+            604438529, 16429, 202110524, 18477,
+            2386100224, 35659821, 2402877464, 52492297,
+            33564717, 35659821, 202109908, 604307457,
+            1149263872, 202109904, 35659821, 1006764109,
+            3292580112, 201736468, 3860856976, 809730047,
+            1149437952, 1006778368, 876740864, 1182795872,
+            1149370368, 2516713478, 71303172, 1174470914,
+            1149370368, 268435464, 1182793952, 137282,
+            809631745, 6428709, 1149435904, 0,
+            1182793952, 1174608064, 3347231648, 3347166108,
+            1149239296, 1174605953, 1174470680, 1174671388,
+            3860856980, 3321888776, 201736468, 3860856984,
+            809730047, 604241921, 1149435904, 3322085388,
+            1182793888, 1006843904, 879034624, 1006845388,
+            878955725, 2921595040, 1149569024, 1149435904,
+            0, 1174538498, 3324117144, 1149241344,
+            0, 1174538264, 1174673500, 1174470658,
+            3860922520, 3860856988, 3753836576, 2075197456,
+            2075131904, 65011720, 666697776,
+        ]
+        self.assertEqual(len(words), (0x37b20c - 0x37b0a0) // 4)
+        for entry in self.spec['templates']:
+            for y_value, speed_value in ((0, 0), (32767, 32767),
+                                         (1, 12345)):
+                machine = c_strip_oracle(
+                    dict(draw_address=0x37b0a0, draw_words=words,
+                         clock_address=0, clock_words=[]),
+                    [0, 0, 1, 1], 0, 0, 1, 1, 0, [0, 0])
+                machine.m_registers[4] = 0x1000
+                machine.m_registers[5] = 0x1000
+                machine.m_registers[6] = entry['index']
+                machine.m_registers[28] = 0x4ff370
+                machine.write_int(0x1000, 0x2000, 4)
+                machine.write_int(0x2018, 0xf00024, 4)
+                machine.write_float(0x4cc910, 512.0)
+                machine.write_float(0x4fa710, 260.0)
+                machine.write_float(0x4fa70c, -30.0)
+                machine.write(entry['address'],
+                              struct.pack('<4h2f', *entry['uv_xywh'],
+                                          entry['speed_base'],
+                                          entry['speed_random_span']))
+                rng_values = iter((y_value, speed_value))
+                draws = []
+
+                def rng_stub(oracle):
+                    value = next(rng_values)
+                    draws.append(value)
+                    oracle.m_registers[2] = value
+
+                def uv_setter(oracle):
+                    # Simulate only setter output memory, not the sprite/GS.
+                    xywh = struct.unpack('<4h',
+                                         oracle.read(oracle.m_registers[5], 8))
+                    for i, value in enumerate(
+                            (xywh[0], xywh[0] + xywh[2],
+                             xywh[1], xywh[1] + xywh[3])):
+                        oracle.write_int(0x1028 + i * 2, value, 2)
+
+                machine.m_direct_stubs = {
+                    0x374de0: {2: 0x3000},
+                    0x3725e0: {2: 0x4000},
+                    0x2fd8f0: {},
+                    0x2fcf50: {},
+                    0x2fcf40: {},
+                    0x190450: rng_stub,
+                }
+                machine.m_indirect_stubs = {0xf00024: uv_setter}
+                machine.run(0x37b0a0)
+                self.assertEqual(draws, [y_value, speed_value])
+                # _activate also consumes template RNG; replace it with a
+                # known selector so its next two inputs match this oracle.
+                class c_recorded_rng:
+                    def __init__(self):
+                        self.m_values = iter((entry['index'] << 5,
+                                              y_value, speed_value))
+                    def next(self):
+                        return next(self.m_values)
+                    def get_state(self):
+                        return 0
+                pool = self.make_pool()
+                pool.m_rng = c_recorded_rng()
+                pool._activate(5)
+                slot = pool.m_slots[5]
+                for key, offset in [('x', 0x90), ('y', 0x94),
+                                    ('speed', 0x98), ('depth_step', 0x9c)]:
+                    self.assertEqual(bits(slot[key]),
+                                     machine.read_int(0x1000 + offset, 4),
+                                     (entry['index'], y_value, speed_value, key))
+                self.assertEqual(int(slot['active']),
+                                 machine.read_int(0x10a0, 4))
+                self.assertEqual(slot['uv'],
+                                 [machine.read_int(0x1028 + i*2, 2)
+                                  for i in range(4)])
+
+
 if __name__ == '__main__':
     unittest.main()
