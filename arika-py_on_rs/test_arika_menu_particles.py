@@ -63,7 +63,9 @@ class MenuDragonParticleTests(unittest.TestCase):
         self.assertEqual(tuple(x[0] for x in state['random_draws']),
                          ('template', 'y', 'speed', 'timer'))
         self.assertTrue(state['slots'][5]['active'])
-        self.assertEqual(state['slots'][5]['x'], 512.0)
+        self.assertEqual(state['slots'][5]['x'],
+                         f32(512.0 - state['slots'][5]['speed']),
+                         'the newly spawned slot moves in the same callback')
         self.assertTrue(90.0 <= timer <= 210.0)
         for i in range(5):
             self.assertEqual(state['slots'][i]['x'],
@@ -91,15 +93,22 @@ class MenuDragonParticleTests(unittest.TestCase):
         pool.m_slots[1]['x'] = f32(self.clip - 1.0)
         pool.m_slots[1]['uv'][0] = pool.m_slots[1]['uv'][2] - 1
         pool.m_slots[1]['speed'] = 1.0
-        # Native order: retire on the update pass, then reuse slot 1.
+        # 0x37A8A8 first tests the full pool; the subsequent update
+        # retires slot 1. Only the NEXT expired callback can reuse it.
         before = pool.snapshot()['total_random_draws']
+        pool.step(0.0)
+        self.assertFalse(pool.snapshot()['slots'][1]['active'])
+        self.assertEqual(tuple(x[0] for x in pool.snapshot()['random_draws']),
+                         ('timer',))
+        self.assertEqual(pool.snapshot()['total_random_draws'], before + 1)
         pool.step(0.0)
         after = pool.snapshot()
         self.assertTrue(after['slots'][1]['active'])
-        self.assertEqual(after['slots'][1]['x'], 512.0)
+        self.assertEqual(after['slots'][1]['x'],
+                         f32(512.0 - after['slots'][1]['speed']))
         self.assertEqual(tuple(x[0] for x in after['random_draws']),
                          ('template', 'y', 'speed', 'timer'))
-        self.assertEqual(after['total_random_draws'], before + 4)
+        self.assertEqual(after['total_random_draws'], before + 5)
         self.assertEqual(tuple(s['index'] for s in after['slots']),
                          tuple(range(6)))
 
