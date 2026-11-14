@@ -228,5 +228,91 @@ class MenuDragonParticleTests(unittest.TestCase):
                                  15 + (1 if expired else 0))
 
 
+    def test_elf_particle_movement_clip_and_retirement_oracle(self):
+        """Execute real 0x37B210 instructions with sprite setter/reset stubs.
+
+        Delta cases are integral so the test avoids unresolved FCR31
+        fractional CVT.W.S rounding modes. This does not test the texture
+        setter implementation or EE hardware FPU precision.
+        """
+        from menu_strip_oracle import c_strip_oracle, bits
+
+        words = [
+            666763216, 4290707488, 2142306320, 2142240768,
+            2359492768, 274726987, 10520621, 3324051608,
+            3323986064, 1174470657, 3860856976, 3347179760,
+            3323986064, 1174470708, 1157693448, 0, 2250506280,
+            2250440746, 8587306, 270532658, 0, 268435516,
+            3753836576, 1174407233, 1006784256, 1149370368,
+            0, 1174470710, 1157693445, 0, 1174407204,
+            1141047296, 268435464, 811859967, 1174407169,
+            1006796800, 1174405156, 1141047296, 0, 6428709,
+            811859967, 2250375208, 812711935, 1055804,
+            2250637356, 203839, 2250702890, 2250768430,
+            4395041, 2787246120, 2386100224, 2250571816,
+            2402877468, 52492297, 35659821, 100663300,
+            3324051600, 1150287872, 268435464, 1182793760,
+            1056834, 839057409, 8593445, 1149501440, 0,
+            1182793760, 1174405120, 1174407168, 268500939,
+            3860856976, 2386100224, 2402877476, 52492297,
+            35659821, 3347174944, 2921332888, 3347109412,
+            2921332896, 3860922512, 268500933, 3860856980,
+            3753836576, 2075197456, 2075131904, 65011720,
+            666697776,
+        ]
+        self.assertEqual(len(words), (0x37b368 - 0x37b210) // 4)
+        cases = [
+            (False, 300.0, 1.0, 0, 20),
+            (True, 300.0, 0.5, 0, 20),
+            (True, 240.0, 1.0, 0, 20),
+            (True, 239.0, 1.0, 0, 20),
+            (True, 238.0, 1.0, 0, 20),
+            (True, 238.0, 1.0, 19, 20),
+            (True, 300.0, 1.0, 20, 20),
+        ]
+
+        for active, x, speed, left, right in cases:
+            machine = c_strip_oracle(
+                dict(draw_address=0x37b210, draw_words=words,
+                     clock_address=0, clock_words=[]),
+                [0, 0, 1, 1], 0, 0, 1, 1, 0, [0, 0])
+            machine.m_registers[5] = 0x1000
+            machine.m_registers[28] = 0x4ff370
+            machine.write_int(0x1000, 0x2000, 4)
+            machine.write_int(0x201c, 0xf00024, 4)
+            machine.write_int(0x2024, 0xf00028, 4)
+            machine.write_float(0x4fdc60, self.clip)
+            machine.write_float(0x4fc990, 0.0)
+            machine.write_float(0x4fc994, 0.0)
+            machine.write_int(0x10a0, int(active), 4)
+            machine.write_float(0x1090, x)
+            machine.write_float(0x1094, 25.0)
+            machine.write_float(0x1098, speed)
+            machine.write_int(0x1028, left, 2)
+            machine.write_int(0x102a, right, 2)
+            machine.write_int(0x102c, 10, 2)
+            machine.write_int(0x102e, 40, 2)
+            machine.m_indirect_stubs = {
+                0xf00024: lambda oracle: None,
+                0xf00028: lambda oracle: None,
+            }
+            machine.run(0x37b210)
+
+            pool = self.make_pool()
+            slot = pool.m_slots[0]
+            slot.update(active=active, x=x, y=25.0, speed=speed,
+                        uv=[left, 10, right, 40])
+            pool._update_slot(slot)
+            self.assertEqual(slot['active'], bool(machine.read_int(0x10a0, 4)))
+            self.assertEqual(slot['uv'][0],
+                             machine.read_int(0x1028, 2) -
+                             (0x10000 if machine.read_int(0x1028, 2) & 0x8000 else 0))
+            for key, offset in [('x', 0x90), ('y', 0x94),
+                                ('speed', 0x98)]:
+                self.assertEqual(bits(slot[key]),
+                                 machine.read_int(0x1000 + offset, 4),
+                                 (active, x, speed, left, right, key))
+
+
 if __name__ == '__main__':
     unittest.main()
