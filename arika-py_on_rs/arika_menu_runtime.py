@@ -13,7 +13,7 @@ from arika_menu_input import decode_menu_input
 from arika_menu_children import (
     initialize_child, start_first, exit_first, emphasize_first, step_first,
     start_character, exit_character, emphasize_character, step_character,
-    draw_character,
+    draw_character, translate_first_geometry, draw_first_strip,
 )
 from arika_menu_labels import (
     initialize_label, start_label, exit_label, emphasize_label,
@@ -47,6 +47,7 @@ class c_menu_runtime:
             report.get('item_emphasis', {}).get('kernels', {}).get('labels'))
         self.m_child_callback = child_callback
         self.m_item_update = item_update
+        self.m_first_kernel = report.get('first_components', {}).get('animation')
         self.m_character_kernel = report.get('item_character_animation')
         self.m_idle_components = {
             component['item']: component
@@ -56,6 +57,7 @@ class c_menu_runtime:
             report.get('item_emphasis', {}).get('kernels', {}).get('characters'))
         self.m_native_children = (
             self.m_character_kernel is not None and
+            self.m_first_kernel is not None and
             self.m_label_kernel is not None and
             'composite_layout' in report)
         self.reset()
@@ -105,7 +107,11 @@ class c_menu_runtime:
             if self.m_native_children:
                 first = self.m_first_states[index]
                 character = self.m_character_states[index]
-                step_first(first)
+                step_first(
+                    first, self.m_first_kernel['components'][index],
+                    self.m_first_kernel,
+                    self.m_report['first_components']['groups'][index].get(
+                        'scroll_strip'))
                 step_character(
                     character, self.m_character_kernel['components'][index],
                     self.m_character_kernel, self.m_character_emphasis,
@@ -170,7 +176,8 @@ class c_menu_runtime:
         if old_index >= 0:
             self.m_item_phases[old_index] = 4
             if self.m_native_children:
-                exit_first(self.m_first_states[old_index])
+                exit_first(self.m_first_states[old_index],
+                           self.m_first_kernel)
                 exit_character(self.m_character_states[old_index])
             if self.m_label_kernel is not None:
                 exit_label(self.m_label_states[old_index],
@@ -180,7 +187,10 @@ class c_menu_runtime:
         self.m_selected = new_index
         self.m_item_phases[new_index] = 1
         if self.m_native_children:
-            start_first(self.m_first_states[new_index])
+            start_first(
+                self.m_first_states[new_index],
+                self.m_first_kernel['components'][new_index],
+                self.m_first_kernel)
             start_character(
                 self.m_character_states[new_index],
                 self.m_character_kernel['components'][new_index],
@@ -209,7 +219,8 @@ class c_menu_runtime:
             if self.m_selected >= 0:
                 self.m_item_phases[self.m_selected] = 4
                 if self.m_native_children:
-                    exit_first(self.m_first_states[self.m_selected])
+                    exit_first(self.m_first_states[self.m_selected],
+                               self.m_first_kernel)
                     exit_character(self.m_character_states[self.m_selected])
                 if self.m_label_kernel is not None:
                     exit_label(self.m_label_states[self.m_selected],
@@ -223,7 +234,8 @@ class c_menu_runtime:
             if self.m_selected >= 0:
                 self.m_item_phases[self.m_selected] = 3
                 if self.m_native_children:
-                    emphasize_first(self.m_first_states[self.m_selected])
+                    emphasize_first(self.m_first_states[self.m_selected],
+                                    self.m_first_kernel)
                     emphasize_character(
                         self.m_character_states[self.m_selected])
                 if self.m_label_kernel is not None:
@@ -326,6 +338,22 @@ class c_menu_runtime:
             self.m_label_states[item],
             self.m_label_kernel['components'][item])
 
+    def first_geometry(self, item, geometry):
+        """Translate recovered first-layer geometry by its native offset."""
+        if not self.m_native_children or not 0 <= item < 7:
+            return geometry
+        state = self.m_first_states[item]
+        if state['phase'] == 0:
+            return None
+        return translate_first_geometry(geometry, state['offset'])
+
+    def first_strip_geometry(self, item):
+        """Return native phase-driven strip quads (not diagnostic frames)."""
+        if not self.m_native_children or not 0 <= item < 7:
+            return []
+        return draw_first_strip(self.m_first_states[item], item,
+                                self.m_report)
+
     def character_geometry(self, item, include_idle=True):
         """Return current native character quads, not diagnostic sample 70."""
         if not self.m_native_children or not 0 <= item < 7:
@@ -352,10 +380,19 @@ class c_menu_runtime:
                                   for state in self.m_first_states),
             'first_ages': tuple(state['age']
                                 for state in self.m_first_states),
+            'first_offsets': tuple(tuple(state['offset'])
+                                   for state in self.m_first_states),
+            'first_strip_phases': tuple(state['strip_phase']
+                                        for state in self.m_first_states),
+            'first_particles_unresolved': tuple(
+                bool(state.get('particle_update_unresolved'))
+                for state in self.m_first_states),
             'character_phases': tuple(state['phase']
                                       for state in self.m_character_states),
             'character_ages': tuple(state['age']
                                     for state in self.m_character_states),
+            'character_secondary_ages': tuple(state['secondary_age']
+                                              for state in self.m_character_states),
             'character_offsets': tuple(tuple(state['offset'])
                                        for state in self.m_character_states),
             'character_part_offsets': tuple(
