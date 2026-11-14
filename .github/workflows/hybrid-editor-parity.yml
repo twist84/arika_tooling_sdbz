@@ -42,4 +42,5 @@ jobs:
       - name: Test ELF video-mode signature probe
         run: |
           python -m unittest discover -s elf_tooling -p 'test_elf_video_modes.py' -v
-          python -m py_compile elf_tooling/elf_video_modes.py
+          python -m unittest discover -s elf_tooling -p 'test_elf_gs_display.py' -v
+          python -m py_compile elf_tooling/elf_video_modes.py elf_tooling/elf_gs_display.py
