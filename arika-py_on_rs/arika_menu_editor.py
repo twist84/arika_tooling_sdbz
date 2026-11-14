@@ -12,6 +12,8 @@ from arika_menu_selection_effect import EMPHASIS_DURATION, emphasis_geometry, em
 from arika_menu_arrow_preview import arrow_parts, bobbed_arrow_geometry
 from arika_menu_navigation import read_menu_report
 import arika_ffon
+from arika_menu_frame_match import normalize_reference, rank_samples
+from PIL import Image
 
 
 def lerp_values(a, b, t):
@@ -96,6 +98,8 @@ class c_menu_editor(W.QWidget):
         self.m_help_font = None
         self.m_help_font_data = None
         self.m_help_lines_pixmaps = {}
+        self.m_reference_matches = []
+        self.m_reference_match_index = 0
         self.m_selection_age = None
         self.m_selection_effect = True
         self.m_playing = False
@@ -168,6 +172,22 @@ class c_menu_editor(W.QWidget):
         controls.addWidget(W.QLabel('Display'))
         controls.addWidget(self.m_presentation_combo)
         controls.addWidget(self.m_scan_combo)
+
+        match_button = W.QPushButton('Match pose...')
+        match_button.setToolTip(
+            'Compare the character region against a cropped 4:3 game screenshot. '
+            'This finds the nearest preview sample, not the native animation time.')
+        match_button.clicked.connect(self.match_reference_pose)
+        controls.addWidget(match_button)
+        next_match_button = W.QPushButton('Next match')
+        next_match_button.setToolTip('Inspect the next-best matching animation sample')
+        next_match_button.clicked.connect(self.next_reference_match)
+        controls.addWidget(next_match_button)
+        self.m_match_status = W.QLabel('')
+        self.m_match_status.setToolTip(
+            'Lower score means a closer visual match; the screenshot may have '
+            'different filtering, blending, or runtime animation phases.')
+        controls.addWidget(self.m_match_status)
 
         self.m_time_slider = W.QSlider(C.Qt.Orientation.Horizontal)
         self.m_time_slider.setMinimum(0)
@@ -435,6 +455,87 @@ class c_menu_editor(W.QWidget):
                 if not self.m_playing:
                     self.m_timer.stop()
         self.m_canvas.update()
+
+    def match_reference_pose(self):
+        """Seek to the best visual match, without modifying recovered frames."""
+        filename, _filter = W.QFileDialog.getOpenFileName(
+            self, 'Choose cropped 4:3 menu screenshot', '',
+            'Images (*.png *.jpg *.jpeg *.bmp)')
+        if not filename:
+            return
+        try:
+            with Image.open(filename) as image:
+                reference = normalize_reference(image)
+            self.match_reference_image(reference)
+        except (OSError, ValueError, TypeError) as error:
+            W.QMessageBox.warning(self, 'Menu frame match', str(error))
+
+    def match_reference_image(self, reference):
+        """Compare settled samples 23..119 in the 4:3 presentation only."""
+        if not self.m_data or not self.m_textures:
+            raise ValueError('load the main-menu PIX textures first')
+        if reference.size != (256, 192):
+            raise ValueError('normalize the screenshot before matching')
+
+        old_time = self.m_time
+        old_presentation = self.m_presentation
+        old_selection_age = self.m_selection_age
+        self.m_reference_matches = []
+        W.QApplication.setOverrideCursor(C.Qt.CursorShape.WaitCursor)
+        try:
+            self.m_presentation = 'tv_4_3'
+            self.m_selection_age = None
+
+            def frames():
+                # The baked timeline has authored entry/exit periods.
+                # Compare only the settled middle period, not the startup
+                # or exit, against an unknown screenshot timestamp.
+                for tick in range(23, min(120, len(self.m_data['frames']))):
+                    self.m_time = float(tick)
+                    canvas = G.QImage(
+                        512, 384, G.QImage.Format.Format_RGBA8888)
+                    canvas.fill(G.QColor('#10151c'))
+                    painter = G.QPainter(canvas)
+                    try:
+                        self.render(painter, C.QRect(0, 0, 512, 384))
+                    finally:
+                        painter.end()
+                    pixels = Image.frombytes(
+                        'RGBA', (512, 384), bytes(canvas.constBits()))
+                    yield tick, normalize_reference(pixels)
+
+            matches = rank_samples(reference, frames(), top_n=5)
+        finally:
+            self.m_time = old_time
+            self.m_presentation = old_presentation
+            self.m_selection_age = old_selection_age
+            W.QApplication.restoreOverrideCursor()
+        if not matches:
+            raise ValueError('no settled animation samples available')
+        self.m_reference_matches = matches
+        self.m_reference_match_index = 0
+        self.show_reference_match()
+
+    def show_reference_match(self):
+        if not self.m_reference_matches:
+            return
+        score, tick = self.m_reference_matches[self.m_reference_match_index]
+        if self.m_playing:
+            self.toggle_play()
+        self.m_time_slider.setValue(tick)
+        self.m_time = float(tick)
+        self.m_match_status.setText(
+            'Match %d/%d: %d (%.2f)' %
+            (self.m_reference_match_index + 1,
+             len(self.m_reference_matches), tick, score))
+        self.m_canvas.update()
+
+    def next_reference_match(self):
+        if not self.m_reference_matches:
+            return
+        self.m_reference_match_index = (
+            self.m_reference_match_index + 1) % len(self.m_reference_matches)
+        self.show_reference_match()
 
     def set_presentation(self, index):
         mode = self.m_presentation_combo.itemData(index)
