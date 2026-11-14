@@ -364,14 +364,22 @@ class c_menu_runtime:
             self.m_label_states[item],
             self.m_label_kernel['components'][item])
 
-    def first_geometry(self, item, geometry):
-        """Translate recovered first-layer geometry by its native offset."""
+    def first_geometry(self, item, geometry, component_index=None):
+        """Translate first-layer geometry; preserve recovered item-3 Z order."""
         if not self.m_native_children or not 0 <= item < 7:
             return geometry
         state = self.m_first_states[item]
         if state['phase'] == 0:
             return None
-        return translate_first_geometry(geometry, state['offset'])
+        result = translate_first_geometry(geometry, state['offset'])
+        if item == 3 and component_index is not None:
+            # 0x37A9B4 / 0x37A9E0: two literal sprites at first+0x14.
+            # 0x37AA24: six decorations at first+0x14 + 10.0f.
+            # 0x37A980 -> 0x37B370: particles at first+0x14 + 1.0f
+            # plus their own 0.1f*speed.
+            result['depth'] = f32(
+                state['depth'] + (10.0 if component_index >= 2 else 0.0))
+        return result
 
     def first_strip_geometry(self, item):
         """Return native phase-driven strip quads (not diagnostic frames)."""
