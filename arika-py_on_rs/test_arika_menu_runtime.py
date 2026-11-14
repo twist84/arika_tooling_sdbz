@@ -179,12 +179,38 @@ class MenuRuntimeNativeLabelTests(unittest.TestCase):
         for _ in range(5):
             state = runtime.step()
         self.assertEqual((state['character_phases'][0],
-                          state['character_ages'][0]), (2, 0.0))
+                          state['character_ages'][0]), (2, 5.0))
+        initial_part_offsets = list(runtime.m_character_states[0]['part_offsets'])
         for _ in range(40):
             state = runtime.step()
         self.assertEqual((state['character_phases'][0],
-                          state['character_ages'][0]), (2, 0.0),
-                         'settled character uses per-part clocks, not +0x08')
+                          state['character_ages'][0]), (2, 45.0),
+                         'item-zero phase-two callback advances +0x08')
+        self.assertNotEqual(runtime.m_character_states[0]['part_offsets'],
+                            initial_part_offsets)
+
+    def test_all_seven_phase_two_clocks_use_recovered_periods(self):
+        from arika_menu_navigation import read_menu_report
+        runtime = c_menu_runtime(read_menu_report())
+        idle = runtime.m_idle_components
+        self.assertEqual(set(idle), set(range(7)))
+        for item in range(7):
+            character = runtime.m_character_states[item]
+            runtime.m_item_phases[item] = 2
+            character.update(phase=2, age=0.0)
+            # For exact period, MIPS phase-two callbacks subtract once
+            # rather than wrapping with an arbitrary wall-clock duration.
+            period = idle[item]['curve']['times'][-1]
+            character['age'] = period - 1.0
+            runtime._update_item(item, 'test_child_update')
+            self.assertEqual(character['age'], 0.0,
+                             'item %d period %s' % (item, period))
+            self.assertEqual(character['phase'], 2)
+            if item not in (5,):
+                self.assertEqual(
+                    len(character['part_offsets']),
+                    len(runtime.m_report['composite_layout']
+                        ['composites'][item]['parts']))
 
     def test_old_selection_retires_exactly_after_child_exit(self):
         from arika_menu_navigation import read_menu_report
