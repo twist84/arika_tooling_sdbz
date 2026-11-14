@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 import sys
 from PIL import Image
 from PySide6 import QtCore as C,QtGui as G,QtWidgets as W
+import shiboken6
 from rendercanvas.qt import QRenderWidget
 import arika_backend as backend
 import arika_dat as dat
@@ -1002,7 +1003,6 @@ class c_outliner_pinned_columns(W.QWidget):
         # Qt may deliver events to the header/viewport as the tree is torn
         # down. The Python wrapper can outlive the underlying C++ QTreeWidget.
         # Never call viewport() or header() on an invalid wrapper.
-        import shiboken6
         if not shiboken6.isValid(self.m_tree):
             return False
         try:
