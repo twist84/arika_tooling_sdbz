@@ -226,7 +226,7 @@ class c_menu_editor(W.QWidget):
                            ('Idle', 'm_idle'), ('Char motion', 'm_character_motion'),
                            ('Label motion', 'm_label_motion'), ('Arrows', 'm_arrows'), ('Bounds', 'm_bounds'),
                            ('Smooth', 'm_smooth'), ('Selection pulse (preview)', 'm_selection_effect'),
-                           ('Arrow bob (preview)', 'm_arrow_bob'), ('Help panel', 'm_help_panel')):
+                           ('Arrow motion (native curve)', 'm_arrow_bob'), ('Help panel', 'm_help_panel')):
             box = W.QCheckBox(name)
             box.setChecked(getattr(self, attr))
             box.toggled.connect(lambda value, a=attr: setattr(self, a, value))
