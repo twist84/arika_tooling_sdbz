@@ -103,6 +103,16 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertFalse(editor.load_textures(synthetic_menu_pix(count=12)))
         self.assertFalse(editor.m_textures)
 
+    def test_help_panel_atlas_uses_alpha_bounds_and_resets(self):
+        from PySide6 import QtCore as C
+        editor = self.m_editor
+        self.assertIsNone(editor.m_help_panel_uv)
+        self.assertTrue(editor.load_textures(synthetic_menu_pix()))
+        # The synthetic atlases are opaque, so the entire 2x2 image is used.
+        self.assertEqual(editor.m_help_panel_uv, C.QRectF(0, 0, 2, 2))
+        self.assertFalse(editor.load_textures(None))
+        self.assertIsNone(editor.m_help_panel_uv)
+
     def test_layout_has_no_embedded_images(self):
         editor = self.m_editor
         self.assertNotIn('textures', editor.m_data)
