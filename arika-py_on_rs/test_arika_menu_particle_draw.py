@@ -57,6 +57,10 @@ class DragonParticleDrawTests(unittest.TestCase):
                 dict(draw_address=0x37b370, draw_words=NATIVE_DRAW_WORDS,
                      clock_address=0, clock_words=[]),
                 [0, 0, 1, 1], 0, 0, 1, 1, 0, [0, 0])
+            # The generic sprite-draw oracle expects a preceding UV
+            # setter. 0x37B370 only writes presentation floats; its
+            # preexisting sprite UV state is deliberately stubbed here.
+            machine.m_rect = [0, 0, 1, 1]
             machine.m_registers[4] = 0x1500
             machine.m_registers[5] = 0x2000
             machine.m_registers[6] = 0x1000
