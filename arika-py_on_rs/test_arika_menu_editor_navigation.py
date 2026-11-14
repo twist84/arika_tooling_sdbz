@@ -389,6 +389,55 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(editor.m_item, 1)
 
 
+    def test_native_character_pose_changes_without_scrubbing_diagnostic_time(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        for index in range(13):
+            pixmap = G.QPixmap(512, 512)
+            pixmap.fill(G.QColor.fromHsv(index * 19, 255, 240))
+            editor.m_textures[index] = pixmap
+
+        editor.m_background = False
+        editor.m_motion = False
+        editor.m_tint = False
+        editor.m_first = False
+        editor.m_middle = True
+        editor.m_character_motion = True
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+        editor.m_selection_effect = False
+        editor.m_time = 70.0
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        for _ in range(100):
+            state = editor.step_native()
+            if state['outer_phase'] == 2:
+                break
+        self.assertEqual(state['outer_phase'], 2)
+
+        def draw():
+            canvas = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            canvas.fill(G.QColor('#10151c'))
+            painter = G.QPainter(canvas)
+            try:
+                editor.render(painter, C.QRect(0, 0, 512, 448))
+            finally:
+                painter.end()
+            return bytes(canvas.constBits())
+
+        start_pose = editor.m_native_runtime.character_geometry(0)
+        before = draw()
+        for _ in range(8):
+            editor.step_native()
+        after = draw()
+        self.assertNotEqual(
+            editor.m_native_runtime.character_geometry(0), start_pose)
+        self.assertNotEqual(before, after,
+                            'native character movement must reach Qt pixels')
+        self.assertEqual(editor.m_time, 70.0,
+                         'native child updates must not scrub diagnostic time')
+        editor.m_timer.stop()
+
     def test_opt_in_native_lifecycle_queues_edges_without_authoring_timing(self):
         editor = self.m_editor
         diagnostic_tick = editor.m_time
