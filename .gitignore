@@ -20,3 +20,9 @@
 /elf_tooling/__pycache__
 /arika-py_on_rs/test_extract
 arika-py_on_rs/arika_backend.dll
+
+# Game-derived previews must stay local; menu artwork is loaded from
+# user-provided GAME.DAT, not checked into the repo.
+/previews/menu_textured.html
+/previews/menu_textured.png
+/previews/menu_*.png

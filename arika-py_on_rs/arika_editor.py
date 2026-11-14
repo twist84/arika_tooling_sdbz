@@ -17,6 +17,7 @@ import shiboken6
 from rendercanvas.qt import QRenderWidget
 import arika_backend as backend
 import arika_dat as dat
+from arika_archive_paths import resolve_archive_paths
 import arika_ffon
 import arika_pix
 import arika_ani
@@ -1722,17 +1723,18 @@ class c_scene_editor(W.QMainWindow):
 
     def load_archive(self,info_path,game_path=None):
         if not self.discard():return
-        info_path=Path(info_path)
-        if game_path is None:
-            candidate=info_path.with_name('GAME.DAT' if info_path.name.upper()=='INFO.DAT' else 'INFO.DAT')
-            if candidate.is_file():game_path=candidate
-            else:game_path=None
-        if game_path is None and info_path.name.upper()=='GAME.DAT':
-            candidate=info_path.with_name('INFO.DAT')
-            if candidate.is_file():game_path=info_path;info_path=candidate
+        try:
+            info_path, game_path = resolve_archive_paths(info_path, game_path)
+        except OSError as error:
+            self.fail(error)
+            return
         self.m_virtual_files={}
         self.m_virtual=True
         self.m_project=None
+        if hasattr(self.m_menu_view, 'load_textures'):
+            self.m_menu_view.load_textures(None)
+        if hasattr(self.m_menu_view, 'load_help_font'):
+            self.m_menu_view.load_help_font(None)
         try:
             self.m_tree.clear();self.m_items={}
         except Exception:pass
@@ -1752,6 +1754,24 @@ class c_scene_editor(W.QMainWindow):
                 self.m_file_tree.addTopLevelItem(item)
             self.m_file_tree.blockSignals(False)
         except Exception:pass
+        # Menu textures come exclusively from the user's opened game data;
+        # never fall back to the old repo-bundled HTML/PNG sample.
+        if hasattr(self.m_menu_view, 'load_textures'):
+            menu_pix=next((data for name,data in self.m_virtual_files.items()
+                           if name.replace('\\','/').lower().lstrip('/')=='dis/main_menu.pix'),None)
+            self.m_menu_view.load_textures(menu_pix)
+        if hasattr(self.m_menu_view, 'load_help_font'):
+            # FFON is already supported by the editor's Fonts panel.
+            # Load it directly from this archive without exporting a file.
+            font_data = next((data for name, data in self.m_virtual_files.items()
+                              if name.replace('\\', '/').lower().lstrip('/') ==
+                              'font/5-24-2.fon'), None)
+            if font_data:
+                try:
+                    self.m_menu_view.load_help_font(font_data)
+                except (ValueError, RuntimeError) as error:
+                    self.statusBar().showMessage('Native menu font: %s' % error)
+
         self.statusBar().showMessage('Loaded archive %s — %d entries'%(info_path.name,len(self.m_virtual_files)))
         self.m_scene_status.setText('Archive: %d entries'%len(self.m_virtual_files))
         self.remember_file(str(info_path),'archive')

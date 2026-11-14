@@ -5,6 +5,10 @@ on:
     paths:
       - 'arika-py_on_rs/**'
       - 'arika-rs/arika_core/**'
+      - 'elf_tooling/elf_video_modes.py'
+      - 'elf_tooling/test_elf_video_modes.py'
+      - 'elf_tooling/elf_menu_arrows.py'
+      - 'elf_tooling/test_elf_menu_arrows.py'
       - '.github/workflows/hybrid-editor-parity.yml'
   workflow_dispatch:
 
@@ -35,5 +39,11 @@ jobs:
         working-directory: arika-py_on_rs
         run: |
           python -m pip install -r requirements_scene_editor.txt
-          python -m unittest test_arika_editor_shutdown test_arika_stage_background test_arika_scene_project test_arika_gizmo test_arika_stage_view3d test_arika_models test_arika_animation_preview test_arika_scene_characters test_arika_skinning -v
-          python -m py_compile arika_editor.py arika_scene_editor.py arika_scene_project.py arika_stage_background.py arika_animation_preview.py
+          python -m unittest test_arika_editor_shutdown test_arika_stage_background test_arika_scene_project test_arika_gizmo test_arika_stage_view3d test_arika_models test_arika_animation_preview test_arika_scene_characters test_arika_skinning test_arika_menu_navigation test_arika_menu_input test_arika_menu_runtime test_arika_menu_arrow_preview test_arika_menu_frame_match test_arika_menu_editor_navigation -v
+          python -m py_compile arika_editor.py arika_scene_editor.py arika_scene_project.py arika_stage_background.py arika_animation_preview.py arika_menu_navigation.py arika_menu_input.py arika_menu_runtime.py menu_lifecycle_oracle.py arika_menu_editor.py
+      - name: Test ELF video-mode signature probe
+        run: |
+          python -m unittest discover -s elf_tooling -p 'test_elf_video_modes.py' -v
+          python -m unittest discover -s elf_tooling -p 'test_elf_gs_display.py' -v
+          python -m unittest discover -s elf_tooling -p 'test_elf_menu_arrows.py' -v
+          python -m py_compile elf_tooling/elf_video_modes.py elf_tooling/elf_gs_display.py
