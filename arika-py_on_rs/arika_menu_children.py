@@ -7,7 +7,8 @@ First-group exit 0x373E60 completes at gp-0x4DCC = 10.0.
 Character entry/exit use the times recovered in item_character_animation.
 All seven phase-2 vtable callbacks +0x24 have their own periodic age; the
 corresponding tested animation kernels are in character_idle. CUSTOMIZE's
-secondary +0x1E8 clock remains uninitialized without an external observation.
+secondary +0x1E8 clock is reset by its +0x14 active callback 0x37F7E0,
+which runs at the end of character entry, before the first idle update.
 The selected item's phase-4 completion check is 0x3756E0.
 
 These ages count logical updates; they do not imply display-frame timings.
@@ -16,7 +17,7 @@ from arika_menu_characters import character_offset
 from arika_menu_emphasis import emphasis_offset
 from arika_menu_layout import f32, pose_part
 from arika_menu_banner import sample_curve
-from arika_menu_idle import step_idle, step_circular_idle, step_dragon_idle
+from arika_menu_idle import step_idle, step_coupled_idle, step_circular_idle, step_dragon_idle
 
 
 # Float values checked against the EU-beta SLES_541.61 instruction operands.
@@ -25,7 +26,10 @@ FIRST_EXIT_AGE = f32(10.0)
 
 
 def initialize_child():
-    return dict(phase=0, age=0.0, offset=[0.0, 0.0], depth=0.0)
+    # Only the transition to character phase 2 establishes the secondary
+    # clock's origin. Constructor contents prior to that are not assumed.
+    return dict(phase=0, age=0.0, offset=[0.0, 0.0], depth=0.0,
+                secondary_age=None)
 
 
 def start_first(state):
@@ -61,7 +65,7 @@ def start_character(state, component, kernel):
     # 0x37F240 -> vtable+0x10 -> 0x37F2E0
     state.update(phase=1, age=0.0,
                  offset=character_offset(0.0, component, kernel),
-                 depth=45.0)
+                 depth=45.0, part_offsets=[])
 
 
 def exit_character(state):
@@ -92,15 +96,15 @@ def step_character(state, component, kernel, emphasis_kernel=None,
         elif kind == 'combined_circular':
             age, offsets = step_dragon_idle(state['age'], idle_component)
         elif kind == 'coupled':
-            # 0x37F7F0 uses a second independent +0x1E8 float age.
-            # Its construction-time value is not verified; reproduce only
-            # the primary period and first part's unambiguous displacement.
-            age = f32(state['age'] + 1.0)
-            period = idle_component['curve']['times'][-1]
-            if age >= period:
-                age = f32(age - period)
-            value = sample_curve(idle_component['curve'], age)
-            offsets = [[value, value], [0.0, 0.0], [0.0, 0.0]]
+            # 0x37F7E0 (+0x14 on CUSTOMIZE's character vtable) clears
+            # +0x1E8 when phase 1 finishes. 0x37F7F0 then advances both
+            # independent ages and all three part offsets. These kernels
+            # have independent native-instruction oracle coverage.
+            if state['secondary_age'] is None:
+                raise ValueError('CUSTOMIZE phase 2 requires entry callback')
+            age, secondary, offsets = step_coupled_idle(
+                state['age'], state['secondary_age'], idle_component)
+            state['secondary_age'] = secondary
         else:
             raise ValueError('unsupported native idle callback kind')
         state['age'] = age
@@ -116,6 +120,12 @@ def step_character(state, component, kernel, emphasis_kernel=None,
                         kernel['bounce']['times'][-1])
         if state['age'] >= threshold:
             state.update(phase=2, age=0.0, offset=[0.0, 0.0])
+            if component['item'] == 5:
+                if component['callbacks'][3] != 0x0037f7e0:
+                    raise ValueError('CUSTOMIZE active callback mismatch')
+                # 0x37F7E0: sw zero,+0x08(a0) and, in JR delay slot,
+                # sw zero,+0x1E8(a0). This is not an assumed init value.
+                state['secondary_age'] = 0.0
     elif state['phase'] == 4:
         state['offset'] = character_offset(
             state['age'], component, kernel, exiting=True)
@@ -129,10 +139,10 @@ def step_character(state, component, kernel, emphasis_kernel=None,
 
 
 def draw_character(state, item, report, include_idle=True):
-    """Native character pose (common component motion only, no authored clock).
+    """Native common character and phase-2 per-part geometry.
 
-    Per-part idle oscillation is deliberately not injected here until the
-    character-local secondary clock and phase-2 callbacks have ELF parity.
+    Both CUSTOMIZE clocks are instruction-backed; circular idle remains
+    host-trigonometry approximate rather than bitwise EE libm.
     """
     if state['phase'] == 0:
         return []
