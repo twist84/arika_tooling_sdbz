@@ -87,7 +87,7 @@ class c_menu_editor(W.QWidget):
         self.m_data = None
         self.m_textures = {}
         self.m_help_panel_uv = None
-        self.m_presentation = 'square'
+        self.m_presentation = 'tv_4_3'
         self.m_scan_mode = 'interlaced'
         self.m_time = 70.0
         self.m_item = 0
@@ -585,7 +585,7 @@ class c_menu_editor(W.QWidget):
         # Render the game texture, never a synthetic QPainter border.
         panel = self.m_textures.get(4)
         if panel is not None and not panel.isNull() and self.m_help_panel_uv is not None:
-            painter.drawPixmap(C.QRectF(30, 275, 450, 175), panel,
+            painter.drawPixmap(C.QRectF(30, 272, 450, 175), panel,
                                self.m_help_panel_uv)
         if self.m_help_font is None:
             painter.restore()
@@ -603,7 +603,7 @@ class c_menu_editor(W.QWidget):
             for index, pixmap in enumerate(pixmaps):
                 if pixmap is None or pixmap.isNull():
                     continue
-                painter.drawPixmap(C.QRectF(87, 320 + index * 25,
+                painter.drawPixmap(C.QRectF(87, 324 + index * 25,
                                            pixmap.width() * scale,
                                            pixmap.height() * scale),
                                    pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
