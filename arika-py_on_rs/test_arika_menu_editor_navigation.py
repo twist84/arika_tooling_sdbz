@@ -243,8 +243,9 @@ class MenuEditorNavigationTests(unittest.TestCase):
         with_panel = draw()
         editor.m_help_panel = False
         without_panel = draw()
-        self.assertNotEqual(with_panel.pixelColor(87, 320),
-                            without_panel.pixelColor(87, 320))
+        self.assertNotEqual(bytes(with_panel.constBits()),
+                            bytes(without_panel.constBits()),
+                            'native help artwork or FFON glyphs should change canvas pixels')
         self.assertFalse(editor.load_help_font(None))
         self.assertEqual(editor.m_help_lines_pixmaps, {})
 
