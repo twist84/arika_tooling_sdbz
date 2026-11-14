@@ -105,7 +105,10 @@ class c_menu_editor(W.QWidget):
         self.m_diagnostic_selection_age = None
         self.m_menu_report = read_menu_report()
         self.m_native_mode = False
-        self.m_native_runtime = c_menu_runtime(self.m_menu_report)
+        # The native-particle preview uses an explicit diagnostic RNG seed.
+        # It is NOT a captured game-wide context seed.
+        self.m_native_runtime = c_menu_runtime(
+            self.m_menu_report, particle_seed=1)
         self.m_native_input_queue = []
         self.m_help_font = None
         self.m_help_font_data = None
@@ -853,6 +856,10 @@ class c_menu_editor(W.QWidget):
                       if self.m_native_mode else frame['strips'][self.m_item])
             for p in strips:
                 enqueue(p['texture_entry'], p['geometry'], 45)
+            if self.m_native_mode:
+                # 0x37A910 -> 0x37AEE0: read the runtime-owned pool.
+                for p in self.m_native_runtime.particle_geometry(self.m_item):
+                    enqueue(p['texture_entry'], p['geometry'], 45)
 
         if self.m_native_mode:
             # 0x379E60 draws the pending old item before the current item.
@@ -866,6 +873,11 @@ class c_menu_editor(W.QWidget):
                         enqueue(part['texture_entry'], geometry, 47)
                     for part in self.m_native_runtime.first_strip_geometry(pending):
                         enqueue(part['texture_entry'], part['geometry'], 45)
+                    # This pool belongs to DRAGON SUMMONING, not the new
+                    # selected item. Retain it through pending exit.
+                    if pending == 3 and self.m_native_runtime.m_selected != 3:
+                        for part in self.m_native_runtime.particle_geometry(pending):
+                            enqueue(part['texture_entry'], part['geometry'], 45)
                 if self.m_middle and self.m_character_motion:
                     for part in (self.m_native_runtime.character_geometry(
                             pending, include_idle=self.m_idle) or []):
