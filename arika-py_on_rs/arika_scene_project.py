@@ -8,6 +8,7 @@ from arika_stages import parse_stg,build_stage_gltf
 from arika_models import euler_radians,quaternion,require,local_matrix,multiply,identity
 from arika_import import write_output
 from arika_scene_characters import merge_character
+from arika_stage_background import stage_background_choices, default_stage_background, stage_background_rgba
 
 
 def material_preview_document(document,index):
@@ -362,6 +363,7 @@ class c_scene_project:
         self.m_document=gltf.to_document()
         self.m_history=[];self.m_future=[];self.m_changed=False
         self.m_virtual=False
+        self.m_background_preset=default_stage_background(self.m_stage.m_path)
         self._import_sibling_audio()
 
     def _import_sibling_audio(self):
@@ -377,6 +379,7 @@ class c_scene_project:
         obj=cls.__new__(cls);obj.m_stage=stage;obj.m_document=document
         obj.m_history=[];obj.m_future=[];obj.m_changed=False
         obj.m_virtual=virtual
+        obj.m_background_preset=default_stage_background(stage.m_path) if stage else None
         return obj
 
     @classmethod
@@ -408,15 +411,37 @@ class c_scene_project:
         stage.m_virtual_files={};stage.m_virtual=bool(name)
         doc=document['gltf'];require(doc.get('asset',{}).get('version')=='2.0','invalid project glTF')
         for item in doc.get('buffers',[])+doc.get('images',[]):require(item.get('uri','').startswith('data:'),'project assets must be embedded')
-        return cls._build(stage,doc,virtual=bool(name))
+        obj=cls._build(stage,doc,virtual=bool(name))
+        choices={item['key'] for item in obj.background_choices()}
+        if document.get('stage_background') in choices:
+            obj.m_background_preset=document['stage_background']
+        return obj
 
-    def snapshot(self):return (self.m_stage.m_data if self.m_stage else b'',copy.deepcopy(self.m_document))
+    def background_choices(self):
+        stage=getattr(self,'m_stage',None)
+        return stage_background_choices(stage.m_path) if stage else ()
+
+    def background_rgba(self):
+        return stage_background_rgba(getattr(self,'m_background_preset',None))
+
+    def set_background_preset(self,key):
+        require(key in {item['key'] for item in self.background_choices()},'invalid stage background preset')
+        if key!=getattr(self,'m_background_preset',None):
+            self.checkpoint()
+            self.m_background_preset=key
+
+    def snapshot(self):
+        return (self.m_stage.m_data if self.m_stage else b'',copy.deepcopy(self.m_document),
+            getattr(self,'m_background_preset',None))
 
     def checkpoint(self):
         self.m_history.append(self.snapshot());self.m_history=self.m_history[-20:];self.m_future=[];self.m_changed=True
 
     def restore(self,state):
-        self.m_stage.m_data,self.m_document=state;self.m_stage.m_scene=parse_stg(self.m_stage.m_data);self.m_changed=True
+        data,self.m_document,self.m_background_preset=state
+        if self.m_stage:
+            self.m_stage.m_data=data;self.m_stage.m_scene=parse_stg(data)
+        self.m_changed=True
 
     def undo(self):
         if self.m_history:self.m_future.append(self.snapshot());self.restore(self.m_history.pop())
@@ -528,6 +553,8 @@ class c_scene_project:
     def save(self,path):
         payload=dict(format='ARIKA_SCENE_PROJECT',version=1,source_stage=str(self.m_stage.m_path),
             original_stage=base64.b64encode(self.m_stage.m_original).decode(),edited_stage=base64.b64encode(self.m_stage.m_data).decode(),gltf=self.m_document)
+        if getattr(self,'m_background_preset',None) is not None:
+            payload['stage_background']=self.m_background_preset
         write_output(path,json.dumps(payload,separators=(',',':'),allow_nan=False).encode(),self.source_inputs());self.m_changed=False
 
     def source_inputs(self):
@@ -545,4 +572,8 @@ class c_scene_project:
         stage.m_data=base64.b64decode(data['edited_stage'],validate=True);stage.m_scene=parse_stg(stage.m_data);stage.m_undo=[];stage.m_redo=[]
         doc=data['gltf'];require(doc.get('asset',{}).get('version')=='2.0','invalid project glTF')
         for item in doc.get('buffers',[])+doc.get('images',[]):require(item.get('uri','').startswith('data:'),'project assets must be embedded')
-        obj=cls.__new__(cls);obj.m_stage=stage;obj.m_document=doc;obj.m_history=[];obj.m_future=[];obj.m_changed=False;return obj
+        obj=cls._build(stage,doc)
+        choices={item['key'] for item in obj.background_choices()}
+        if data.get('stage_background') in choices:
+            obj.m_background_preset=data['stage_background']
+        return obj
