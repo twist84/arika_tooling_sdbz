@@ -126,5 +126,49 @@ class MenuRuntimeTests(unittest.TestCase):
         self.assertEqual((state['outer_phase'], state['exit_phase']), (3, 30))
 
 
+class MenuRuntimeNativeLabelTests(unittest.TestCase):
+    """Real ELF-derived label tables; no authored timeline indices."""
+
+    def test_entry_selection_and_independent_label_ages(self):
+        from arika_menu_navigation import read_menu_report
+        runtime = c_menu_runtime(read_menu_report())
+        state = ready(runtime)
+        self.assertEqual((state['label_phases'][0], state['label_ages'][0]), (1, 0.0))
+        self.assertIsNotNone(runtime.label_geometry(0))
+        self.assertIsNone(runtime.label_geometry(1))
+        for _ in range(32):
+            state = runtime.step()
+        self.assertEqual(state['label_phases'][0], 2)
+        self.assertEqual(state['label_offsets'][0], (0.0, 0.0))
+        state = runtime.step(input_mask=2)
+        self.assertEqual((state['selected'], state['pending']), (1, 0))
+        self.assertEqual((state['label_phases'][0], state['label_phases'][1]), (4, 1))
+        self.assertEqual((state['label_ages'][0], state['label_ages'][1]), (0.0, 0.0))
+        for _ in range(10):
+            state = runtime.step()
+        self.assertEqual(state['label_phases'][0], 0)
+        self.assertIsNone(runtime.label_geometry(0))
+        self.assertEqual(state['pending'], 0,
+                         'unverified character/first-part completion must not be guessed')
+        self.assertEqual(state['label_ages'][1], 10.0)
+
+    def test_confirm_exit_and_cancel_emphasis_are_distinct(self):
+        from arika_menu_navigation import read_menu_report
+        runtime = c_menu_runtime(read_menu_report())
+        ready(runtime)
+        state = runtime.step(confirm_mask=0x40)
+        self.assertEqual((state['outer_phase'], state['exit_phase']), (3, 30))
+        self.assertEqual(state['label_phases'][0], 4)
+        runtime = c_menu_runtime(read_menu_report())
+        ready(runtime)
+        state = runtime.step(controller_qualified=False)
+        self.assertEqual((state['outer_phase'], state['exit_phase']), (3, 0))
+        self.assertEqual(state['label_phases'][0], 3)
+        state = runtime.step(fade_busy=False)
+        self.assertEqual((state['label_phases'][0], state['label_ages'][0]), (3, 1.0))
+
+
+
+
 if __name__ == '__main__':
     unittest.main()
