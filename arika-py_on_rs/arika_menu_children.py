@@ -71,7 +71,9 @@ def emphasize_character(state):
 
 def step_character(state, component, kernel, emphasis_kernel=None):
     # 0x37F100 -> 0x37F350 entry, 0x37F3F0 exit, 0x37F460 emphasis.
-    if state['phase'] == 0:
+    # 0x37F100 dispatches phase 2 to vtable+0x24, which does not
+    # advance this common character age; per-part idle has other clocks.
+    if state['phase'] not in (1, 3, 4):
         return
     age = f32(state['age'] + 1.0)
     state['age'] = f32(age - 99999.0) if age > 99999.0 else age
