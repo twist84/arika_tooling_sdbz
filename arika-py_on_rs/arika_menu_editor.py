@@ -97,6 +97,7 @@ class c_menu_editor(W.QWidget):
         self.m_presentation = 'tv_4_3'
         self.m_scan_mode = 'interlaced'
         self.m_time = 70.0
+        self.m_diagnostic_time = self.m_time
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
         self.m_menu_report = read_menu_report()
@@ -498,6 +499,7 @@ class c_menu_editor(W.QWidget):
         self.m_native_step_button.setEnabled(native)
         self.m_native_reset_button.setEnabled(native)
         if native:
+            self.m_diagnostic_time = self.m_time
             self.reset_native()
             # The neutral pose is diagnostic geometry only, not a native
             # clock or a frame from which native timing is inferred.
@@ -505,6 +507,7 @@ class c_menu_editor(W.QWidget):
         else:
             self.m_native_input_queue.clear()
             self.m_native_status.setText('Diagnostic 140-sample timeline')
+            self.set_time(self.m_diagnostic_time)
             self.update_navigation_status()
         self.m_canvas.update()
 
