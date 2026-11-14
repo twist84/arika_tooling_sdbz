@@ -171,20 +171,50 @@ ownership, precise branch order and validation limitations.
   (0x37ADB0). These compare supported instructions, **not** the full GS,
   sprite setup/texture setter or real RNG context.
 - [x] Registered the new test module in the Windows/Linux CI workflow.
-- [ ] Verify the **latest commit** passes both Windows/Linux CI; record the
-  run IDs in the particle research file.
-- [ ] Complete all native instruction oracle cases for sprite initialization
-  (0x37B0A0), clipping conversion corner cases, slot exhaustion, draw-time
-  sprite writes, reset and pool destruction.
-- [ ] Establish live-context RNG seed/external consumers, and verify all
-  runtime boundary writes to global clip field 0x4FDC60. An isolated
-  `particle_seed=1` editor run is a diagnostic replay, not captured game state.
+- [x] Established earlier Windows/Linux green baseline at run
+  `43653039361` (163 menu/editor tests). New UV and shared-RNG milestones
+  must be validated on the latest head independently.
+- [x] Added interpreted native 0x37B0A0 initialization, 0x37B210
+  fractional clip, 0x37B370 draw writes, 0x37A820 / 0x37AF60 pool
+  teardown and 0x4E23B0 boundary initializer regression cases.
+- [x] Recovered particle subclass UV vtable 0x4EDCB0: +0x18
+  0x2FCDD0, +0x1C 0x2FCE20, +0x24 0x2FDA00. Attached-texture
+  normalization and reset have native-word tests; Qt supplies actual
+  TIM2 atlas dimensions rather than assuming 512x512.
+- [ ] Confirm pathological float-to-short, native GS blend/texture
+  configuration and EE FPU hardware last-bit behavior.
+- [x] Integrated ten-slot companion logical owner through recovered
+  shared-scheduler update_owner/start_owner events; both companion effects
+  and item-3 Dragon particles consume one context RNG instance in their
+  native shared-before-item update order. Added same-frame interleaving
+  and replay/reset tests without guessing native timing.
+- [ ] Capture actual live-context seed and further RNG consumers. The
+  isolated `particle_seed=1` Qt editor run remains a diagnostic replay.
+  Audit pointer-based writes to clip global 0x4FDC60; the direct GP
+  initializer 0x4E23B0 stores verified 239.0f.
 - [ ] Prove 512×448 native PIX scale, depth, transparency, blending and
   ordering against a game capture before claiming pixel-perfect rendering.
-- [ ] Integrate shared tile, banner and companion effects with verified
-  scheduler ownership and independent clocks.
+- [ ] Render shared tiles, banner and companion effects through native
+  scheduler-owned clocks and geometry: companion *logical owner and RNG*
+  are integrated, but Qt's companion graphics/other shared effects still
+  need native draw ordering, visibility and pixel parity.
 - [ ] Keep PR #14 draft until acceptance criteria are satisfied; do not
   conflate passing stubbed instruction tests with complete ELF parity.
+
+### Texture setter and cross-owner RNG checkpoint
+
+The next commits recover texture-backed sprite UV normalization at
+`0x2FCE20`, retain native reset metadata from `0x2FDA00`, and
+supply real texture 11 dimensions from the opened PIX. The tests include
+36 attached-texture setter combinations, a null-texture path, reset,
+fractional-clipping cases and non-mutating editor/runtime rebinding.
+
+The shared scheduler now advances the recovered ten-slot companion owner
+before item updates. The companion and six-slot Dragon pool share one
+injected native LCG context, and a focused test verifies first-entry
+companion callbacks and competing same-update RNG draws. Other live
+context consumers and the true game seed remain unknown. Research details
+are in [NATIVE_DRAGON_PARTICLES.md](NATIVE_DRAGON_PARTICLES.md).
 
 ### Follow-up
 
