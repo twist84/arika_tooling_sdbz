@@ -113,6 +113,29 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertFalse(editor.load_textures(None))
         self.assertIsNone(editor.m_help_panel_uv)
 
+    def test_menu_uses_square_native_viewport(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        for index in range(13):
+            pixmap = G.QPixmap(512, 512)
+            pixmap.fill(G.QColor('#3f3f3f'))
+            editor.m_textures[index] = pixmap
+        editor.m_motion = False
+        editor.m_background = False
+        editor.m_tint = False
+        editor.m_first = False
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = True
+        editor.m_help_panel_uv = C.QRectF(0, 0, 512, 512)
+        image = G.QImage(512, 512, G.QImage.Format.Format_ARGB32)
+        image.fill(G.QColor('#10151c'))
+        painter = G.QPainter(image)
+        editor.render(painter, C.QRect(0, 0, 512, 512))
+        painter.end()
+        self.assertNotEqual(image.pixelColor(100, 480), G.QColor('#10151c'))
+
     def test_layout_has_no_embedded_images(self):
         editor = self.m_editor
         self.assertNotIn('textures', editor.m_data)
@@ -133,10 +156,10 @@ class MenuEditorNavigationTests(unittest.TestCase):
         editor.m_tint = False
 
         def draw():
-            image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            image = G.QImage(512, 512, G.QImage.Format.Format_ARGB32)
             image.fill(G.QColor('black'))
             painter = G.QPainter(image)
-            editor.render(painter, C.QRect(0, 0, 512, 448))
+            editor.render(painter, C.QRect(0, 0, 512, 512))
             painter.end()
             return bytes(image.constBits())
 
@@ -189,10 +212,10 @@ class MenuEditorNavigationTests(unittest.TestCase):
             editor.m_textures[index] = pixmap
         editor.m_time = 70
         def draw():
-            image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            image = G.QImage(512, 512, G.QImage.Format.Format_ARGB32)
             image.fill(G.QColor('#10151c'))
             painter = G.QPainter(image)
-            editor.render(painter, C.QRect(0, 0, 512, 448))
+            editor.render(painter, C.QRect(0, 0, 512, 512))
             painter.end()
             return image
         with_panel = draw()
