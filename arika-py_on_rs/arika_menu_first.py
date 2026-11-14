@@ -69,6 +69,17 @@ def recover_first_animation(elf, gp, groups):
         raise ValueError('first-component phase-two vtable mismatch')
     wave=curve(0x4a9e20,0x4a9e10,4)
     return dict(
+        functions={
+            name: dict(address=start,
+                       words=elf.words(start,(end-start)//4))
+            for name,start,end in (
+                ('start',0x373c50,0x373d08),
+                ('exit_start',0x373d20,0x373d40),
+                ('emphasis_start',0x373d40,0x373d58),
+                ('entry',0x373d60,0x373e44),
+                ('exit',0x373e60,0x373ee4),
+            )
+        },
         entry=curve(gp-0x4de8,gp-0x4df0,2),
         bounce=curve(0x4a9dd0,0x4a9d90,13),
         exit=curve(gp-0x4dc8,gp-0x4dd0,2),
