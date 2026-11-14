@@ -58,6 +58,15 @@ a frame, item or layer changes. Previously it called `update()` only on the
 editor container, which could leave the textured canvas visually stale.
 
 
+## Display geometry (ELF verification)
+
+See [NATIVE_VIDEO_DISPLAY.md](NATIVE_VIDEO_DISPLAY.md) for the inspected
+EU beta, EU release, Japan and US graphics initializers. A common boot path
+passes 640×448 to the GS configuration helper, while the menu's native
+sprite/tile coordinates span 512×448. The physical television aspect
+correction is not yet proven: the square 512×512 editor display is a
+comparison presentation, not a recovered native aspect-ratio rule.
+
 ## Arrow and help-box rendering (screenshot comparison)
 
 The reference screenshots show each item with a bottom help frame containing
