@@ -23,6 +23,66 @@ def position_source(elf,address):
     return dict(address=address,value=values,source=source)
 
 
+def recover_first_animation(elf, gp, groups):
+    """Read common first-layer curves and every subclass's entry direction.
+
+    0x373C50 -> 0x373D60 -> 0x373E60 cover entry and exit.
+    0x373EF0 is the common phase-3 emphasis callback.
+    0x373A10 dispatches subclass +0x24 once phase 2 is active.
+    """
+    def curve(values, times, count):
+        return dict(values_address=values, times_address=times,
+                    values=list(struct.unpack('<' + 'f' * count,
+                                               elf.read(values, count * 4))),
+                    times=list(struct.unpack('<' + 'f' * count,
+                                              elf.read(times, count * 4))))
+
+    components=[]
+    for group in groups:
+        vt=group['vtable']
+        init=elf.words(vt+8,1)[0]
+        active=elf.words(vt+0x24,1)[0]
+        registers={0:0}
+        direction={}
+        for word in elf.words(init,16):
+            opcode=word>>26
+            rs=(word>>21)&31
+            rt=(word>>16)&31
+            immediate=(word&65535)-(65536 if word&32768 else 0)
+            if opcode==9 and rs in registers:
+                registers[rt]=registers[rs]+immediate
+            elif opcode==0x28 and rs==4 and immediate in (24,25):
+                if rt not in registers:
+                    raise ValueError('first direction uses unknown MIPS register')
+                direction[immediate]=registers[rt]
+            if len(direction)==2:
+                break
+        if set(direction)!={24,25}:
+            raise ValueError('missing first-component signed direction bytes')
+        components.append(dict(
+            item=group['item'], init_callback=init,
+            phase_two_callback=active,
+            direction=[direction[24],direction[25]]))
+    expected=[0x374410,0x374750,0x37a5e0,0x37a860,
+              0x374960,0x37b610,0x37bcc0]
+    if [c['phase_two_callback'] for c in components]!=expected:
+        raise ValueError('first-component phase-two vtable mismatch')
+    wave=curve(0x4a9e20,0x4a9e10,4)
+    return dict(
+        entry=curve(gp-0x4de8,gp-0x4df0,2),
+        bounce=curve(0x4a9dd0,0x4a9d90,13),
+        exit=curve(gp-0x4dc8,gp-0x4dd0,2),
+        emphasis=dict(wave=wave,
+                      envelope=curve(gp-0x4dd8,gp-0x4de0,2),
+                      period=struct.unpack('<f',elf.read(0x4a9e1c,4))[0]+1.0),
+        reset_position=list(struct.unpack('<2f',
+                                         elf.read(gp-0x29e0,8))),
+        components=components,
+        entry_address=0x373d60,
+        exit_address=0x373e60,
+        phase_two_dispatch=0x373ac8)
+
+
 def recover_first(elf,gp):
     # item, vtable, setup, draw, position source relative to GP
     specs=[(0,0x4f17b0,0x374530,0x374430,-5952),
@@ -85,7 +145,8 @@ def recover_first(elf,gp):
         runtime_pointer_address=gp-5900,runtime_clip_boundary_address=gp-5904,
         template_selection=dict(shift=5,mask=3),
         limits='RNG state/call ordering, respawning and native runtime playback are not simulated.')
-    return dict(version=1,groups=groups,literal_sprite_count=sum(len(g['literal_sprites']) for g in groups),
+    return dict(version=2,groups=groups,animation=recover_first_animation(elf,gp,groups),
+        literal_sprite_count=sum(len(g['literal_sprites']) for g in groups),
         decoration_count=sum(len(g['decorations']) for g in groups),strip_count=sum('scroll_strip' in g for g in groups),
         particles=particles,
         limits=['The first group uses plain sprites; no additional quads are added to the component SVG.',
