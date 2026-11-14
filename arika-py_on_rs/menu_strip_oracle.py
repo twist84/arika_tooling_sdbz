@@ -46,6 +46,7 @@ class c_strip_oracle:
         elif op==11:r[rt]=int((r[rs]&0xffffffffffffffff)<(immediate&0xffffffffffffffff))
         elif op==0 and fn in (0x21,0x2d):r[rd]=signed(r[rs]+r[rt],32 if fn==0x21 else 64)
         elif op==0 and fn==0:r[rd]=signed(r[rt]<<shift,32)
+        elif op==0 and fn==2:r[rd]=(r[rt]&0xffffffff)>>shift
         elif op==0 and fn==3:r[rd]=signed(r[rt],32)>>shift
         elif op==0 and fn==0x23:r[rd]=signed(r[rs]-r[rt],32)
         elif op==0 and fn==0x2a:r[rd]=int(r[rs]<r[rt])
