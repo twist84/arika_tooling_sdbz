@@ -100,6 +100,9 @@ class c_menu_editor(W.QWidget):
         self.m_diagnostic_time = self.m_time
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
+        self.m_diagnostic_item = self.m_item
+        self.m_diagnostic_previous = self.m_navigation.m_previous
+        self.m_diagnostic_selection_age = None
         self.m_menu_report = read_menu_report()
         self.m_native_mode = False
         self.m_native_runtime = c_menu_runtime(self.m_menu_report)
@@ -494,6 +497,11 @@ class c_menu_editor(W.QWidget):
             self.m_playing = False
             self.m_play_button.setText('Play')
         self.m_timer.stop()
+        if native:
+            self.m_diagnostic_time = self.m_time
+            self.m_diagnostic_item = self.m_item
+            self.m_diagnostic_previous = self.m_navigation.m_previous
+            self.m_diagnostic_selection_age = self.m_selection_age
         self.m_selection_age = None
         self.m_native_mode = native
         self.m_time_slider.setEnabled(not native)
@@ -502,7 +510,6 @@ class c_menu_editor(W.QWidget):
         self.m_native_step_button.setEnabled(native)
         self.m_native_reset_button.setEnabled(native)
         if native:
-            self.m_diagnostic_time = self.m_time
             self.reset_native()
             # The neutral pose is diagnostic geometry only, not a native
             # clock or a frame from which native timing is inferred.
@@ -511,8 +518,19 @@ class c_menu_editor(W.QWidget):
         else:
             self.m_native_input_queue.clear()
             self.m_native_status.setText('Diagnostic 140-sample timeline')
+            self.m_item = self.m_diagnostic_item
+            self.m_navigation.m_selected = self.m_diagnostic_item
+            self.m_navigation.m_previous = self.m_diagnostic_previous
+            blocked = self.m_item_combo.blockSignals(True)
+            try:
+                self.m_item_combo.setCurrentIndex(self.m_item)
+            finally:
+                self.m_item_combo.blockSignals(blocked)
+            self.m_selection_age = self.m_diagnostic_selection_age
             self.set_time(self.m_diagnostic_time)
             self.update_navigation_status()
+            if self.m_selection_age is not None:
+                self.m_timer.start()
         self.m_canvas.update()
 
     def reset_native(self):
@@ -721,6 +739,14 @@ class c_menu_editor(W.QWidget):
                 'Open INFO.DAT and GAME.DAT to display original menu textures')
             painter.drawText(rect, C.Qt.AlignmentFlag.AlignCenter, text)
             return
+        # 0x333AE0 omits the menu draw callback once parent phase == 4.
+        if self.m_native_mode and self.m_native_runtime.m_outer_phase == 4:
+            return
+        native_item_active = (
+            not self.m_native_mode or
+            (self.m_native_runtime.m_selected >= 0 and
+             self.m_native_runtime.m_item_phases[
+                 self.m_native_runtime.m_selected] != 0))
         n = len(self.m_data['frames'])
         t = self.m_time % n
         i0 = int(t)
@@ -755,7 +781,7 @@ class c_menu_editor(W.QWidget):
         else:
             group_checked = False
 
-        for group in ('first', 'middle', 'overlay'):
+        for group in (('first', 'middle', 'overlay') if native_item_active else ()):
             checked = {'first': self.m_first, 'middle': self.m_middle, 'overlay': self.m_overlay, 'arrows': self.m_arrows}[group]
             if not checked:
                 continue
@@ -788,7 +814,7 @@ class c_menu_editor(W.QWidget):
                                                     pulse_label[self.m_item])
                 enqueue(p['texture_entry'], geometry, 47 if group == 'first' else 60 if group == 'middle' else 70)
 
-        if self.m_arrows:
+        if self.m_arrows and native_item_active:
             for part in arrow_parts(self.m_menu_report, self.m_item, self.m_navigation.m_previous):
                 geometry = part['geometry']
                 if self.m_arrow_bob:
@@ -798,9 +824,18 @@ class c_menu_editor(W.QWidget):
                     geometry = bobbed_arrow_geometry(geometry, arrow_age)
                 enqueue(0, geometry, 95)
 
-        if self.m_first:
+        if self.m_first and native_item_active:
             for p in frame['strips'][self.m_item]:
                 enqueue(p['texture_entry'], p['geometry'], 45)
+
+        if self.m_native_mode and self.m_overlay and self.m_label_motion:
+            # 0x379E60 draws the pending previous item before the current
+            # item. Its label keeps its own exit clock while pending.
+            pending = self.m_native_runtime.m_pending
+            if pending >= 0:
+                geometry = self.m_native_runtime.label_geometry(pending)
+                for part in self.m_data['items'][pending]['overlay']:
+                    enqueue(part['texture_entry'], geometry, 70)
 
         draw_queue.sort(key=lambda q: q['depth'])
 
@@ -827,7 +862,7 @@ class c_menu_editor(W.QWidget):
         for q in draw_queue:
             self.draw_sprite(painter, q['entry'], q['geometry'], q['alpha'])
 
-        if self.m_help_panel:
+        if self.m_help_panel and native_item_active:
             self.draw_help_panel(painter)
 
         painter.restore()
