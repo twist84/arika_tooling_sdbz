@@ -389,6 +389,67 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(editor.m_item, 1)
 
 
+    def test_native_first_layer_and_strip_run_independently_of_diagnostic_time(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        for index in range(13):
+            pixmap = G.QPixmap(512, 512)
+            pixmap.fill(G.QColor.fromHsv(index * 21, 200, 255))
+            editor.m_textures[index] = pixmap
+        editor.m_background = False
+        editor.m_motion = False
+        editor.m_tint = False
+        editor.m_first = True
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+        editor.m_time = 70.0
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        for _ in range(100):
+            state = editor.step_native()
+            if state['outer_phase'] == 2:
+                break
+        self.assertEqual(state['first_phases'][0], 1)
+        self.assertEqual(state['first_offsets'][0], (-128.0, -128.0))
+        self.assertEqual(state['first_strip_phases'][0], 0.0)
+
+        def render_bytes():
+            canvas = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            canvas.fill(G.QColor('#10151c'))
+            painter = G.QPainter(canvas)
+            try:
+                editor.render(painter, C.QRect(0, 0, 512, 448))
+            finally:
+                painter.end()
+            return bytes(canvas.constBits())
+
+        first = render_bytes()
+        for _ in range(6):
+            state = editor.step_native()
+        self.assertNotEqual(first, render_bytes(),
+                            'recovered first-layer translation must reach Qt')
+        self.assertEqual(state['first_strip_phases'][0], 0.0)
+        for _ in range(11):
+            state = editor.step_native()
+        self.assertEqual((state['first_phases'][0],
+                          state['first_strip_phases'][0]), (2, 0.0))
+        editor.step_native()
+        self.assertEqual(editor.m_native_runtime.snapshot()['first_strip_phases'][0],
+                         1.0)
+        self.assertTrue(editor.m_native_runtime.first_strip_geometry(0))
+        self.assertEqual(editor.m_time, 70.0)
+
+        editor.navigate(3)
+        state = editor.step_native()
+        self.assertEqual((state['selected'], state['pending']), (1, 0))
+        self.assertEqual(state['first_offsets'][0], (0.0, 0.0))
+        for _ in range(5):
+            state = editor.step_native()
+        self.assertNotEqual(state['first_offsets'][0], (0.0, 0.0))
+        self.assertEqual(editor.m_time, 70.0)
+        editor.m_timer.stop()
+
     def test_native_character_pose_changes_without_scrubbing_diagnostic_time(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
