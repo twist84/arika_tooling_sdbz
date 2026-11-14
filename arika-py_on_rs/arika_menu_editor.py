@@ -12,6 +12,7 @@ from arika_menu_selection_effect import EMPHASIS_DURATION, emphasis_geometry, em
 from arika_menu_arrow_preview import arrow_parts, bobbed_arrow_geometry
 from arika_menu_navigation import read_menu_report
 import arika_ffon
+from arika_menu_tiles import presentation_tile_geometry
 
 
 def lerp_values(a, b, t):
@@ -431,8 +432,8 @@ class c_menu_editor(W.QWidget):
             enqueue(1, self.m_data['background'], 0)
         if self.m_motion:
             enqueue(2, frame['banner'], 99)
-            for t in frame['tiles']:
-                enqueue(2, t, 85)
+            for tile in frame['tiles']:
+                enqueue(2, presentation_tile_geometry(tile), 85)
             for s in frame['small']:
                 enqueue(3, s, 5)
         if self.m_tint and not frame['hidden']:
