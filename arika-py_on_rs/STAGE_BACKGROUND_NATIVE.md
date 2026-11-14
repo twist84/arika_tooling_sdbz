@@ -35,7 +35,7 @@ vtable; the getter constructs a base address from `lui` and `addiu`, adds
 floats there. The number of entries is the distance to the slot 31 table
 divided by 16.
 
-| Class | US table RVA | EU beta | EU retail | Japan |
+| Class | US table vaddr | EU beta | EU retail | Japan |
 |---|---|---|---|---|
 | CStage00 | 0x488E40 | 0x486930 | 0x489D40 | 0x4876B0 |
 | CStage01 | 0x48D2C0 | 0x48ADB0 | 0x48E1C0 | 0x48BB30 |
@@ -54,6 +54,18 @@ divided by 16.
 Addresses in the table are virtual addresses, not file offsets; the ELF PT_LOAD
 segment maps file offset `0x80` to virtual address `0x100000` for these builds.
 Thus the conversion for these ELFs is `file_offset = vaddr - 0xFFF80`.
+
+An executable extractor is checked in as `elf_tooling/elf_stage_background.py`.
+It discovers table addresses from the CStage class methods, so it does not need
+hardcoded regional offsets:
+
+```sh
+python elf_tooling/elf_stage_background.py --check-regions EUBETA.elf EU.elf JP.elf US.elf
+```
+
+The extractor prints a JSON report and returns a nonzero status if the recovered
+per-class RGB tables disagree across the supplied ELFs. No game binaries are
+included in the repository.
 
 ## Editor behaviour and limitations
 
