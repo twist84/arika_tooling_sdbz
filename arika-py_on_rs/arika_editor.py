@@ -17,6 +17,7 @@ import shiboken6
 from rendercanvas.qt import QRenderWidget
 import arika_backend as backend
 import arika_dat as dat
+from arika_archive_paths import resolve_archive_paths
 import arika_ffon
 import arika_pix
 import arika_ani
@@ -1722,14 +1723,7 @@ class c_scene_editor(W.QMainWindow):
 
     def load_archive(self,info_path,game_path=None):
         if not self.discard():return
-        info_path=Path(info_path)
-        if game_path is None:
-            candidate=info_path.with_name('GAME.DAT' if info_path.name.upper()=='INFO.DAT' else 'INFO.DAT')
-            if candidate.is_file():game_path=candidate
-            else:game_path=None
-        if game_path is None and info_path.name.upper()=='GAME.DAT':
-            candidate=info_path.with_name('INFO.DAT')
-            if candidate.is_file():game_path=info_path;info_path=candidate
+        info_path, game_path = resolve_archive_paths(info_path, game_path)
         self.m_virtual_files={}
         self.m_virtual=True
         self.m_project=None
