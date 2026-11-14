@@ -669,6 +669,64 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertTrue(editor.m_next_match_button.isEnabled())
 
 
+    def test_native_dragon_particles_render_pixels_without_repaint_update(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        self.assertTrue(editor.load_textures(synthetic_menu_pix()))
+        for index in range(13):
+            pixmap = G.QPixmap(512, 512)
+            pixmap.fill(G.QColor.fromHsv(index * 19, 200, 255))
+            editor.m_textures[index] = pixmap
+        editor.m_background = False
+        editor.m_motion = False
+        editor.m_tint = False
+        editor.m_help_panel = False
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        runtime = editor.m_native_runtime
+        self.assertIsNotNone(runtime.m_particle_pool)
+        self.assertEqual(runtime.snapshot()['particles']['total_random_draws'], 15)
+
+        # Isolate the six recovered sprites from the item's other opaque
+        # first-layer sprites, so their contribution to Qt pixels is clear.
+        editor.m_data['items'][3]['first'] = []
+        editor.m_item = 3
+        runtime.m_selected = 3
+        runtime.m_item_phases[3] = 2
+        runtime.m_first_states[3].update(phase=2, offset=[0.0, 0.0],
+                                         depth=15.0)
+
+        def render():
+            image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            image.fill(G.QColor('#10151c'))
+            painter = G.QPainter(image)
+            editor.render(painter, C.QRect(0, 0, 512, 448))
+            painter.end()
+            return bytes(image.constBits())
+
+        initial_state = runtime.snapshot()
+        first_pixels = render()
+        self.assertEqual(first_pixels, render())
+        self.assertEqual(initial_state, runtime.snapshot(),
+                         'paint must not change the RNG or particle state')
+        self.assertTrue(runtime.particle_geometry(3))
+        for slot in runtime.m_particle_pool.m_slots:
+            slot['x'] = 500.0
+        after_pixels = render()
+        self.assertNotEqual(after_pixels, first_pixels,
+                            'native particle position must affect Qt pixels')
+        self.assertEqual(render(), after_pixels)
+        self.assertEqual(runtime.snapshot()['particles']['rng_state'],
+                         initial_state['particles']['rng_state'])
+        # Diagnostic mode has no access to the native simulation.
+        editor.m_lifecycle_combo.setCurrentIndex(0)
+        self.assertFalse(editor.m_native_mode)
+        self.assertEqual(runtime.snapshot()['particles']['rng_state'],
+                         initial_state['particles']['rng_state'])
+
+
 
 if __name__ == '__main__':
     unittest.main()
