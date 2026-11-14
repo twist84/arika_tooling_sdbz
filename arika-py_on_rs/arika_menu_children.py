@@ -5,6 +5,9 @@
 0x373D60 is (gp-0x4DEC: 5.0) + (0x4A9DC0: 12.0) = 17.0.
 First-group exit 0x373E60 completes at gp-0x4DCC = 10.0.
 Character entry/exit use the times recovered in item_character_animation.
+All seven phase-2 vtable callbacks +0x24 have their own periodic age; the
+corresponding tested animation kernels are in character_idle. CUSTOMIZE's
+secondary +0x1E8 clock remains uninitialized without an external observation.
 The selected item's phase-4 completion check is 0x3756E0.
 
 These ages count logical updates; they do not imply display-frame timings.
@@ -12,6 +15,8 @@ These ages count logical updates; they do not imply display-frame timings.
 from arika_menu_characters import character_offset
 from arika_menu_emphasis import emphasis_offset
 from arika_menu_layout import f32, pose_part
+from arika_menu_banner import sample_curve
+from arika_menu_idle import step_idle, step_circular_idle, step_dragon_idle
 
 
 # Float values checked against the EU-beta SLES_541.61 instruction operands.
@@ -69,10 +74,38 @@ def emphasize_character(state):
     state.update(phase=3, age=0.0, offset=[0.0, 0.0])
 
 
-def step_character(state, component, kernel, emphasis_kernel=None):
+def step_character(state, component, kernel, emphasis_kernel=None,
+                   idle_component=None):
     # 0x37F100 -> 0x37F350 entry, 0x37F3F0 exit, 0x37F460 emphasis.
-    # 0x37F100 dispatches phase 2 to vtable+0x24, which does not
-    # advance this common character age; per-part idle has other clocks.
+    # The phase-2 vtable +0x24 is different for all seven characters.
+    if state['phase'] == 2:
+        if idle_component is None:
+            # Never substitute the global diagnostic clock.
+            return
+        if component['callbacks'][7] != idle_component['address']:
+            raise ValueError('native phase-2 character callback mismatch')
+        kind = idle_component.get('kind')
+        if kind is None:
+            age, offsets = step_idle(state['age'], idle_component)
+        elif kind == 'circular':
+            age, offsets = step_circular_idle(state['age'], idle_component)
+        elif kind == 'combined_circular':
+            age, offsets = step_dragon_idle(state['age'], idle_component)
+        elif kind == 'coupled':
+            # 0x37F7F0 uses a second independent +0x1E8 float age.
+            # Its construction-time value is not verified; reproduce only
+            # the primary period and first part's unambiguous displacement.
+            age = f32(state['age'] + 1.0)
+            period = idle_component['curve']['times'][-1]
+            if age >= period:
+                age = f32(age - period)
+            value = sample_curve(idle_component['curve'], age)
+            offsets = [[value, value], [0.0, 0.0], [0.0, 0.0]]
+        else:
+            raise ValueError('unsupported native idle callback kind')
+        state['age'] = age
+        state['part_offsets'] = offsets
+        return
     if state['phase'] not in (1, 3, 4):
         return
     age = f32(state['age'] + 1.0)
@@ -110,9 +143,12 @@ def draw_character(state, item, report):
         offset = list(state['offset'])
         if item == 2 and index >= 4:
             offset = [-value for value in offset]
+        part_offsets = state.get('part_offsets', [])
         geometry = pose_part(
             composite, part, anchors, component_offset=offset,
-            part_offset=[0.0, 0.0], component_depth=state['depth'])
+            part_offset=(part_offsets[index]
+                         if index < len(part_offsets) else [0.0, 0.0]),
+            component_depth=state['depth'])
         geometry['depth'] = f32(state['depth'] + 15.0 +
                                 part['placement'][2])
         result.append(dict(texture_entry=part['texture_entry'],
