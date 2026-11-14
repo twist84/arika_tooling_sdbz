@@ -70,7 +70,11 @@ frame and system-font substitutions have been removed. The native textbox is ide
 `research/TEXTURED_MENU.md` and now renders behind the font. Its **source crop
 and final quad placement remain provisional**, not extracted native UVs.
 The FFON text renderer now preserves word spacing (previously lost for
-non-wrapped lines) and scales without distorting aspect ratio. Native exact
+non-wrapped lines) and scales without distorting aspect ratio. Atlas 4 is
+cropped to its nontransparent alpha bounds before being fitted to the
+help-panel destination; stretching the entire 512x512 atlas compressed the
+visible frame to a narrow strip. The game viewport and all sprite/text clips
+are intersected so clouds and borders cannot leak into the Qt editor margins. Native exact
 frame draw geometry remains an open reverse-engineering task. The existing Qt help
 label remains an inspection aid.
 
