@@ -116,3 +116,47 @@ The start callback `0x003799B0` determines entry substate: it clears `+0xC8` fir
 Use `llvm-objdump -d --start-address=0x333920 --stop-address=0x333ba8 SLES_541.61` and `llvm-objdump -d --start-address=0x379960 --stop-address=0x37a1d8 SLES_541.61` against the **exact SHA** above, then inspect the `.reginfo` `ri_gp_value` (`0x004FF370`) and the two corresponding float32s. Compare direct function entries in vtable `0x004F1C50`; do not use US/Japan addresses interchangeably.
 
 This checkpoint reconstructs the outer/exit dispatch and documents direct call sites. It does **not** claim that a complete native input oracle or a standalone end-to-end app simulation has already been validated.
+
+## Child-item lifecycle: first, character and label (verified checkpoint)
+
+The selected item's common dispatcher `0x00375630` calls the first component
+(`0x00373A10`), character (`0x0037F100`), and label (`0x0037DF90`)
+**in that order**, only when the corresponding non-null child pointer exists.
+The parent item `0x00374FB0` advances its independent `+0xB0` arrow age
+before that dispatcher and then evaluates its own phase-dependent callbacks.
+Consequently, child ages and the arrow age are **not interchangeable**.
+
+| Item/child | ELF callback / branch | Recovered transition |
+| --- | --- | --- |
+| First entry | `0x00373A10` phase 1 / `0x00373D60` | Increment f32 child `+0x08` age; entry ends at `5.0 + 12.0 = 17.0` logical updates, then phase 2, reset age |
+| First exit | `0x00373A10` phase 4 / `0x00373E60` | Exit ends at **10.0** logical updates, then phase 0 |
+| Character entry | `0x0037F100` phase 1 / `0x0037F350` | Independent age; entry curve (10.0) plus bounce curve (12.0), then phase 2 at **22.0** updates, reset age/offset |
+| Character exit | `0x0037F100` phase 4 / `0x0037F3F0` | Independent exit curve ends at **10.0** updates, then phase 0 |
+| Label entry and exit | `0x0037DF90` / `0x0037E2D0`, `0x0037E3D0` | Independent label curve ages; existing interpreter differential covers these |
+| Parent item entry | `0x00374FB0` phase 1 / `0x00375690` | Becomes phase 2 when the **first** child is in phase 2; no wait for character or label |
+| Parent item exit | `0x00374FB0` phase 4 / `0x003756E0` | Becomes phase 0 **only when all present children are phase 0**; pending previous-item pointer is subsequently cleared by `0x00379A40` |
+
+Constant provenance: `0x00373D8C` loads 12.0 from
+`0x004A9DC0`, `0x00373D8C..0x00373D94` combines it with
+5.0 from `gp-0x4DEC=0x004FA584`; `0x00373E84` loads 10.0
+from `gp-0x4DCC=0x004FA5A4`. Character curve times are the
+same pre-existing recovered arrays in `item_character_animation`:
+`gp-19296` for approach times, `0x004AA2D0` for bounce
+times, and `gp-19264` for exit times.
+
+The runtime now models **first/character/label** child phases and ages
+separately, preserves native update order, and retires the pending old item
+once the three verified exit callbacks complete. It exposes current and
+pending character geometry with independent offsets and depth, not with the
+diagnostic frame-70 pose. Synthetic fixtures without recovered child kernels
+continue to require an injected `item_update` oracle; external fade
+completion remains unguessed.
+
+**Still unresolved:** each first component's phase-2 subclass callback,
+first-component live visual offsets, character **per-part** phase-2 idle
+timing (including the CUSTOMIZE secondary clock), banner/companion native
+draw clocks, physical-pad conversion, fade completion, and complete GS-frame
+agreement. The static first/strip and shared diagnostic pose remains
+visible in native Qt mode; only the common character/label motion is
+currently driven by per-child states. Keep PR #14 in draft until these
+dependencies and end-to-end oracle coverage are addressed.
