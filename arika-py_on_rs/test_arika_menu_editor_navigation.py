@@ -637,6 +637,13 @@ class MenuEditorNavigationTests(unittest.TestCase):
             if state['outer_phase'] == 2:
                 break
         self.assertEqual(state['selected'], 0)
+        # The first layer starts at native -128,-128. Our synthetic TIM2
+        # occupies only 2x2 pixels, so its atlas sample is initially
+        # offscreen; completion of the verified 17-update entry makes
+        # it visible. Full 512px textures animate throughout entry.
+        for _ in range(17):
+            state = editor.step_native()
+        self.assertEqual(state['first_phases'][0], 2)
         self.assertNotEqual(render(), empty)
         editor.m_native_runtime.m_outer_phase = 4
         self.assertEqual(render(), empty)
