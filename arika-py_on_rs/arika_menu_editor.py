@@ -814,6 +814,9 @@ class c_menu_editor(W.QWidget):
                 parts = item[group]
             for part_index, p in enumerate(parts):
                 geometry = p['geometry']
+                if group == 'first' and self.m_native_mode:
+                    geometry = self.m_native_runtime.first_geometry(
+                        self.m_item, geometry)
                 if group == 'overlay' and self.m_label_motion:
                     if self.m_native_mode:
                         geometry = self.m_native_runtime.label_geometry(
@@ -846,14 +849,23 @@ class c_menu_editor(W.QWidget):
                 enqueue(0, geometry, 95)
 
         if self.m_first and native_item_active:
-            for p in frame['strips'][self.m_item]:
+            strips = (self.m_native_runtime.first_strip_geometry(self.m_item)
+                      if self.m_native_mode else frame['strips'][self.m_item])
+            for p in strips:
                 enqueue(p['texture_entry'], p['geometry'], 45)
 
         if self.m_native_mode:
             # 0x379E60 draws the pending old item before the current item.
-            # Its character and label have independent native exit ages.
+            # First layer, character and label have independent exit ages.
             pending = self.m_native_runtime.m_pending
             if pending >= 0:
+                if self.m_first:
+                    for part in self.m_data['items'][pending]['first']:
+                        geometry = self.m_native_runtime.first_geometry(
+                            pending, part['geometry'])
+                        enqueue(part['texture_entry'], geometry, 47)
+                    for part in self.m_native_runtime.first_strip_geometry(pending):
+                        enqueue(part['texture_entry'], part['geometry'], 45)
                 if self.m_middle and self.m_character_motion:
                     for part in (self.m_native_runtime.character_geometry(
                             pending, include_idle=self.m_idle) or []):
