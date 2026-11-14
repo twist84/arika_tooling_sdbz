@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import random
 import unittest
-from arika_menu_tiles import tile_draw
+from arika_menu_tiles import tile_draw, presentation_tile_geometry
 from arika_menu_strips import step_phase
 from arika_menu_plain import s16
 from menu_strip_oracle import c_strip_oracle,bits
@@ -65,6 +65,15 @@ class MenuTileTests(unittest.TestCase):
         machine=c_tile_oracle(self.kernel,*args);machine.run(self.kernel['draw_address'])
         result=tile_draw(*args)
         self.assertEqual(result['quads'][1]['position'],machine.m_commands[1]['position'])
+
+    def test_square_canvas_cloud_presentation_keeps_native_positions(self):
+        native = tile_draw(0, [0, 320])['quads'][0]
+        presented = presentation_tile_geometry(native)
+        self.assertEqual(native['bounds'], [0.0, 320.0, 512.0, 448.0])
+        self.assertEqual(presented['bounds'], [0.0, 384.0, 512.0, 512.0])
+        self.assertEqual(presented['position'], [0.0, 384.0])
+        self.assertEqual(presented['uv_endpoints'], native['uv_endpoints'])
+        self.assertEqual(native['vertices'][0], [0.0, 320.0])
 
     def test_invalid_inputs_fail(self):
         with self.assertRaises(ValueError):tile_draw(float('nan'),[0,320])
