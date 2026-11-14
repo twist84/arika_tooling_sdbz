@@ -113,6 +113,23 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertFalse(editor.load_textures(None))
         self.assertIsNone(editor.m_help_panel_uv)
 
+    def test_presentation_mode_changes_display_only(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        self.assertEqual(editor.m_presentation, 'square')
+        self.assertEqual(editor.presentation_height(), 512)
+        logical_bounds = list(editor.m_data['background']['bounds'])
+        for mode, expected_height in (
+            ('raw', 448), ('tv_4_3', 384), ('square', 512),
+        ):
+            idx = editor.m_presentation_combo.findData(mode)
+            self.assertGreaterEqual(idx, 0)
+            editor.m_presentation_combo.setCurrentIndex(idx)
+            self.assertEqual(editor.presentation_height(), expected_height)
+            self.assertEqual(editor.m_data['background']['bounds'],
+                             logical_bounds)
+        self.assertEqual(logical_bounds[3], 448)
+
     def test_logical_448_background_fills_square_presentation(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
