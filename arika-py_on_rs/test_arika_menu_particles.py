@@ -314,5 +314,86 @@ class MenuDragonParticleTests(unittest.TestCase):
                                  (active, x, speed, left, right, key))
 
 
+    def test_elf_pool_initialization_call_order_and_seed_positions(self):
+        """Interpret 0x37ADB0 with sprite reset/setup and RNG external stubs.
+
+        The native loop controls slot stride, first five activations,
+        template selection, RNG ordering and seed position overwrite.
+        Sprite construction arithmetic is separately host modeled and is
+        NOT validated by substituting the sprite setup stub.
+        """
+        from menu_strip_oracle import c_strip_oracle, bits
+        words = [
+            666763184, 4290707520, 2142437424, 2142371872,
+            38957, 2142306320, 2142240768, 1007747147,
+            8421421, 640786592, 33591341, 33562669,
+            202238996, 37759021, 711131141, 341835785,
+            0, 0, 645070849, 711131142, 642908336,
+            341901301, 640745480, 268435474, 0, 201736468,
+            0, 135491, 71368708, 809893891, 281018371,
+            33562669, 617021436, 33562669, 202239016,
+            37759021, 3323985920, 3862954128, 3323985924,
+            268500970, 3862954132, 0, 3753836608,
+            2075328560, 2075263008, 2075197456, 2075131904,
+            65011720, 666697808,
+        ]
+        self.assertEqual(len(words), (0x37ae74 - 0x37adb0) // 4)
+        oracle = c_strip_oracle(
+            dict(draw_address=0x37adb0, draw_words=words,
+                 clock_address=0, clock_words=[]),
+            [0, 0, 1, 1], 0, 0, 1, 1, 0, [0, 0])
+        oracle.m_registers[4] = 0x1000
+        for i, (x, y) in enumerate(self.spec['seed_positions']):
+            oracle.write_float(self.spec['seed_position_table'] + i * 8, x)
+            oracle.write_float(self.spec['seed_position_table'] + i * 8 + 4, y)
+        events = []
+        fake_rng = c_test_rng(1)
+
+        def reset_slot(machine):
+            index = (machine.m_registers[5] - 0x1000) // 0xb0
+            events.append(('reset', index))
+            machine.write_int(machine.m_registers[5] + 0xa0, 0, 4)
+
+        def draw_rng(machine, role):
+            value = fake_rng.next()
+            events.append((role, value))
+            machine.m_registers[2] = value
+
+        def random_template(machine):
+            draw_rng(machine, 'template')
+
+        def sprite_init(machine):
+            index = (machine.m_registers[5] - 0x1000) // 0xb0
+            events.append(('initialize', index, machine.m_registers[6]))
+            machine.write_int(machine.m_registers[5] + 0xa0, 1, 4)
+            draw_rng(machine, 'y')
+            draw_rng(machine, 'speed')
+
+        oracle.m_direct_stubs = {
+            0x37b050: reset_slot,
+            0x190450: random_template,
+            0x37b0a0: sprite_init,
+        }
+        oracle.run(0x37adb0)
+        pool = self.make_pool(1)
+        self.assertEqual(fake_rng.get_state(), pool.snapshot()['rng_state'])
+        self.assertEqual([x[1] for x in events if x[0] == 'reset'],
+                         list(range(6)))
+        initializations = [x for x in events if x[0] == 'initialize']
+        self.assertEqual([x[1] for x in initializations], list(range(5)))
+        self.assertEqual([x[2] for x in initializations],
+                         [pool.m_slots[i]['template'] for i in range(5)])
+        self.assertEqual([x[0] for x in events if x[0] in (
+            'template', 'y', 'speed')], ['template', 'y', 'speed'] * 5)
+        for i, (x, y) in enumerate(self.spec['seed_positions']):
+            self.assertEqual(bits(x), oracle.read_int(
+                0x1000 + i * 0xb0 + 0x90, 4))
+            self.assertEqual(bits(y), oracle.read_int(
+                0x1000 + i * 0xb0 + 0x94, 4))
+            self.assertEqual(oracle.read_int(0x1000 + i * 0xb0 + 0xa0, 4),
+                             1)
+        self.assertEqual(oracle.read_int(0x1000 + 5 * 0xb0 + 0xa0, 4), 0)
+
+
 if __name__ == '__main__':
     unittest.main()
