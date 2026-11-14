@@ -104,14 +104,27 @@ reverse-engineering task. The existing Qt help
 label remains an inspection aid.
 
 Arrow UVs, base coordinates, and the history-dependent variants are taken from
-`arrow_baselines` in `main_menu_map.json`. The visual bob is an authored
-32-sample sine displacement (3 canvas pixels) along each arrow's orientation:
-left/right sprites oscillate on X, up/down sprites on Y, with the sign
-recovered from the sprite's mirrored UV endpoints. A previous preview bug
-applied a Y displacement to all four arrows. Regression tests validate all
-four cardinal directions and every extracted arrow layout variant. The wave
-shape and period remain preview approximations, not yet the original
-arrow animation routine. The **Arrow bob (preview)** and **Help panel** checkboxes
+`arrow_baselines` in `main_menu_map.json`. The arrow displacement function at **ELF 0x003753A0 is now recovered**:
+it reads the component clock at +0xB0, computes fmod(age, 40.0), and calls
+the game's linear interpolation helper 0x002C2C10 with keyframe times
+(0, 10, 30, 40) and displacement values (0, +3, -3, 0). Its direction
+cases add/subtract that displacement from X or Y, using the UV table
+indexed by direction ID 0=right, 1=left, 2=up, 3=down. The keyframe table
+and UV rectangles start at EU beta VA 0x004A9E60; the times are at
+0x004A9E80 and values at 0x004A9E90. This corrects the original
+preview-only 32-tick sine-wave approximation.
+
+The same unique 64-byte UV+curve layout was found in all four inspected
+ELFs: EU beta 0x004A9E60, EU final 0x004AD310, Japan 0x004AABF0,
+USA 0x004AC380. The reproducible `elf_tooling/elf_menu_arrows.py` probe
+identifies these data addresses without embedding an ELF or game assets.
+Unit tests validate both keyframe interpolation and directional translation.
+
+**Remaining limitation:** the editor uses its preview sample clock as the
+helper's +0xB0 animation age. The exact native per-object clock origin and
+reset/activation schedule have not been traced across the full main-menu
+lifecycle. The amplitude/shape/period and direction are recovered, but
+their phase relative to a particular original-game screenshot may differ. The **Arrow bob (preview)** and **Help panel** checkboxes
 allow individual visual comparison. No captured artwork or screenshots are
 embedded in the repo; arrow sprites still load from the user's FPIX atlas.
 
