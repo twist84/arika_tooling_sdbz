@@ -76,8 +76,9 @@ help-panel destination; stretching the entire 512x512 atlas compressed the
 visible frame to a narrow strip. The game viewport and all sprite/text clips
 are intersected so clouds and borders cannot leak into the Qt editor margins.
 The original main-menu screen is 512×512, not 512×448: the Qt viewport
-now uses square scaling and the help panel occupies the bottom 199 pixels
-starting at canvas y=313, with text starting at y=370. These help-panel
+now uses square scaling and the help panel spans 199 pixels
+starting at canvas y=301, with text starting at y=358 (raised 12px
+as a screenshot-based alignment adjustment). These help-panel
 coordinates are screenshot-aligned and still require native draw-call proof.
 The recovered cloud tile draw helper uses y=320 and height=128, ending at
 448. The editor now gives these quads a **presentation-only +64 Y offset**
