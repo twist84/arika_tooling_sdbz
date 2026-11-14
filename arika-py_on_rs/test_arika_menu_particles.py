@@ -149,5 +149,84 @@ class MenuDragonParticleTests(unittest.TestCase):
         self.assertLess(random_unit(1), 1.0)
 
 
+    def test_elf_phase_two_timer_and_call_order_with_external_pool_stubs(self):
+        """Interpret actual 0x37A860 words with pool/RNG as controlled stubs.
+
+        Verifies the EE callback, including both branch delay slots.
+        It does not claim native pool-instruction parity.
+        """
+        from menu_strip_oracle import c_strip_oracle, bits
+
+        # The complete routine 0x37A860..0x37A908, extracted from the
+        # SHA-256-verified EU beta ELF; no ELF binary is redistributed.
+        words = [
+            666763232, 1006780288, 4290707472, 1149372416,
+            2142240768, 1149239296, 3296854816, 8421421,
+            1174474817, 1174470708, 1157627911, 3833660192,
+            202238720, 0, 202238880, 4202541, 268435478,
+            4141, 202238720, 0, 202238960, 4202541,
+            201736468, 0, 809730047, 1149437952, 1006778368,
+            876740864, 1182795872, 1149370368, 3347231640,
+            1174470850, 3347166100, 1149239296, 0,
+            1174470680, 1174605852, 268500966, 3858760480,
+            3753836560, 2075131904, 65011720, 666697760,
+        ]
+
+        class c_one_value_rng:
+            def __init__(self, value):
+                self.m_value = value
+                self.m_count = 0
+
+            def next(self):
+                self.m_count += 1
+                return self.m_value
+
+            def get_state(self):
+                return self.m_count
+
+        for timer in (-1.0, 0.0, 0.5, 1.0, 1.5, 90.0):
+            for value in (0, 1, 0x7fff, 123456789, 0x7fffffff):
+                machine = c_strip_oracle(
+                    dict(draw_address=0x37a860, draw_words=words,
+                         clock_address=0, clock_words=[]),
+                    [0, 0, 1, 1], 0, 0, 1, 1, 0, [0, 0])
+                machine.m_registers[28] = 0x4ff370
+                machine.m_registers[4] = 0x1000
+                machine.write_float(0x1320, timer)
+                machine.write_float(0x4fa704, 90.0)
+                machine.write_float(0x4fa708, 120.0)
+                events = []
+
+                def rng_stub(oracle):
+                    events.append('rng')
+                    oracle.m_registers[2] = value
+
+                machine.m_direct_stubs = {
+                    0x37ac00: {2: 0x2000},
+                    0x37afc0: lambda oracle: events.append('scan'),
+                    0x190450: rng_stub,
+                    0x37ae80: lambda oracle: events.append('update'),
+                }
+                machine.run(0x37a860)
+                expired = not f32(f32(timer) - 1.0) > 0
+                self.assertEqual(
+                    events,
+                    ['scan', 'rng', 'update'] if expired else ['update'])
+
+                pool = self.make_pool()
+                pool.m_slots[5].update(active=True, template=0,
+                                       uv=[0, 0, 10, 10], x=512.0,
+                                       speed=0.0, depth_step=0.0)
+                test_rng = c_one_value_rng(value)
+                pool.m_rng = test_rng
+                computed = pool.step(timer)
+                self.assertEqual(
+                    bits(computed), machine.read_int(0x1320, 4),
+                    (timer, value))
+                self.assertEqual(test_rng.m_count, 1 if expired else 0)
+                self.assertEqual(pool.snapshot()['total_random_draws'],
+                                 15 + (1 if expired else 0))
+
+
 if __name__ == '__main__':
     unittest.main()
