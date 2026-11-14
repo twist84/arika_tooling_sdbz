@@ -194,10 +194,14 @@ ownership, precise branch order and validation limitations.
   initializer 0x4E23B0 stores verified 239.0f.
 - [ ] Prove 512×448 native PIX scale, depth, transparency, blending and
   ordering against a game capture before claiming pixel-perfect rendering.
-- [ ] Render shared tiles, banner and companion effects through native
-  scheduler-owned clocks and geometry: companion *logical owner and RNG*
-  are integrated, but Qt's companion graphics/other shared effects still
-  need native draw ordering, visibility and pixel parity.
+- [x] Render ten-slot companions in Qt native mode using recovered
+  `0x378170 → 0x376290 → 0x376600 → 0x376950` active-gated
+  sprite path, original texture entry 2 and native depths. Keep
+  diagnostic frames and paint/RNG state independent. Added native-word
+  draw and offscreen Qt pixel regressions.
+- [ ] Replace the remaining authored shared tile/banner/small sprite
+  geometry clocks with native scheduler-owned draw states and validate
+  GS visibility, blending and capture parity.
 - [ ] Keep PR #14 draft until acceptance criteria are satisfied; do not
   conflate passing stubbed instruction tests with complete ELF parity.
 
