@@ -796,6 +796,13 @@ class c_menu_editor(W.QWidget):
             enqueue(2, frame['banner'], 99)
             for tile in frame['tiles']:
                 enqueue(2, tile, 85)
+            if self.m_native_mode:
+                # 0x378170 -> 0x376290 -> 0x376600: shared ten-slot
+                # companion draw, after the tile pass and before the
+                # seven small components. These slots and their RNG are
+                # runtime-owned; the diagnostic timeline stays untouched.
+                for part in self.m_native_runtime.companion_geometry():
+                    enqueue(part['texture_entry'], part['geometry'], 86)
             for s in frame['small']:
                 enqueue(3, s, 5)
         if self.m_tint and not frame['hidden']:
