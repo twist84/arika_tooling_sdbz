@@ -229,11 +229,11 @@ class MenuDragonParticleTests(unittest.TestCase):
 
 
     def test_elf_particle_movement_clip_and_retirement_oracle(self):
-        """Execute real 0x37B210 instructions with sprite setter/reset stubs.
+        """Interpret 0x37B210 with sprite setter/reset stubs.
 
-        Delta cases are integral so the test avoids unresolved FCR31
-        fractional CVT.W.S rounding modes. This does not test the texture
-        setter implementation or EE hardware FPU precision.
+        Includes fractional CVT.W.S boundaries and exact float32 writes.
+        The controlled scalar interpreter models EE truncation; it cannot
+        establish arbitrary EE hardware FPU last-bit precision.
         """
         from menu_strip_oracle import c_strip_oracle, bits
 
@@ -270,6 +270,23 @@ class MenuDragonParticleTests(unittest.TestCase):
             (True, 238.0, 1.0, 19, 20),
             (True, 300.0, 1.0, 20, 20),
         ]
+
+        import random
+        rng = random.Random(0x37b210)
+        # Both sides are evaluated with host float32 at the same native
+        # operation boundaries; nearest-even vs chop differs particularly
+        # at clip deltas in [0.5, 1.0).
+        for delta in (0.001, 0.25, 0.499, 0.5, 0.501, 0.75, 0.999,
+                      1.0, 1.001, 1.499, 1.5, 1.999, 2.01, 8.875):
+            for speed in (0.1, 0.25, 0.4):
+                cases.append((True, f32(f32(self.clip - delta) +
+                                        f32(speed)), speed, 0, 256))
+        for _ in range(150):
+            delta = rng.uniform(0.001, 8.9)
+            speed = rng.uniform(0.1, 0.4)
+            cases.append((True,
+                          f32(f32(self.clip - delta) + f32(speed)),
+                          f32(speed), rng.randrange(0, 200), 256))
 
         for active, x, speed, left, right in cases:
             machine = c_strip_oracle(
