@@ -228,6 +228,9 @@ class c_menu_editor(W.QWidget):
         self.m_native_reset_button.setEnabled(False)
         native.addWidget(self.m_native_reset_button)
         self.m_native_status = W.QLabel('Diagnostic 140-sample timeline')
+        self.m_native_status.setSizePolicy(
+            W.QSizePolicy.Policy.Ignored, W.QSizePolicy.Policy.Preferred)
+        self.m_native_status.setMinimumWidth(100)
         self.m_native_status.setToolTip(
             'Actual native item ages and parent/exit states. The source '
             'layout at sample 70 is a static diagnostic pose, not a '
@@ -504,6 +507,7 @@ class c_menu_editor(W.QWidget):
             # The neutral pose is diagnostic geometry only, not a native
             # clock or a frame from which native timing is inferred.
             self.m_time = 70.0
+            self.m_status.setText('Native state: static diagnostic pose 70')
         else:
             self.m_native_input_queue.clear()
             self.m_native_status.setText('Diagnostic 140-sample timeline')
