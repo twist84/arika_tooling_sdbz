@@ -309,9 +309,17 @@ class MenuDragonParticleTests(unittest.TestCase):
             machine.write_int(0x102a, right, 2)
             machine.write_int(0x102c, 10, 2)
             machine.write_int(0x102e, 40, 2)
+            def reset_sprite(oracle):
+                # vtable +0x24 = 0x2FDA00; the real method resets
+                # the four UV edges and presentation fields. Model
+                # its relevant writes rather than leaving stale UVs.
+                address = oracle.m_registers[4]
+                for off in (0x28, 0x2a, 0x2c, 0x2e):
+                    oracle.write_int(address + off, 0, 2)
+
             machine.m_indirect_stubs = {
                 0xf00024: lambda oracle: None,
-                0xf00028: lambda oracle: None,
+                0xf00028: reset_sprite,
             }
             machine.run(0x37b210)
 
