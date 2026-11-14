@@ -88,6 +88,7 @@ class c_menu_editor(W.QWidget):
         self.m_textures = {}
         self.m_help_panel_uv = None
         self.m_presentation = 'square'
+        self.m_scan_mode = 'interlaced'
         self.m_time = 70.0
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
@@ -139,20 +140,34 @@ class c_menu_editor(W.QWidget):
         controls.addWidget(W.QLabel('Rate'))
         controls.addWidget(self.m_rate_combo)
 
-        # Presentation is independent of ELF-derived 512x448 sprite geometry.
-        # Until DISPLAY1/2 are observed in-game these are comparison modes,
-        # not claims about the console's active hardware output.
+        # PCSX2-style display choices are presentation only. The active GS
+        # video mode has not yet been observed in a running main menu.
         self.m_presentation_combo = W.QComboBox()
         for title, mode in (
-            ('Square capture', 'square'),
-            ('Raw 512×448', 'raw'),
-            ('4:3 television', 'tv_4_3'),
+            ('Fit to Window / Fullscreen', 'fit'),
+            ('Auto Standard (4:3 Interlaced / 3:2 Progressive)', 'auto'),
+            ('Standard (4:3)', 'tv_4_3'),
+            ('Widescreen (16:9)', 'wide_16_9'),
+            ('Native/Full (10:7)', 'native_10_7'),
+            ('Square capture (debug)', 'square'),
+            ('Raw 512×448 (debug)', 'raw'),
         ):
             self.m_presentation_combo.addItem(title, mode)
+        self.m_presentation_combo.setCurrentIndex(
+            self.m_presentation_combo.findData(self.m_presentation))
         self.m_presentation_combo.currentIndexChanged.connect(
             self.set_presentation)
+        self.m_scan_combo = W.QComboBox()
+        self.m_scan_combo.addItem('Interlaced (4:3)', 'interlaced')
+        self.m_scan_combo.addItem('Progressive (3:2)', 'progressive')
+        self.m_scan_combo.setToolTip(
+            'Manual scan-mode assumption for Auto Standard; '
+            'the game\'s active GS scan mode is not yet detected.')
+        self.m_scan_combo.currentIndexChanged.connect(self.set_scan_mode)
+        self.m_scan_combo.setVisible(False)
         controls.addWidget(W.QLabel('Display'))
         controls.addWidget(self.m_presentation_combo)
+        controls.addWidget(self.m_scan_combo)
 
         self.m_time_slider = W.QSlider(C.Qt.Orientation.Horizontal)
         self.m_time_slider.setMinimum(0)
@@ -423,13 +438,27 @@ class c_menu_editor(W.QWidget):
 
     def set_presentation(self, index):
         mode = self.m_presentation_combo.itemData(index)
-        if mode in ('square', 'raw', 'tv_4_3'):
+        if mode in ('fit', 'auto', 'tv_4_3', 'wide_16_9',
+                    'native_10_7', 'square', 'raw'):
             self.m_presentation = mode
+            self.m_scan_combo.setVisible(mode == 'auto')
+            self.m_canvas.update()
+
+    def set_scan_mode(self, index):
+        mode = self.m_scan_combo.itemData(index)
+        if mode in ('interlaced', 'progressive'):
+            self.m_scan_mode = mode
             self.m_canvas.update()
 
     def presentation_height(self):
-        # Virtual display units; native logical height is always 448.
-        return {'square': 512, 'raw': 448, 'tv_4_3': 384}[self.m_presentation]
+        # Virtual display units at width 512. Source geometry remains 512x448.
+        if self.m_presentation == 'auto':
+            return 384.0 if self.m_scan_mode == 'interlaced' else 512.0 * 2.0 / 3.0
+        return {
+            'square': 512.0, 'raw': 448.0,
+            'tv_4_3': 384.0, 'wide_16_9': 288.0,
+            'native_10_7': 512.0 * 7.0 / 10.0,
+        }.get(self.m_presentation, 448.0)
 
     def render(self, painter, rect):
         painter.fillRect(rect, G.QColor('#10151c'))
@@ -515,17 +544,24 @@ class c_menu_editor(W.QWidget):
 
         draw_queue.sort(key=lambda q: q['depth'])
 
-        # Recovered menu geometry is 512x448 regardless of presentation.
-        # The 4:3 mode is an explicit TV *preview*, not a verified GS mode.
+        # 512x448 recovered coordinates never change. Fit deliberately fills
+        # the complete widget; the remaining choices preserve their aspect ratio.
         display_height = self.presentation_height()
-        scale = min(rect.width() / 512.0, rect.height() / display_height)
-        offset_x = rect.x() + (rect.width() - 512 * scale) / 2
-        offset_y = rect.y() + (rect.height() - display_height * scale) / 2
+        if self.m_presentation == 'fit':
+            scale_x = rect.width() / 512.0
+            scale_y = rect.height() / 448.0
+            offset_x, offset_y = rect.x(), rect.y()
+        else:
+            scale = min(rect.width() / 512.0, rect.height() / display_height)
+            scale_x = scale
+            scale_y = scale * display_height / 448.0
+            offset_x = rect.x() + (rect.width() - 512.0 * scale) / 2.0
+            offset_y = rect.y() + (rect.height() - display_height * scale) / 2.0
 
         painter.save()
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth)
         painter.translate(offset_x, offset_y)
-        painter.scale(scale, scale * (display_height / 448.0))
+        painter.scale(scale_x, scale_y)
         painter.setClipRect(C.QRectF(0, 0, 512, 448))
 
         for q in draw_queue:
