@@ -9,6 +9,10 @@ import struct
 from arika_menu_navigation import c_menu_navigation, read_menu_report
 from arika_menu_shared import initialize_shared, request_exit, step_shared
 from arika_menu_input import decode_menu_input
+from arika_menu_labels import (
+    initialize_label, start_label, exit_label, emphasize_label,
+    step_label, draw_label,
+)
 
 
 def f32(value):
@@ -31,6 +35,9 @@ class c_menu_runtime:
             report = read_menu_report()
         self.m_report = report
         self.m_shared_kernel = report['shared_scheduler']
+        self.m_label_kernel = report.get('item_label_animation')
+        self.m_label_emphasis = (
+            report.get('item_emphasis', {}).get('kernels', {}).get('labels'))
         self.m_child_callback = child_callback
         self.m_item_update = item_update
         self.reset()
@@ -51,6 +58,7 @@ class c_menu_runtime:
         self.m_controller = 0
         self.m_item_phases = [0] * 7
         self.m_item_ages = [0.0] * 7
+        self.m_label_states = [initialize_label() for _ in range(7)]
         self.m_updates = 0
         self.m_last_calls = []
         self.m_completion = None
@@ -72,6 +80,20 @@ class c_menu_runtime:
                 age = f32(age - 99999.0)
             self.m_item_ages[index] = age
             self._emit(role, index=index, phase=phase, age=age)
+            # 0x374FF4 -> item vtable +0x20 (0x375630):
+            # first-part, character, then 0x37DF90 label update.
+            # Label entry/exit implementation has independent ELF oracle
+            # coverage (test_arika_menu_labels.py).
+            if self.m_label_kernel is not None:
+                step_label(
+                    self.m_label_states[index],
+                    self.m_label_kernel['components'][index],
+                    self.m_label_kernel,
+                    self.m_label_emphasis)
+                self._emit(
+                    'label_update', index=index,
+                    phase=self.m_label_states[index]['phase'],
+                    age=self.m_label_states[index]['age'])
             if self.m_item_update is not None:
                 new_phase = self.m_item_update(index, phase, age)
                 if new_phase is not None:
@@ -107,10 +129,18 @@ class c_menu_runtime:
         self.m_pending = old_index  # 0x379F24 delay-slot store
         if old_index >= 0:
             self.m_item_phases[old_index] = 4
+            if self.m_label_kernel is not None:
+                exit_label(self.m_label_states[old_index],
+                           self.m_label_kernel)
             self._emit('request_old_item_exit', index=old_index)
         self.m_navigation.select(new_index)
         self.m_selected = new_index
         self.m_item_phases[new_index] = 1
+        if self.m_label_kernel is not None:
+            start_label(
+                self.m_label_states[new_index],
+                self.m_label_kernel['components'][new_index],
+                self.m_label_kernel)
         self._emit('start_new_item', index=new_index, previous=old_index)
         self._emit('inner_select', index=new_index)
         if self.m_flags & 2:
@@ -129,6 +159,9 @@ class c_menu_runtime:
             self.m_exit_phase = 30
             if self.m_selected >= 0:
                 self.m_item_phases[self.m_selected] = 4
+                if self.m_label_kernel is not None:
+                    exit_label(self.m_label_states[self.m_selected],
+                               self.m_label_kernel)
                 self._emit('request_selected_exit', index=self.m_selected)
             request_exit(self.m_shared)
             self._emit('request_shared_exit')
@@ -137,6 +170,10 @@ class c_menu_runtime:
         else:
             if self.m_selected >= 0:
                 self.m_item_phases[self.m_selected] = 3
+                if self.m_label_kernel is not None:
+                    emphasize_label(
+                        self.m_label_states[self.m_selected],
+                        self.m_label_kernel)
                 self._emit('request_selected_cancel', index=self.m_selected)
         self._emit('inner_exit_start')
 
@@ -225,6 +262,14 @@ class c_menu_runtime:
             self._update_exit(fade_busy)
         return self.snapshot()
 
+    def label_geometry(self, item):
+        """Native selected-item label geometry, not diagnostic frame samples."""
+        if self.m_label_kernel is None or not 0 <= item < 7:
+            return None
+        return draw_label(
+            self.m_label_states[item],
+            self.m_label_kernel['components'][item])
+
     def snapshot(self):
         return {
             'update': self.m_updates,
@@ -240,6 +285,12 @@ class c_menu_runtime:
             'pending': self.m_pending,
             'item_phases': tuple(self.m_item_phases),
             'item_ages': tuple(self.m_item_ages),
+            'label_phases': tuple(state['phase']
+                                  for state in self.m_label_states),
+            'label_ages': tuple(state['age']
+                                for state in self.m_label_states),
+            'label_offsets': tuple(tuple(state['offset'])
+                                   for state in self.m_label_states),
             'shared_phase': self.m_shared['phase'],
             'shared_subphase': self.m_shared['subphase'],
             'shared_age': self.m_shared['age'],
