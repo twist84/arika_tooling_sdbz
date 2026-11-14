@@ -43,9 +43,15 @@ the selected index is shown below the canvas; item names are practical labels
 inferred from the help text/art, not independently extracted text strings.
 
 Confirm/cancel **inspect the route only**. They do not switch apps, write the
-save game, or pretend to animate a native exit transition. The pre-generated
-frame slider and existing animation playback remain independent of selection
-transition timing. Unavailable neighbour moves preserve selection history.
+save game, or pretend to animate a native exit transition. The pre-generated frame slider and existing animation playback remain
+independent of the **preview-only** selection emphasis event clock. Selecting
+an item now triggers the recovered character/label emphasis displacement
+samples (baked for relative ages 0–14 from ticks 80–94). The effect adds
+sampled displacement to the live pose without replacing the global animation
+frame. It works with playback paused, ends automatically, and is controlled
+by the **Selection pulse (preview)** layer checkbox. The selection event as a
+trigger and its clock rate are authored editor conventions, **not** a verified
+native interruption or transition schedule. Unavailable neighbour moves preserve selection history.
 
 The preview now requests repaint on its actual `c_menu_canvas` child whenever
 a frame, item or layer changes. Previously it called `update()` only on the
@@ -55,11 +61,11 @@ editor container, which could leave the textured canvas visually stale.
 
 ```sh
 cd arika-py_on_rs
-python -m unittest test_arika_menu_navigation test_arika_menu_editor_navigation -v
+python -m unittest test_arika_menu_navigation test_arika_menu_selection_effect test_arika_menu_editor_navigation -v
 ```
 
 The CI matrix also runs these checks headlessly on Windows and Ubuntu. Native
-gamepad repeat/debounce, selection animation phases and interruption windows,
+gamepad repeat/debounce, native selection scheduling and interruption windows,
 confirm/cancel effects, and application lifecycle are intentionally not
 invented. The next ELF work should examine the input helper calls at
 `0x00336430` through `0x00336480` and menu state fields `+0xC8` through
