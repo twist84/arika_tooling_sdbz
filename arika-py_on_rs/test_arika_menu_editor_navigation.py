@@ -518,5 +518,20 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(render(), empty)
 
 
+    def test_match_pose_is_diagnostic_only(self):
+        editor = self.m_editor
+        self.assertTrue(editor.m_match_button.isEnabled())
+        self.assertTrue(editor.m_next_match_button.isEnabled())
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        self.assertFalse(editor.m_match_button.isEnabled())
+        self.assertFalse(editor.m_next_match_button.isEnabled())
+        with self.assertRaisesRegex(ValueError, 'Diagnostic timeline'):
+            editor.match_reference_image(None)
+        editor.m_lifecycle_combo.setCurrentIndex(0)
+        self.assertTrue(editor.m_match_button.isEnabled())
+        self.assertTrue(editor.m_next_match_button.isEnabled())
+
+
+
 if __name__ == '__main__':
     unittest.main()
