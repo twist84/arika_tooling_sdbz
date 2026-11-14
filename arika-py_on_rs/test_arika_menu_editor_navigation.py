@@ -735,6 +735,66 @@ class MenuEditorNavigationTests(unittest.TestCase):
                          initial_state['particles']['rng_state'])
 
 
+    def test_native_companions_affect_qt_pixels_without_repaint_rng(self):
+        """The ten-slot effect is drawn only in native preview mode."""
+        from PySide6 import QtCore as C, QtGui as G
+        from arika_menu_companions import spawn_slot
+
+        editor = self.m_editor
+        self.assertTrue(editor.load_textures(synthetic_menu_pix()))
+        tex = G.QPixmap(512, 512)
+        tex.fill(G.QColor('#cb32f2'))
+        editor.m_textures[2] = tex
+        editor.m_background = False
+        editor.m_motion = True
+        editor.m_tint = False
+        editor.m_first = False
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        self.assertTrue(editor.m_native_mode)
+        runtime = editor.m_native_runtime
+
+        # The diagnostic tiles/banner/small sprites remain independent
+        # source frames. Remove those synthetic samples in this fixture
+        # to isolate the newly recovered companion-only draw path.
+        frame = editor.m_data['frames'][int(editor.m_time)]
+        frame['banner'] = None
+        frame['tiles'] = []
+        frame['small'] = []
+
+        def render():
+            image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            image.fill(G.QColor('#10151c'))
+            painter = G.QPainter(image)
+            try:
+                editor.render(painter, C.QRect(0, 0, 512, 448))
+            finally:
+                painter.end()
+            return bytes(image.constBits())
+
+        blank = render()
+        slot = spawn_slot(runtime.m_companion_spec['templates'][0], 0, 0)
+        slot.update(x=275.0, y=290.0)
+        runtime.m_companion_state['slots'][0] = slot
+        state = runtime.snapshot()
+        visible = render()
+        self.assertNotEqual(visible, blank)
+        self.assertEqual(visible, render())
+        self.assertEqual(runtime.snapshot(), state,
+                         'repaint must neither update owner nor consume RNG')
+        slot['x'] = 440.0
+        moved = render()
+        self.assertNotEqual(visible, moved)
+        self.assertEqual(runtime.snapshot()['context_rng_state'],
+                         state['context_rng_state'])
+        editor.m_lifecycle_combo.setCurrentIndex(0)
+        self.assertEqual(render(), blank,
+                         'diagnostic timeline cannot draw live companions')
+
+
 
 if __name__ == '__main__':
     unittest.main()
