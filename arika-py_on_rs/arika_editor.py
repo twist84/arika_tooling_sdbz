@@ -1764,7 +1764,7 @@ class c_scene_editor(W.QMainWindow):
             # FFON is already supported by the editor's Fonts panel.
             # Load it directly from this archive without exporting a file.
             font_data = next((data for name, data in self.m_virtual_files.items()
-                              if name.replace('\\\\', '/').lower().lstrip('/') ==
+                              if name.replace('\\', '/').lower().lstrip('/') ==
                               'font/5-24-2.fon'), None)
             if font_data:
                 try:
