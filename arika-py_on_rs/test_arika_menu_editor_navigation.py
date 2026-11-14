@@ -142,6 +142,43 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(editor.m_selection_age, 0.0)
         editor.m_timer.stop()
 
+    def test_help_panel_and_arrow_layouts_are_bound_to_selection(self):
+        from PySide6 import QtCore as C, QtGui as G
+        from arika_menu_arrow_preview import arrow_parts
+        editor = self.m_editor
+        self.assertTrue(editor.m_help_panel)
+        self.assertTrue(editor.m_arrow_bob)
+        report = editor.m_menu_report
+
+        self.assertEqual(len(arrow_parts(report, 0, -1)), 2)
+        self.assertEqual(editor.m_navigation.help_lines()[0],
+                         'Just like the arcade version of')
+        # From item 2 to item 0, native arrow flag +0x710 changes.
+        editor.m_item_combo.setCurrentIndex(2)
+        editor.m_item_combo.setCurrentIndex(0)
+        actual = arrow_parts(report, editor.m_item, editor.m_navigation.m_previous)
+        self.assertEqual(actual, report['arrow_baselines']['items'][0]['variants'][1])
+
+        # With synthetic textures supplied, the help panel must affect
+        # actual pixels on the canvas rather than just the Qt text label.
+        for index in range(13):
+            pixmap = G.QPixmap(512, 512)
+            pixmap.fill(G.QColor('#202020'))
+            editor.m_textures[index] = pixmap
+        editor.m_time = 70
+        def draw():
+            image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            image.fill(G.QColor('#10151c'))
+            painter = G.QPainter(image)
+            editor.render(painter, C.QRect(0, 0, 512, 448))
+            painter.end()
+            return image
+        with_panel = draw()
+        editor.m_help_panel = False
+        without_panel = draw()
+        self.assertNotEqual(with_panel.pixelColor(100, 320),
+                            without_panel.pixelColor(100, 320))
+
     def test_preview_keyboard_navigation_and_confirm_cancel(self):
         from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
         editor = self.m_editor
