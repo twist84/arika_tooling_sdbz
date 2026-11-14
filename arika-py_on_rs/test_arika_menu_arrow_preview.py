@@ -3,7 +3,8 @@ import json
 from pathlib import Path
 import unittest
 
-from arika_menu_arrow_preview import arrow_parts, arrow_variant, arrow_direction, bobbed_arrow_geometry
+from arika_menu_arrow_preview import (arrow_parts, arrow_variant, arrow_direction,
+                                     native_arrow_displacement, bobbed_arrow_geometry)
 
 
 class ArrowPreviewTests(unittest.TestCase):
@@ -35,7 +36,7 @@ class ArrowPreviewTests(unittest.TestCase):
                             'bounds': [1, 2, 3, 4],
                             'uv_endpoints': list(uv)}
                 self.assertEqual(arrow_direction(geometry), direction)
-                shifted = bobbed_arrow_geometry(geometry, 8)
+                shifted = bobbed_arrow_geometry(geometry, 10)
                 dx, dy = (3 * component for component in direction)
                 self.assertAlmostEqual(shifted['vertices'][0][0], 1 + dx)
                 self.assertAlmostEqual(shifted['vertices'][0][1], 2 + dy)
@@ -57,6 +58,25 @@ class ArrowPreviewTests(unittest.TestCase):
                     with self.subTest(item=item_index, variant=variant_index):
                         dx, dy = arrow_direction(part['geometry'])
                         self.assertEqual(abs(dx) + abs(dy), 1)
+
+    def test_native_interpolation_samples_and_wrapping(self):
+        # Four table points from the actual 0x3753A0 helper.
+        expected = {
+            0: 0.0, 5: 1.5, 10: 3.0,
+            15: 1.5, 20: 0.0, 25: -1.5,
+            30: -3.0, 35: -1.5, 40: 0.0,
+            45: 1.5, 70: -3.0, 80: 0.0,
+        }
+        for age, value in expected.items():
+            with self.subTest(age=age):
+                self.assertAlmostEqual(native_arrow_displacement(age), value)
+        self.assertAlmostEqual(native_arrow_displacement(10.5), 2.85)
+        self.assertAlmostEqual(native_arrow_displacement(30.5), -2.85)
+
+    def test_no_sine_shape_between_keyframes(self):
+        # A sine approximation at tick 5 would produce ~2.12 for amplitude 3;
+        # the native curve is linear and yields exactly 1.5.
+        self.assertEqual(native_arrow_displacement(5), 1.5)
 
     def test_unknown_uv_does_not_guess_direction(self):
         with self.assertRaisesRegex(ValueError, 'unrecognised'):
