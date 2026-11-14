@@ -17,7 +17,7 @@ def synthetic_ffon():
     struct.pack_into('<III', data, 0x10, 1, 95, 1)
     data[0x1C:0x20] = bytes((2, 2, 4, 1))
     struct.pack_into('<H', data, 0xA0 + 2 * (ord('J') - 0x20), 1)
-    data[0x160:] = b'\\xff\\xff'
+    data[0x160:] = bytes((255, 255))
     return bytes(data)
 
 
