@@ -819,7 +819,7 @@ class c_menu_editor(W.QWidget):
                 geometry = p['geometry']
                 if group == 'first' and self.m_native_mode:
                     geometry = self.m_native_runtime.first_geometry(
-                        self.m_item, geometry)
+                        self.m_item, geometry, component_index=part_index)
                 if group == 'overlay' and self.m_label_motion:
                     if self.m_native_mode:
                         geometry = self.m_native_runtime.label_geometry(
@@ -867,9 +867,9 @@ class c_menu_editor(W.QWidget):
             pending = self.m_native_runtime.m_pending
             if pending >= 0:
                 if self.m_first:
-                    for part in self.m_data['items'][pending]['first']:
+                    for part_index, part in enumerate(self.m_data['items'][pending]['first']):
                         geometry = self.m_native_runtime.first_geometry(
-                            pending, part['geometry'])
+                            pending, part['geometry'], component_index=part_index)
                         enqueue(part['texture_entry'], geometry, 47)
                     for part in self.m_native_runtime.first_strip_geometry(pending):
                         enqueue(part['texture_entry'], part['geometry'], 45)
