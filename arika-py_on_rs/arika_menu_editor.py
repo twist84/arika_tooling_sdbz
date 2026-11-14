@@ -181,10 +181,15 @@ class c_menu_editor(W.QWidget):
         self.update_navigation_status()
 
     def load_data(self):
-        path = Path(__file__).with_name('previews') / 'menu_textured.html'
-        if not path.exists():
-            path = Path.cwd() / 'previews' / 'menu_textured.html'
-        if not path.exists():
+        # Locate the bundled preview independently of the caller's cwd:
+        # root/launch_editor.bat and arika-py_on_rs/launch_editor.bat both work.
+        candidates = (
+            Path(__file__).resolve().parent / 'previews' / 'menu_textured.html',
+            Path(__file__).resolve().parent.parent / 'previews' / 'menu_textured.html',
+            Path.cwd() / 'previews' / 'menu_textured.html',
+        )
+        path = next((candidate for candidate in candidates if candidate.is_file()), None)
+        if path is None:
             return
         html = path.read_text(encoding='utf-8')
         match = re.search(r'const DATA=(.*?);\nconst \$', html, re.S)
