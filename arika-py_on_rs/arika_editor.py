@@ -1733,6 +1733,8 @@ class c_scene_editor(W.QMainWindow):
         self.m_virtual_files={}
         self.m_virtual=True
         self.m_project=None
+        if hasattr(self.m_menu_view, 'load_textures'):
+            self.m_menu_view.load_textures(None)
         try:
             self.m_tree.clear();self.m_items={}
         except Exception:pass
@@ -1752,6 +1754,12 @@ class c_scene_editor(W.QMainWindow):
                 self.m_file_tree.addTopLevelItem(item)
             self.m_file_tree.blockSignals(False)
         except Exception:pass
+        # Menu textures come exclusively from the user's opened game data;
+        # never fall back to the old repo-bundled HTML/PNG sample.
+        if hasattr(self.m_menu_view, 'load_textures'):
+            menu_pix=next((data for name,data in self.m_virtual_files.items()
+                           if name.replace('\\','/').lower().lstrip('/')=='dis/main_menu.pix'),None)
+            self.m_menu_view.load_textures(menu_pix)
         self.statusBar().showMessage('Loaded archive %s — %d entries'%(info_path.name,len(self.m_virtual_files)))
         self.m_scene_status.setText('Archive: %d entries'%len(self.m_virtual_files))
         self.remember_file(str(info_path),'archive')
