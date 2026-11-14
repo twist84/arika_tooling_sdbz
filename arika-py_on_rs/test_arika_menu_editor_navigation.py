@@ -389,5 +389,75 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(editor.m_item, 1)
 
 
+    def test_opt_in_native_lifecycle_queues_edges_without_authoring_timing(self):
+        editor = self.m_editor
+        diagnostic_tick = editor.m_time
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        self.assertTrue(editor.m_native_mode)
+        self.assertFalse(editor.m_time_slider.isEnabled())
+        self.assertFalse(editor.m_item_combo.isEnabled())
+        self.assertEqual(editor.m_native_runtime.snapshot()['outer_phase'], 0)
+
+        self.assertTrue(editor.navigate(3))
+        self.assertEqual(len(editor.m_native_input_queue), 1)
+        # Entry has not completed, so the native input gate drops this edge.
+        state = editor.step_native()
+        self.assertEqual(state['outer_phase'], 1)
+        self.assertEqual(state['selected'], -1)
+        self.assertEqual(editor.m_native_input_queue, [])
+
+        for _ in range(100):
+            state = editor.step_native()
+            if state['outer_phase'] == 2:
+                break
+        self.assertEqual(state['outer_phase'], 2)
+        self.assertEqual(editor.m_item, 0)
+        self.assertIn('input=accepting', editor.m_native_status.text())
+
+        self.assertTrue(editor.navigate(3))
+        self.assertEqual(editor.m_item, 0, 'native navigation must be queued')
+        self.assertEqual(len(editor.m_native_input_queue), 1)
+        state = editor.step_native()
+        self.assertEqual((state['selected'], state['previous'], state['pending']),
+                         (1, 0, 0))
+        self.assertEqual(editor.m_item, 1)
+        self.assertNotEqual(state['item_ages'][0], state['item_ages'][1])
+        self.assertIsNone(editor.m_selection_age,
+                          'no authored selection pulse in native state mode')
+
+        editor.inspect_route(False)
+        self.assertEqual(editor.m_native_runtime.m_outer_phase, 2)
+        state = editor.step_native()
+        self.assertEqual((state['outer_phase'], state['exit_phase']), (3, 30))
+        for _ in range(30):
+            state = editor.step_native()
+        self.assertEqual((state['outer_phase'], state['exit_phase']), (3, 30),
+                         'no guessed fade timeout allowed')
+
+        editor.m_lifecycle_combo.setCurrentIndex(0)
+        self.assertFalse(editor.m_native_mode)
+        self.assertTrue(editor.m_time_slider.isEnabled())
+        self.assertTrue(editor.m_item_combo.isEnabled())
+        self.assertEqual(editor.m_time, diagnostic_tick)
+
+    def test_native_mode_ignores_qt_keyboard_repeat(self):
+        from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
+        editor = self.m_editor
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        key = C.Qt.Key.Key_Down
+        repeated = G.QKeyEvent(
+            C.QEvent.Type.KeyPress, key, C.Qt.KeyboardModifier.NoModifier,
+            '', True, 2)
+        W.QApplication.sendEvent(editor.m_canvas, repeated)
+        self.assertTrue(repeated.isAccepted())
+        self.assertEqual(editor.m_native_input_queue, [])
+        pressed = G.QKeyEvent(
+            C.QEvent.Type.KeyPress, key, C.Qt.KeyboardModifier.NoModifier)
+        W.QApplication.sendEvent(editor.m_canvas, pressed)
+        self.assertEqual(len(editor.m_native_input_queue), 1)
+
+
+
+
 if __name__ == '__main__':
     unittest.main()
