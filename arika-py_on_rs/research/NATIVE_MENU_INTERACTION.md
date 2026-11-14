@@ -110,6 +110,28 @@ animation routine. The **Arrow bob (preview)** and **Help panel** checkboxes
 allow individual visual comparison. No captured artwork or screenshots are
 embedded in the repo; arrow sprites still load from the user's FPIX atlas.
 
+## Visual reference-frame matching (4:3)
+
+The editor now offers **Match pose...** and **Next match**. Select a
+**cropped game-only 4:3** reference screenshot (no emulator/window chrome).
+The diagnostic renderer compares samples 23–119 of the authored 140-frame
+timeline at 512×384 TV presentation, then ranks the five closest samples
+using color and edge differences within the central Cell/character region.
+It downscales comparison images to 256×192, masks out most of the scrolling
+cloud, banner and textbox, and uses the user-loaded game textures.
+
+The tool restores the previous display mode, event emphasis age and timeline
+after scoring, then seeks to the best candidate for manual inspection.
+**Next match** cycles through the other top samples. Results are comparisons
+of *preview* frame geometry, **not recovered in-game timestamps or proof of
+native playback scheduling**. Screenshots taken at different stages of idle,
+or with different filtering/blending, may produce ambiguous matches; a ranked
+score cannot resolve those limitations.
+
+No screenshots or copyrighted pixels are bundled into the repository.
+The unit test generates synthetic images, and the Qt regression renders an
+in-memory synthetic preview as the reference.
+
 ## Validation and next research
 
 ```sh
