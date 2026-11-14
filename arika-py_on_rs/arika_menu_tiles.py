@@ -37,24 +37,6 @@ def tile_draw(phase,base,offset=(0,0),uv=(0,384,512,128),depth=85):
 
 
 
-# The native tile helper operates in a 512x448 gameplay coordinate space.
-# The screenshot reference is a 512x512 presentation. The additional 64px
-# lower band is a preview compositing adjustment, not part of tile_draw().
-MENU_PRESENTATION_CLOUD_OFFSET_Y = 64.0
-
-
-def presentation_tile_geometry(geometry, offset_y=MENU_PRESENTATION_CLOUD_OFFSET_Y):
-    """Translate a copied tile quad into 512x512 menu presentation coordinates."""
-    result = dict(geometry)
-    result['vertices'] = [[x, y + offset_y] for x, y in geometry['vertices']]
-    if 'position' in geometry:
-        result['position'] = [geometry['position'][0],
-                              geometry['position'][1] + offset_y]
-    if 'bounds' in geometry:
-        x0, y0, x1, y1 = geometry['bounds']
-        result['bounds'] = [x0, y0 + offset_y, x1, y1 + offset_y]
-    return result
-
 
 def main():
     from arika_menus import analyze_menu
