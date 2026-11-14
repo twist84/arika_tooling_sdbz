@@ -523,23 +523,28 @@ class c_menu_editor(W.QWidget):
         # Render the game texture, never a synthetic QPainter border.
         panel = self.m_textures.get(4)
         if panel is not None and not panel.isNull() and self.m_help_panel_uv is not None:
-            painter.drawPixmap(C.QRectF(30, 282, 450, 175), panel,
+            painter.drawPixmap(C.QRectF(30, 275, 450, 175), panel,
                                self.m_help_panel_uv)
         if self.m_help_font is None:
             painter.restore()
             return
         painter.setClipRect(C.QRectF(76, 312, 359, 116), C.Qt.ClipOperation.IntersectClip)
-        for index, text in enumerate(self.m_navigation.help_lines()[:4]):
-            pixmap = self.help_line_pixmap(text)
-            if pixmap is None or pixmap.isNull():
-                continue
-            # Original FFON glyphs are 24 pixels high. Preserve native
-            # nearest-neighbour appearance while fitting the four-line box.
-            scale = min(1.0, 337.0 / pixmap.width())
-            painter.drawPixmap(C.QRectF(87, 320 + index * 25,
-                                       pixmap.width() * scale,
-                                       pixmap.height() * scale),
-                               pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
+        # The four ELF lines share one font scale. Scaling each line to the
+        # maximum width independently makes every line equally long and does
+        # not match the original game's fixed glyph advance.
+        pixmaps = [self.help_line_pixmap(line)
+                   for line in self.m_navigation.help_lines()[:4]]
+        widths = [pixmap.width() for pixmap in pixmaps
+                  if pixmap is not None and not pixmap.isNull()]
+        if widths:
+            scale = min(1.0, 303.0 / max(widths))
+            for index, pixmap in enumerate(pixmaps):
+                if pixmap is None or pixmap.isNull():
+                    continue
+                painter.drawPixmap(C.QRectF(87, 320 + index * 25,
+                                           pixmap.width() * scale,
+                                           pixmap.height() * scale),
+                                   pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
         painter.restore()
 
     def draw_sprite(self, painter, entry, geometry, alpha):
