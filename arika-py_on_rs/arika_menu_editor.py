@@ -9,6 +9,8 @@ from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
 
 from arika_menu_navigation import c_menu_navigation, MENU_ITEM_NAMES, DIRECTION_NAMES, DIRECTION_MASKS
 from arika_menu_selection_effect import EMPHASIS_DURATION, emphasis_geometry, emphasis_sample
+from arika_menu_arrow_preview import arrow_parts, bobbed_arrow_geometry
+from arika_menu_navigation import read_menu_report
 
 
 def lerp_values(a, b, t):
@@ -86,6 +88,7 @@ class c_menu_editor(W.QWidget):
         self.m_time = 70.0
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
+        self.m_menu_report = read_menu_report()
         self.m_selection_age = None
         self.m_selection_effect = True
         self.m_playing = False
@@ -103,6 +106,8 @@ class c_menu_editor(W.QWidget):
         self.m_character_motion = True
         self.m_label_motion = True
         self.m_arrows = True
+        self.m_arrow_bob = True
+        self.m_help_panel = True
         self.m_bounds = False
         self.m_smooth = False
 
@@ -164,7 +169,8 @@ class c_menu_editor(W.QWidget):
                            ('Scenery', 'm_first'), ('Characters', 'm_middle'), ('Label', 'm_overlay'),
                            ('Idle', 'm_idle'), ('Char motion', 'm_character_motion'),
                            ('Label motion', 'm_label_motion'), ('Arrows', 'm_arrows'), ('Bounds', 'm_bounds'),
-                           ('Smooth', 'm_smooth'), ('Selection pulse (preview)', 'm_selection_effect')):
+                           ('Smooth', 'm_smooth'), ('Selection pulse (preview)', 'm_selection_effect'),
+                           ('Arrow bob (preview)', 'm_arrow_bob'), ('Help panel', 'm_help_panel')):
             box = W.QCheckBox(name)
             box.setChecked(getattr(self, attr))
             box.toggled.connect(lambda value, a=attr: setattr(self, a, value))
@@ -403,7 +409,7 @@ class c_menu_editor(W.QWidget):
         else:
             group_checked = False
 
-        for group in ('first', 'middle', 'overlay', 'arrows'):
+        for group in ('first', 'middle', 'overlay'):
             checked = {'first': self.m_first, 'middle': self.m_middle, 'overlay': self.m_overlay, 'arrows': self.m_arrows}[group]
             if not checked:
                 continue
@@ -432,6 +438,13 @@ class c_menu_editor(W.QWidget):
                                                     pulse_label[self.m_item])
                 enqueue(p['texture_entry'], geometry, 47 if group == 'first' else 60 if group == 'middle' else 70)
 
+        if self.m_arrows:
+            for part in arrow_parts(self.m_menu_report, self.m_item, self.m_navigation.m_previous):
+                geometry = part['geometry']
+                if self.m_arrow_bob:
+                    geometry = bobbed_arrow_geometry(geometry, self.m_time)
+                enqueue(0, geometry, 95)
+
         if self.m_first:
             for p in frame['strips'][self.m_item]:
                 enqueue(p['texture_entry'], p['geometry'], 45)
@@ -450,6 +463,54 @@ class c_menu_editor(W.QWidget):
         for q in draw_queue:
             self.draw_sprite(painter, q['entry'], q['geometry'], q['alpha'])
 
+        if self.m_help_panel:
+            self.draw_help_panel(painter)
+
+        painter.restore()
+
+    def draw_help_panel(self, painter):
+        """Diagnostic help box using recovered ELF strings and authored styling.
+
+        The original frame texture coordinates / font renderer are not yet
+        recovered. Keep this separate from game-texture sprites so it can be
+        replaced without changing the navigation or text source.
+        """
+        lines = self.m_navigation.help_lines()
+        painter.save()
+        painter.setRenderHint(G.QPainter.RenderHint.Antialiasing, False)
+        # Stylised placeholder for the red/orange stepped border in the captures.
+        border = G.QPainterPath()
+        for x, y in ((30, 283), (70, 283), (70, 294), (199, 294),
+                     (199, 282), (309, 282), (309, 294), (439, 294),
+                     (439, 283), (476, 283), (476, 309), (457, 309),
+                     (457, 348), (467, 348), (467, 400), (457, 400),
+                     (457, 448), (436, 448), (436, 420), (77, 420),
+                     (77, 448), (52, 448), (52, 400), (42, 400),
+                     (42, 348), (52, 348), (52, 309), (30, 309)):
+            if border.elementCount() == 0:
+                border.moveTo(x, y)
+            else:
+                border.lineTo(x, y)
+        border.closeSubpath()
+        painter.setPen(G.QPen(G.QColor('#1a100d'), 4))
+        painter.setBrush(G.QColor('#e64a18'))
+        painter.drawPath(border)
+        painter.setPen(G.QPen(G.QColor('#140c1b'), 3))
+        painter.setBrush(G.QColor(160, 45, 135, 228))
+        painter.drawRect(C.QRectF(76, 313, 359, 115))
+        painter.setPen(G.QPen(G.QColor(120, 23, 102, 130), 1))
+        painter.setBrush(C.Qt.BrushStyle.NoBrush)
+        # Decorative cloud contours are editor-authored, not extracted artwork.
+        for index in range(14):
+            x = 89 + (index % 7) * 51
+            y = 350 + (index // 7) * 39
+            painter.drawEllipse(C.QRectF(x, y, 62, 26))
+        font = G.QFont('Consolas', 14, G.QFont.Weight.Bold)
+        font.setStyleHint(G.QFont.StyleHint.TypeWriter)
+        painter.setFont(font)
+        painter.setPen(G.QColor('#ffffff'))
+        for index, text in enumerate(lines[:4]):
+            painter.drawText(C.QPointF(87, 339 + 25 * index), text)
         painter.restore()
 
     def draw_sprite(self, painter, entry, geometry, alpha):
