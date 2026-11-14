@@ -413,7 +413,7 @@ class c_menu_editor(W.QWidget):
                 parts = item['middle']
             else:
                 parts = item[group]
-            for p in parts:
+            for part_index, p in enumerate(parts):
                 geometry = p['geometry']
                 if group == 'overlay' and self.m_label_motion:
                     geometry = active_labels[self.m_item]
@@ -422,7 +422,6 @@ class c_menu_editor(W.QWidget):
                     pulse_group = 'emphasis_idle_characters' if self.m_idle else 'emphasis_characters'
                     baseline = selection_sample[sample_group][self.m_item]
                     emphasized = selection_sample[pulse_group][self.m_item]
-                    part_index = parts.index(p)
                     if emphasized is not None and part_index < len(baseline) and part_index < len(emphasized):
                         geometry = emphasis_geometry(geometry, baseline[part_index]['geometry'],
                                                     emphasized[part_index]['geometry'])
