@@ -534,8 +534,11 @@ class c_menu_editor(W.QWidget):
                age, len(self.m_native_input_queue)))
         self.m_native_status.setText(label)
         self.m_native_status.setToolTip(
-            label + '\\nPer-item phases: %s\\nPer-item arrow ages: %s'
-            % (state['item_phases'], state['item_ages']))
+            label +
+            '\\nPer-item phases: %s\\nPer-item arrow ages: %s'
+            '\\nLabel phases: %s\\nLabel ages: %s'
+            % (state['item_phases'], state['item_ages'],
+               state['label_phases'], state['label_ages']))
         if action:
             self.m_navigation_status.setText('Native: ' + action)
 
@@ -761,7 +764,11 @@ class c_menu_editor(W.QWidget):
             for part_index, p in enumerate(parts):
                 geometry = p['geometry']
                 if group == 'overlay' and self.m_label_motion:
-                    geometry = active_labels[self.m_item]
+                    if self.m_native_mode:
+                        geometry = self.m_native_runtime.label_geometry(
+                            self.m_item)
+                    else:
+                        geometry = active_labels[self.m_item]
                 if selection_sample and group == 'middle' and self.m_character_motion:
                     sample_group = 'idle_characters' if self.m_idle else 'characters'
                     pulse_group = 'emphasis_idle_characters' if self.m_idle else 'emphasis_characters'
