@@ -18,6 +18,8 @@ from arika_menu_emphasis import emphasis_offset
 from arika_menu_layout import f32, pose_part
 from arika_menu_banner import sample_curve
 from arika_menu_idle import step_idle, step_coupled_idle, step_circular_idle, step_dragon_idle
+from arika_menu_strips import step_phase, clipped_strip
+from arika_menu_strip_preview import command_quad
 
 
 # Float values checked against the EU-beta SLES_541.61 instruction operands.
@@ -29,36 +31,118 @@ def initialize_child():
     # Only the transition to character phase 2 establishes the secondary
     # clock's origin. Constructor contents prior to that are not assumed.
     return dict(phase=0, age=0.0, offset=[0.0, 0.0], depth=0.0,
-                secondary_age=None)
+                secondary_age=None, strip_phase=0.0)
 
 
-def start_first(state):
-    # 0x373BA0 -> first vtable+0x10 (0x373C50)
-    state.update(phase=1, age=0.0)
+def first_offset(age, component, kernel, exiting=False):
+    """Common first-layer (+0x0C/+0x10) displacement recovered from ELF."""
+    if exiting:
+        value = sample_curve(kernel['exit'], age)
+    else:
+        value = sample_curve(kernel['entry'], age)
+        delay = kernel['entry']['times'][-1]
+        if age >= delay:
+            value = f32(value + sample_curve(
+                kernel['bounce'], f32(age - delay)))
+    return [f32(value * direction)
+            for direction in component['direction']]
 
 
-def exit_first(state):
-    # 0x373BC0 -> first vtable+0x18 (0x373D20)
-    state.update(phase=4, age=0.0)
+def start_first(state, component, kernel):
+    # 0x373BA0 -> vtable +0x10, 0x373C50:
+    # sets age 0, z 45.0 and samples first approach at t=0 (128 units).
+    state.update(phase=1, age=0.0,
+                 offset=first_offset(0.0, component, kernel),
+                 depth=45.0)
 
 
-def emphasize_first(state):
-    # 0x373BE0 -> first vtable+0x1C (0x373D40)
-    state.update(phase=3, age=0.0)
+def exit_first(state, kernel):
+    # 0x373BC0 -> +0x18, 0x373D20; preserves independent strip clock.
+    state.update(phase=4, age=0.0,
+                 offset=list(kernel['reset_position']), depth=15.0)
 
 
-def step_first(state):
-    # 0x373A10 increments a float32 age before dispatching vtable callbacks.
+def emphasize_first(state, kernel):
+    # 0x373BE0 -> +0x1C, 0x373D40; depth is not overwritten.
+    state.update(phase=3, age=0.0,
+                 offset=list(kernel['reset_position']))
+
+
+def step_first(state, component, kernel, strip=None):
+    # 0x373A10 increments the first child's +0x08 age before its callback.
     if state['phase'] == 0:
         return
     age = f32(state['age'] + 1.0)
     state['age'] = f32(age - 99999.0) if age > 99999.0 else age
-    if state['phase'] == 1 and state['age'] >= FIRST_ENTRY_AGE:
-        state.update(phase=2, age=0.0)
-    elif state['phase'] == 4 and state['age'] >= FIRST_EXIT_AGE:
-        state['phase'] = 0
-    # Phase 2 callbacks differ by item; none are promoted to 4 here.
-    # Phase 3 remains active until another request, as in 0x373A10.
+    if state['phase'] == 1:
+        state['offset'] = first_offset(state['age'], component, kernel)
+        if state['age'] >= FIRST_ENTRY_AGE:
+            state.update(phase=2, age=0.0,
+                         offset=list(kernel['reset_position']))
+    elif state['phase'] == 4:
+        state['offset'] = first_offset(
+            state['age'], component, kernel, exiting=True)
+        if state['age'] >= FIRST_EXIT_AGE:
+            state['phase'] = 0
+    elif state['phase'] == 3:
+        state['offset'], _ = emphasis_offset(
+            state['age'], component['direction'], kernel['emphasis'])
+    elif state['phase'] == 2:
+        # 0x373AC8 -> subclass vtable +0x24. Four call 0x3740D0,
+        # two return immediately; item 3 calls the particle/RNG updater,
+        # which is intentionally kept separate from these deterministic
+        # first-layer offsets.
+        if component['item'] in (0, 2, 4, 6):
+            if strip is None:
+                raise ValueError('missing recovered first-layer strip kernel')
+            state['strip_phase'] = step_phase(
+                state['strip_phase'], strip['parameters']['period'])
+        elif component['item'] == 3:
+            state['particle_update_unresolved'] = True
+
+
+def translate_first_geometry(geometry, offset):
+    """Translate a recovered zero-offset first-layer quad in logical pixels."""
+    if geometry is None:
+        return None
+    dx, dy = offset
+    result = dict(geometry)
+    if 'position' in geometry:
+        result['position'] = [
+            f32(geometry['position'][0] + dx),
+            f32(geometry['position'][1] + dy)]
+    if 'vertices' in geometry:
+        result['vertices'] = [
+            [f32(vertex[0] + dx), f32(vertex[1] + dy)]
+            for vertex in geometry['vertices']]
+    if 'bounds' in geometry:
+        x0, y0, x1, y1 = geometry['bounds']
+        result['bounds'] = [
+            f32(x0 + dx), f32(y0 + dy), f32(x1 + dx), f32(y1 + dy)]
+    return result
+
+
+def draw_first_strip(state, item, report):
+    """Current native strip clock and source geometry for four first groups."""
+    if state['phase'] == 0:
+        return []
+    group = report['first_components']['groups'][item]
+    strip = group.get('scroll_strip')
+    if strip is None or strip.get('startup_origin') is None:
+        return []
+    offset = state['offset']
+    origin = [f32(base + delta)
+              for base, delta in zip(strip['startup_origin'], offset)]
+    params = strip['parameters']
+    commands = clipped_strip(
+        strip['uv_xywh'], params['orientation'], params['start'],
+        params['end'], params['period'], state['strip_phase'],
+        origin, motion_offset=offset[0], depth=state['depth'])
+    anchors = report['composite_layout']['anchors']
+    rotation = report['strip_rotation_kernels']
+    return [dict(texture_entry=group['texture_entry'],
+                 geometry=command_quad(command, anchors, rotation))
+            for command in commands['commands']]
 
 
 def start_character(state, component, kernel):
