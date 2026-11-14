@@ -193,3 +193,62 @@ therefore are **not** claimed bitwise-equal to EE libm; item 5 exposes
 only primary motion until secondary-age initialization is traced.
 Unlike the diagnostic timeline, native mode does not start idle at an
 authored sample 23 or transition to exit at authored sample 120.
+
+## Native first-layer displacement and CUSTOMIZE clock — follow-up checkpoint
+
+Instruction evidence from the same SHA-verified EU-beta ELF, with source
+functions and callback words now extracted by `arika_menu_first.py` into
+`first_components.animation` of the checked-in research map.
+
+The **first-layer common clock** at `0x00373A10` increments the active
+first child's `+0x08` float each logical update. The start callback
+`0x00373C50` resets that clock, sets Z=45, and multiplies the approach
+curve's initial 128-pixel displacement by the item's signed direction
+bytes `+0x18/+0x19`. The entry callback `0x00373D60` uses the approach
+table (`gp-0x4DF0/0x4DE8`, times 0,5, values 128,0), then adds the
+13-point bounce (`0x004A9D90/0x004A9DD0`, times 0..12). The child
+completes entry at 17 logical updates. Exit request `0x00373D20`
+zeros first offsets, resets age, sets Z=15; exit callback `0x00373E60`
+applies the 0..10, 0..512-pixel exit curve multiplied by direction.
+Phase-3 common emphasis `0x00373EF0` has an independently recovered
+4-update wave and 15-update envelope.
+
+| Item | First entry direction | Phase-2 callback | Runtime action |
+| --- | --- | --- | --- |
+| 0 | (-1,-1) | `0x00374410` | Strip clock, object +0x90 |
+| 1 | (-1,0) | `0x00374750` | No-op |
+| 2 | (0,+1) | `0x0037A5E0` | Strip clock, object +0x80 |
+| 3 | (+1,-1) | `0x0037A860` | RNG particle timer, not yet modeled |
+| 4 | (-1,+1) | `0x00374960` | Strip clock, object +0x1A0 |
+| 5 | (+1,0) | `0x0037B610` | No-op |
+| 6 | (+1,+1) | `0x0037BCC0` | Strip clock, object +0x80 |
+
+The strip helper `0x003740D0` advances each active strip's **own**
+`+0x18` phase by 1 and subtracts its recovered period on wrap. The
+setup helper `0x00373FF0` zeros `+0x18` at `0x00374030`.
+The four phase-2 callbacks above dispatch that helper; they do not use
+the global 140-frame diagnostic clock. The Qt native preview now samples
+these clocks through the existing, previously tested strip geometry
+and rotation helpers, with the first group's independent entry/exit
+translation applied to both literal quads and strip origin.
+
+**CUSTOMIZE secondary clock resolved:** its character `+0x14` callback
+is `0x0037F7E0`. During completion of the 22-update character entry,
+`0x0037F100` dispatches this active callback. Instruction
+`0x0037F7E0` zeros primary `+0x08`; instruction `0x0037F7E8`
+in the `jr $ra` delay slot zeros the secondary float `+0x1E8`.
+Therefore the first phase-2 call to `0x0037F7F0` begins with two
+verified zero ages. This makes the existing
+`step_coupled_idle` implementation applicable without assuming
+unobserved constructor memory. It advances both ages and all three
+CUSTOMIZE part offsets; its 400-case native-interpreter regression
+remains the mathematical kernel oracle. Re-entry resets `+0x1E8`
+when the active callback runs again.
+
+**Remaining distinctions:** menu-item phase-2 particle/RNG behavior for
+DRAGON SUMMONING at `0x0037A860` depends on the native random state and
+has not been fabricated. Character circular idle still uses host libm,
+not bit-accurate EE libm. First-group geometry preserves the decoded
+startup positions; runtime-driven decorations and some strip clipping/
+GS blend effects still need full in-game comparison. Fade query and
+physical-pad conversion remain external, not silently completed.
