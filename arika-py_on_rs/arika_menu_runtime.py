@@ -326,12 +326,12 @@ class c_menu_runtime:
             self.m_label_states[item],
             self.m_label_kernel['components'][item])
 
-    def character_geometry(self, item):
+    def character_geometry(self, item, include_idle=True):
         """Return current native character quads, not diagnostic sample 70."""
         if not self.m_native_children or not 0 <= item < 7:
             return None
         return draw_character(self.m_character_states[item], item,
-                              self.m_report)
+                              self.m_report, include_idle=include_idle)
 
     def snapshot(self):
         return {
