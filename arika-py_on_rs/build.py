@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build the arika_backend cdylib and copy it next to arika_backend.py."""
 import shutil
+import filecmp
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +26,10 @@ def main():
         return 1
 
     dst = root / name
+    if dst.exists() and filecmp.cmp(src, dst, shallow=False):
+        print(f"backend already current: {dst}")
+        return 0
+
     shutil.copy2(src, dst)
     print(f"copied {dst}")
     return 0

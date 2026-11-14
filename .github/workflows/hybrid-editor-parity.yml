@@ -20,6 +20,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install headless Qt runtime dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
       - name: Build hybrid backend
         working-directory: arika-py_on_rs
         run: python build.py
@@ -29,6 +34,6 @@ jobs:
       - name: Test editor gizmos and stage viewport
         working-directory: arika-py_on_rs
         run: |
-          python -m pip install pillow numpy
-          python -m unittest test_arika_gizmo test_arika_stage_view3d test_arika_models test_arika_animation_preview test_arika_scene_characters test_arika_skinning -v
-          python -m py_compile arika_scene_editor.py arika_animation_preview.py
+          python -m pip install -r requirements_scene_editor.txt
+          python -m unittest test_arika_editor_shutdown test_arika_stage_background test_arika_scene_project test_arika_gizmo test_arika_stage_view3d test_arika_models test_arika_animation_preview test_arika_scene_characters test_arika_skinning -v
+          python -m py_compile arika_editor.py arika_scene_editor.py arika_scene_project.py arika_stage_background.py arika_animation_preview.py

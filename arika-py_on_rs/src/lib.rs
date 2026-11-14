@@ -15,13 +15,7 @@ use std::slice;
 
 use arika_core::dat::{Archive, Entry};
 use arika_core::error::ArikaError;
-use arika_core::ani::parse_ani;
-use arika_core::ebz::parse_ebz;
-use arika_core::models::{attach_textures, model_to_json, parse_fmdl};
-use arika_core::pas::parse_pas;
-use arika_core::stages::{parse_hit, hit_to_json, parse_stg, stage_to_json};
-use arika_core::spt::parse_spt;
-use arika_core::tim2::{decode_tim2, decode_xpix};
+use arika_core::stages::{hit_to_json, stage_to_json};
 use base64::engine::general_purpose::STANDARD as base64_engine;
 use base64::Engine as _;
 use serde::Serialize;

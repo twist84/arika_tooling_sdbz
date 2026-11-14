@@ -156,6 +156,13 @@ class c_viewport(QRenderWidget):
         if nav is not None:nav.move(max(4,self.width()-nav.width()-12),12);nav.raise_()
 
     def set_project(self,project,fit=False,geometry=True):
+        # Apply native stage RGB on a new scene or a changed runtime preset,
+        # without discarding a user's temporary viewport colour on every edit.
+        key=(id(project),getattr(project,'m_background_preset',None))
+        if key!=getattr(self,'m_stage_background_key',None):
+            background=project.background_rgba() if project is not None and hasattr(project,'background_rgba') else None
+            self.m_options['background']=background or DEFAULT_BACKGROUND
+            self.m_stage_background_key=key
         self.m_project=project;self.m_world_cache=None;self.m_upload=True;self.m_geometry=geometry;self.m_fit=fit or self.m_fit;self.request_draw()
 
     def draw_frame(self):
@@ -854,6 +861,7 @@ class c_scene_editor(W.QMainWindow):
         for label,key in [('Floor grid','grid'),('World axes','axes'),('Selection highlight','highlight'),('Backface culling','cull')]:
             action=options.addAction(label);action.setCheckable(True);action.toggled.connect(lambda checked,key=key:self.viewport_option(key,checked));self.m_option_actions[key]=action
         options.addSeparator();self.m_projection_action=options.addAction('Orthographic projection');self.m_projection_action.setCheckable(True);self.m_projection_action.toggled.connect(self.projection)
+        options.addAction('Stage background…').triggered.connect(self.stage_background)
         options.addAction('Background color…').triggered.connect(self.background_color)
         options.aboutToShow.connect(self.sync_view_controls)
         button=W.QToolButton();button.setText('Viewport');button.setMenu(options);button.setPopupMode(W.QToolButton.ToolButtonPopupMode.InstantPopup);bar.addWidget(button)
@@ -1692,6 +1700,26 @@ class c_scene_editor(W.QMainWindow):
 
     def align_view(self,yaw,pitch):
         view=self.active_view();view.m_yaw=yaw;view.m_pitch=pitch;view.m_orthographic=True;view.m_axis_view=True;view.request_draw()
+
+    def stage_background(self):
+        project=self.m_project
+        choices=project.background_choices() if project else ()
+        if not choices:
+            self.statusBar().showMessage('No native stage background presets for this scene.')
+            return
+        labels=[item['label'] for item in choices]
+        current=next((i for i,item in enumerate(choices) if item['key']==project.m_background_preset),0)
+        selected,ok=W.QInputDialog.getItem(self,'Stage background','Native stage/state:',labels,current,False)
+        if not ok:
+            return
+        key=choices[labels.index(selected)]['key']
+        project.set_background_preset(key)
+        background=project.background_rgba()
+        for view in (self.m_view,self.m_object_view):
+            view.m_options['background']=background
+            view.m_stage_background_key=(id(project),key)
+            view.request_draw()
+        self.statusBar().showMessage('Stage background: '+selected)
 
     def background_color(self):
         view=self.active_view();color=W.QColorDialog.getColor(G.QColor.fromRgbF(*view.m_options['background']),self,'Viewport background')
