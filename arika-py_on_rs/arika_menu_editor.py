@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
 
 from arika_menu_navigation import c_menu_navigation, MENU_ITEM_NAMES, DIRECTION_NAMES, DIRECTION_MASKS
+from arika_menu_selection_effect import EMPHASIS_DURATION, emphasis_geometry, emphasis_sample
 
 
 def lerp_values(a, b, t):
@@ -85,6 +86,8 @@ class c_menu_editor(W.QWidget):
         self.m_time = 70.0
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
+        self.m_selection_age = None
+        self.m_selection_effect = True
         self.m_playing = False
         self.m_timer = C.QTimer(self)
         self.m_timer.timeout.connect(self.advance)
@@ -161,7 +164,7 @@ class c_menu_editor(W.QWidget):
                            ('Scenery', 'm_first'), ('Characters', 'm_middle'), ('Label', 'm_overlay'),
                            ('Idle', 'm_idle'), ('Char motion', 'm_character_motion'),
                            ('Label motion', 'm_label_motion'), ('Arrows', 'm_arrows'), ('Bounds', 'm_bounds'),
-                           ('Smooth', 'm_smooth')):
+                           ('Smooth', 'm_smooth'), ('Selection pulse (preview)', 'm_selection_effect')):
             box = W.QCheckBox(name)
             box.setChecked(getattr(self, attr))
             box.toggled.connect(lambda value, a=attr: setattr(self, a, value))
@@ -275,10 +278,18 @@ class c_menu_editor(W.QWidget):
              ', '.join('%s=%d' % item for item in directions.items()),
              route['next_app_id'], route['mode_selector']))
 
+    def trigger_selection_effect(self):
+        # Event timing is authored; displacement samples come from the ELF curves.
+        if self.m_data is not None:
+            self.m_selection_age = 0.0
+            if not self.m_timer.isActive():
+                self.m_timer.start()
+
     def set_item(self, index):
         if not self.m_navigation.select(index):
             return
         self.m_item = self.m_navigation.m_selected
+        self.trigger_selection_effect()
         self.update_navigation_status()
         self.m_canvas.update()
 
@@ -295,6 +306,7 @@ class c_menu_editor(W.QWidget):
             self.m_item_combo.setCurrentIndex(self.m_item)
         finally:
             self.m_item_combo.blockSignals(blocked)
+        self.trigger_selection_effect()
         self.update_navigation_status('%s: %d → %d' %
                                       (DIRECTION_NAMES[direction], old, self.m_item))
         self.m_canvas.setFocus()
@@ -323,7 +335,7 @@ class c_menu_editor(W.QWidget):
         if self.m_playing:
             self.update_timer()
             self.m_timer.start()
-        else:
+        elif self.m_selection_age is None:
             self.m_timer.stop()
 
     def update_timer(self):
@@ -331,14 +343,22 @@ class c_menu_editor(W.QWidget):
 
     def advance(self):
         if not self.m_data:
+            self.m_timer.stop()
             return
         rate = self.m_rate_combo.currentData() or 1.0
-        n = len(self.m_data['frames'])
-        self.m_time = (self.m_time + rate) % n
-        self.m_time_slider.blockSignals(True)
-        self.m_time_slider.setValue(int(round(self.m_time)))
-        self.m_time_slider.blockSignals(False)
-        self.m_status.setText('Sample %s' % (int(self.m_time) if self.m_time == int(self.m_time) else round(self.m_time, 2)))
+        if self.m_playing:
+            n = len(self.m_data['frames'])
+            self.m_time = (self.m_time + rate) % n
+            self.m_time_slider.blockSignals(True)
+            self.m_time_slider.setValue(min(n - 1, int(round(self.m_time))))
+            self.m_time_slider.blockSignals(False)
+            self.m_status.setText('Sample %s' % (int(self.m_time) if self.m_time == int(self.m_time) else round(self.m_time, 2)))
+        if self.m_selection_age is not None:
+            self.m_selection_age += rate
+            if self.m_selection_age >= EMPHASIS_DURATION:
+                self.m_selection_age = None
+                if not self.m_playing:
+                    self.m_timer.stop()
         self.m_canvas.update()
 
     def render(self, painter, rect):
@@ -376,6 +396,7 @@ class c_menu_editor(W.QWidget):
 
         active_characters = frame['idle_characters' if self.m_idle else 'characters'][self.m_item]
         active_labels = frame['labels']
+        selection_sample = emphasis_sample(self.m_data['frames'], self.m_selection_age) if self.m_selection_effect else None
 
         if self.m_middle:
             group_checked = True
@@ -396,6 +417,20 @@ class c_menu_editor(W.QWidget):
                 geometry = p['geometry']
                 if group == 'overlay' and self.m_label_motion:
                     geometry = active_labels[self.m_item]
+                if selection_sample and group == 'middle' and self.m_character_motion:
+                    sample_group = 'idle_characters' if self.m_idle else 'characters'
+                    pulse_group = 'emphasis_idle_characters' if self.m_idle else 'emphasis_characters'
+                    baseline = selection_sample[sample_group][self.m_item]
+                    emphasized = selection_sample[pulse_group][self.m_item]
+                    part_index = parts.index(p)
+                    if emphasized is not None and part_index < len(baseline) and part_index < len(emphasized):
+                        geometry = emphasis_geometry(geometry, baseline[part_index]['geometry'],
+                                                    emphasized[part_index]['geometry'])
+                elif selection_sample and group == 'overlay' and self.m_label_motion:
+                    pulse_label = selection_sample['emphasis_labels']
+                    if pulse_label is not None:
+                        geometry = emphasis_geometry(geometry, selection_sample['labels'][self.m_item],
+                                                    pulse_label[self.m_item])
                 enqueue(p['texture_entry'], geometry, 47 if group == 'first' else 60 if group == 'middle' else 70)
 
         if self.m_first:
