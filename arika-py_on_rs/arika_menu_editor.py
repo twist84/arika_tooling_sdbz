@@ -349,6 +349,9 @@ class c_menu_editor(W.QWidget):
         """
         self.m_textures.clear()
         self.m_help_panel_uv = None
+        # Discard dimensions from a previously opened game archive.
+        # Unknown texture dimensions must never silently become 512x512.
+        self.m_native_runtime.set_particle_texture_dimensions(None)
         if not pix_data:
             self.m_texture_status.setText('Menu textures: open INFO.DAT + GAME.DAT')
             self.m_canvas.update()
@@ -389,6 +392,15 @@ class c_menu_editor(W.QWidget):
                         help_panel_uv = C.QRectF(left, top, right - left, bottom - top)
             self.m_textures = decoded
             self.m_help_panel_uv = help_panel_uv
+            # 0x2FCE20 normalizes UVs against the resource handle's
+            # actual texture width/height. Use decoded TIM2 dimensions,
+            # not the 512x448 presentation or an inferred atlas size.
+            particle_entry = self.m_menu_report['first_components'][
+                'particles']['texture_entry']
+            particle_texture = decoded.get(particle_entry)
+            if particle_texture is not None:
+                self.m_native_runtime.set_particle_texture_dimensions(
+                    (particle_texture.width(), particle_texture.height()))
             self.m_texture_status.setText('Menu textures: %d atlases from opened GAME.DAT' % len(decoded))
             self.m_canvas.update()
             return True
