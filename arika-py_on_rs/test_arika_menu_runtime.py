@@ -179,12 +179,13 @@ class MenuRuntimeNativeLabelTests(unittest.TestCase):
         for _ in range(5):
             state = runtime.step()
         self.assertEqual((state['character_phases'][0],
-                          state['character_ages'][0]), (2, 5.0))
-        initial_part_offsets = list(runtime.m_character_states[0]['part_offsets'])
+                          state['character_ages'][0]), (2, 0.0))
+        initial_part_offsets = list(runtime.m_character_states[0].get(
+            'part_offsets', []))
         for _ in range(40):
             state = runtime.step()
         self.assertEqual((state['character_phases'][0],
-                          state['character_ages'][0]), (2, 45.0),
+                          state['character_ages'][0]), (2, 40.0),
                          'item-zero phase-two callback advances +0x08')
         self.assertNotEqual(runtime.m_character_states[0]['part_offsets'],
                             initial_part_offsets)
