@@ -119,8 +119,15 @@ _lib.arika_archive_free.argtypes = [ctypes.c_size_t]
 _lib.arika_archive_entries.restype = ArikaBuffer
 _lib.arika_archive_entries.argtypes = [ctypes.c_size_t]
 
-_lib.arika_archive_capacity.restype = ArikaBuffer
-_lib.arika_archive_capacity.argtypes = [ctypes.c_size_t]
+try:
+    _lib.arika_archive_capacity.restype = ArikaBuffer
+    _lib.arika_archive_capacity.argtypes = [ctypes.c_size_t]
+except AttributeError as error:
+    raise RuntimeError(
+        "The arika_backend shared library is incompatible with this Python "
+        "source (missing arika_archive_capacity). Rebuild it by running "
+        "launch_editor.bat or python build.py in arika-py_on_rs."
+    ) from error
 
 _lib.arika_archive_used_bytes.restype = ctypes.c_uint64
 _lib.arika_archive_used_bytes.argtypes = [ctypes.c_size_t]
