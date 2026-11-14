@@ -51,6 +51,9 @@ class c_menu_runtime:
         # Isolated deterministic RNG seed, NOT a captured game-context seed.
         # None leaves the native-global particle state explicitly unresolved.
         self.m_particle_seed = particle_seed
+        # Learned from a decoded game TIM2/PIX, never guessed from the
+        # diagnostic 512x448 display coordinate system.
+        self.m_particle_texture_dimensions = None
         self.m_first_kernel = report.get('first_components', {}).get('animation')
         self.m_character_kernel = report.get('item_character_animation')
         self.m_idle_components = {
@@ -108,11 +111,27 @@ class c_menu_runtime:
                     # A single context stream and a single global-pool
                     # abstraction for this entire runtime instance.
                     self.m_particle_pool = c_dragon_particle_pool(
-                        particle_spec, c_native_rng(self.m_particle_seed), clip)
+                        particle_spec, c_native_rng(self.m_particle_seed),
+                        clip, texture_dimensions=self.m_particle_texture_dimensions)
         self.m_character_states = [initialize_child() for _ in range(7)]
         self.m_updates = 0
         self.m_last_calls = []
         self.m_completion = None
+
+    def set_particle_texture_dimensions(self, dimensions):
+        """Supply texture-entry 11 dimensions from the opened native PIX.
+
+        This is presentation metadata; changing it cannot run menu logic,
+        consume the native RNG, or advance the particle spawn clock.
+        reset() retains the latest validated texture dimensions.
+        """
+        if dimensions is not None:
+            from arika_menu_particles import normalized_sprite_uv
+            normalized_sprite_uv((0, 0, 0, 0), dimensions)
+            dimensions = tuple(dimensions)
+        self.m_particle_texture_dimensions = dimensions
+        if self.m_particle_pool is not None:
+            self.m_particle_pool.set_texture_dimensions(dimensions)
 
     def set_item_phase(self, index, phase):
         """Accept phase reached by a separately recovered native callback."""
