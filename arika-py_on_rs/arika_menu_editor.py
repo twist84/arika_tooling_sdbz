@@ -87,6 +87,7 @@ class c_menu_editor(W.QWidget):
         self.m_data = None
         self.m_textures = {}
         self.m_help_panel_uv = None
+        self.m_presentation = 'square'
         self.m_time = 70.0
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
@@ -137,6 +138,21 @@ class c_menu_editor(W.QWidget):
         self.m_rate_combo.currentIndexChanged.connect(self.update_timer)
         controls.addWidget(W.QLabel('Rate'))
         controls.addWidget(self.m_rate_combo)
+
+        # Presentation is independent of ELF-derived 512x448 sprite geometry.
+        # Until DISPLAY1/2 are observed in-game these are comparison modes,
+        # not claims about the console's active hardware output.
+        self.m_presentation_combo = W.QComboBox()
+        for title, mode in (
+            ('Square capture', 'square'),
+            ('Raw 512×448', 'raw'),
+            ('4:3 television', 'tv_4_3'),
+        ):
+            self.m_presentation_combo.addItem(title, mode)
+        self.m_presentation_combo.currentIndexChanged.connect(
+            self.set_presentation)
+        controls.addWidget(W.QLabel('Display'))
+        controls.addWidget(self.m_presentation_combo)
 
         self.m_time_slider = W.QSlider(C.Qt.Orientation.Horizontal)
         self.m_time_slider.setMinimum(0)
@@ -405,6 +421,16 @@ class c_menu_editor(W.QWidget):
                     self.m_timer.stop()
         self.m_canvas.update()
 
+    def set_presentation(self, index):
+        mode = self.m_presentation_combo.itemData(index)
+        if mode in ('square', 'raw', 'tv_4_3'):
+            self.m_presentation = mode
+            self.m_canvas.update()
+
+    def presentation_height(self):
+        # Virtual display units; native logical height is always 448.
+        return {'square': 512, 'raw': 448, 'tv_4_3': 384}[self.m_presentation]
+
     def render(self, painter, rect):
         painter.fillRect(rect, G.QColor('#10151c'))
         if not self.m_data or not self.m_textures:
@@ -489,17 +515,17 @@ class c_menu_editor(W.QWidget):
 
         draw_queue.sort(key=lambda q: q['depth'])
 
-        # The native menu geometry spans 512x448. Present it in a square
-        # 512x512 viewport, as seen in the original screenshots. Never shift
-        # the ELF-derived sprite coordinates to compensate for display scaling.
-        scale = min(rect.width() / 512.0, rect.height() / 512.0)
+        # Recovered menu geometry is 512x448 regardless of presentation.
+        # The 4:3 mode is an explicit TV *preview*, not a verified GS mode.
+        display_height = self.presentation_height()
+        scale = min(rect.width() / 512.0, rect.height() / display_height)
         offset_x = rect.x() + (rect.width() - 512 * scale) / 2
-        offset_y = rect.y() + (rect.height() - 512 * scale) / 2
+        offset_y = rect.y() + (rect.height() - display_height * scale) / 2
 
         painter.save()
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth)
         painter.translate(offset_x, offset_y)
-        painter.scale(scale, scale * (512.0 / 448.0))
+        painter.scale(scale, scale * (display_height / 448.0))
         painter.setClipRect(C.QRectF(0, 0, 512, 448))
 
         for q in draw_queue:
