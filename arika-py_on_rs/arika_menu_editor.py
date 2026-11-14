@@ -193,16 +193,70 @@ class c_menu_editor(W.QWidget):
             self.m_textures[t['index']] = pixmap
         self.m_time = min(self.m_time, len(self.m_data['frames']) - 1)
         self.m_time_slider.setValue(self.m_time)
-        self.update()
+        self.m_canvas.update()
+
+    def update_navigation_status(self, action=None):
+        selected = self.m_navigation.m_selected
+        previous = self.m_navigation.m_previous
+        route = self.m_navigation.route()
+        title = '%d %s' % (selected, MENU_ITEM_NAMES[selected])
+        source = 'from %d' % previous if previous >= 0 else 'initial'
+        if action:
+            text = '%s | %s' % (action, title)
+        else:
+            text = '%s (%s) | app %d, mode %d' % (
+                title, source, route['next_app_id'], route['mode_selector'])
+        self.m_navigation_status.setText(text)
+        lines = self.m_navigation.help_lines()
+        directions = self.m_navigation.available_directions()
+        self.m_navigation_status.setToolTip(
+            '%s\nELF help ID %d:\n%s\n\nNeighbours: %s\n'
+            'Confirm: app %d, mode %d; cancel: app 3' %
+            (title, self.m_navigation.text_lookup_id(), '\n'.join(lines),
+             ', '.join('%s=%d' % item for item in directions.items()),
+             route['next_app_id'], route['mode_selector']))
 
     def set_item(self, index):
-        self.m_item = index
-        self.update()
+        if not self.m_navigation.select(index):
+            return
+        self.m_item = self.m_navigation.m_selected
+        self.update_navigation_status()
+        self.m_canvas.update()
+
+    def navigate(self, direction):
+        old = self.m_navigation.m_selected
+        if not self.m_navigation.move(direction):
+            action = '%s: no neighbour' % DIRECTION_NAMES[direction] if 0 <= direction < 4 else 'Invalid direction'
+            self.update_navigation_status(action)
+            self.m_canvas.setFocus()
+            return False
+        self.m_item = self.m_navigation.m_selected
+        blocked = self.m_item_combo.blockSignals(True)
+        try:
+            self.m_item_combo.setCurrentIndex(self.m_item)
+        finally:
+            self.m_item_combo.blockSignals(blocked)
+        self.update_navigation_status('%s: %d → %d' %
+                                      (DIRECTION_NAMES[direction], old, self.m_item))
+        self.m_canvas.setFocus()
+        self.m_canvas.update()
+        return True
+
+    def inspect_route(self, cancelled=False):
+        route = self.m_navigation.route(cancelled)
+        if cancelled:
+            action = 'Cancel → app %d (selector unchanged)' % route['next_app_id']
+        else:
+            action = 'Confirm → app %d, mode %d' % (
+                route['next_app_id'], route['mode_selector'])
+        self.update_navigation_status(action)
+        self.m_canvas.setFocus()
+        return route
 
     def set_time(self, value):
         self.m_time = float(value)
         self.m_status.setText('Sample %s' % (int(self.m_time) if self.m_time == int(self.m_time) else round(self.m_time, 2)))
-        self.update()
+        self.m_canvas.update()
 
     def toggle_play(self):
         self.m_playing = not self.m_playing
@@ -226,7 +280,7 @@ class c_menu_editor(W.QWidget):
         self.m_time_slider.setValue(int(round(self.m_time)))
         self.m_time_slider.blockSignals(False)
         self.m_status.setText('Sample %s' % (int(self.m_time) if self.m_time == int(self.m_time) else round(self.m_time, 2)))
-        self.update()
+        self.m_canvas.update()
 
     def render(self, painter, rect):
         painter.fillRect(rect, G.QColor('#10151c'))
