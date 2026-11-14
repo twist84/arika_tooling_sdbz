@@ -11,6 +11,7 @@ from arika_menu_navigation import c_menu_navigation, MENU_ITEM_NAMES, DIRECTION_
 from arika_menu_selection_effect import EMPHASIS_DURATION, emphasis_geometry, emphasis_sample
 from arika_menu_arrow_preview import arrow_parts, bobbed_arrow_geometry
 from arika_menu_navigation import read_menu_report
+from arika_menu_runtime import c_menu_runtime
 import arika_ffon
 from arika_menu_frame_match import normalize_reference, rank_samples
 from PIL import Image
@@ -71,6 +72,10 @@ class c_menu_canvas(W.QWidget):
             C.Qt.Key.Key_Up: 2, C.Qt.Key.Key_Down: 3,
         }
         direction = directions.get(event.key())
+        if self.m_editor.m_native_mode and event.isAutoRepeat():
+            # Native menu reads pad press edges, not Qt key-repeat events.
+            event.accept()
+            return
         if direction is not None:
             self.m_editor.navigate(direction)
         elif event.key() in (C.Qt.Key.Key_Return, C.Qt.Key.Key_Enter):
@@ -95,6 +100,9 @@ class c_menu_editor(W.QWidget):
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
         self.m_menu_report = read_menu_report()
+        self.m_native_mode = False
+        self.m_native_runtime = c_menu_runtime(self.m_menu_report)
+        self.m_native_input_queue = []
         self.m_help_font = None
         self.m_help_font_data = None
         self.m_help_lines_pixmaps = {}
@@ -197,6 +205,34 @@ class c_menu_editor(W.QWidget):
         self.m_status = W.QLabel('Sample 0')
         controls.addWidget(self.m_status)
         layout.addLayout(controls)
+
+        native = W.QHBoxLayout()
+        native.addWidget(W.QLabel('Lifecycle'))
+        self.m_lifecycle_combo = W.QComboBox()
+        self.m_lifecycle_combo.addItem('Diagnostic timeline', False)
+        self.m_lifecycle_combo.addItem('Native logical state (experimental)', True)
+        self.m_lifecycle_combo.setToolTip(
+            'Native state/input ordering from the EU-beta ELF. The displayed '
+            'character pose remains diagnostic until component lifecycles '
+            'are independently validated.')
+        self.m_lifecycle_combo.currentIndexChanged.connect(
+            self.set_lifecycle_mode)
+        native.addWidget(self.m_lifecycle_combo)
+        self.m_native_step_button = W.QPushButton('Step update')
+        self.m_native_step_button.clicked.connect(self.step_native)
+        self.m_native_step_button.setEnabled(False)
+        native.addWidget(self.m_native_step_button)
+        self.m_native_reset_button = W.QPushButton('Reset native')
+        self.m_native_reset_button.clicked.connect(self.reset_native)
+        self.m_native_reset_button.setEnabled(False)
+        native.addWidget(self.m_native_reset_button)
+        self.m_native_status = W.QLabel('Diagnostic 140-sample timeline')
+        self.m_native_status.setToolTip(
+            'Actual native item ages and parent/exit states. The source '
+            'layout at sample 70 is a static diagnostic pose, not a '
+            'claimed recovered native timestamp.')
+        native.addWidget(self.m_native_status, 1)
+        layout.addLayout(native)
 
         navigation = W.QHBoxLayout()
         navigation.addWidget(W.QLabel('Native graph'))
@@ -381,6 +417,9 @@ class c_menu_editor(W.QWidget):
                 self.m_timer.start()
 
     def set_item(self, index):
+        if self.m_native_mode:
+            # The dropdown is an immediate preview tool, not a native input.
+            return
         if not self.m_navigation.select(index):
             return
         self.m_item = self.m_navigation.m_selected
@@ -389,6 +428,14 @@ class c_menu_editor(W.QWidget):
         self.m_canvas.update()
 
     def navigate(self, direction):
+        if self.m_native_mode:
+            if direction not in range(4):
+                return False
+            self.m_native_input_queue.append(
+                {'input_mask': DIRECTION_MASKS[direction]})
+            self.update_native_status('Queued %s (edge)' % DIRECTION_NAMES[direction])
+            self.m_canvas.setFocus()
+            return True
         old = self.m_navigation.m_selected
         if not self.m_navigation.move(direction):
             action = '%s: no neighbour' % DIRECTION_NAMES[direction] if 0 <= direction < 4 else 'Invalid direction'
@@ -409,6 +456,17 @@ class c_menu_editor(W.QWidget):
         return True
 
     def inspect_route(self, cancelled=False):
+        if self.m_native_mode:
+            # 0x379C80 calls cancel when no controller passes its native
+            # +0x80 gate. This is a diagnostic injection, not an asserted
+            # physical 'Cancel' button mapping.
+            self.m_native_input_queue.append(
+                {'controller_qualified': False} if cancelled else
+                {'confirm_mask': 0x40})
+            self.update_native_status(
+                'Queued %s' % ('cancel gate' if cancelled else 'confirm edge'))
+            self.m_canvas.setFocus()
+            return None
         route = self.m_navigation.route(cancelled)
         if cancelled:
             action = 'Cancel → app %d (selector unchanged)' % route['next_app_id']
@@ -420,9 +478,89 @@ class c_menu_editor(W.QWidget):
         return route
 
     def set_time(self, value):
+        if self.m_native_mode:
+            return
         self.m_time = float(value)
         self.m_status.setText('Sample %s' % (int(self.m_time) if self.m_time == int(self.m_time) else round(self.m_time, 2)))
         self.m_canvas.update()
+
+    def set_lifecycle_mode(self, index):
+        native = bool(self.m_lifecycle_combo.itemData(index))
+        if self.m_playing:
+            self.m_playing = False
+            self.m_play_button.setText('Play')
+        self.m_timer.stop()
+        self.m_selection_age = None
+        self.m_native_mode = native
+        self.m_time_slider.setEnabled(not native)
+        self.m_item_combo.setEnabled(not native)
+        self.m_rate_combo.setEnabled(not native)
+        self.m_native_step_button.setEnabled(native)
+        self.m_native_reset_button.setEnabled(native)
+        if native:
+            self.reset_native()
+            # The neutral pose is diagnostic geometry only, not a native
+            # clock or a frame from which native timing is inferred.
+            self.m_time = 70.0
+        else:
+            self.m_native_input_queue.clear()
+            self.m_native_status.setText('Diagnostic 140-sample timeline')
+            self.update_navigation_status()
+        self.m_canvas.update()
+
+    def reset_native(self):
+        self.m_native_runtime.reset()
+        self.m_native_input_queue.clear()
+        self.update_native_status('Reset')
+        self.m_canvas.update()
+
+    def update_native_status(self, action=None):
+        if not self.m_native_mode:
+            return
+        state = self.m_native_runtime.snapshot()
+        gate = 'accepting' if state['outer_phase'] == 2 else 'blocked'
+        selected = state['selected']
+        age = state['item_ages'][selected] if selected >= 0 else 0.0
+        label = (
+            'tick=%d parent=%d exit=%d shared=%d.%d '
+            'item=%d previous=%d pending=%d input=%s '
+            'arrow_age=%.0f queue=%d'
+            % (state['update'], state['outer_phase'], state['exit_phase'],
+               state['shared_phase'], state['shared_subphase'],
+               selected, state['previous'], state['pending'], gate,
+               age, len(self.m_native_input_queue)))
+        self.m_native_status.setText(label)
+        self.m_native_status.setToolTip(
+            label + '\\nPer-item phases: %s\\nPer-item arrow ages: %s'
+            % (state['item_phases'], state['item_ages']))
+        if action:
+            self.m_navigation_status.setText('Native: ' + action)
+
+    def step_native(self):
+        if not self.m_native_mode:
+            return None
+        inputs = (self.m_native_input_queue.pop(0)
+                  if self.m_native_input_queue else {})
+        state = self.m_native_runtime.step(**inputs)
+        if state['selected'] >= 0:
+            # Synchronize help text/atlas selection from native state; never
+            # call c_menu_navigation.select, which would mutate history.
+            self.m_navigation.m_selected = state['selected']
+            self.m_navigation.m_previous = state['previous']
+            self.m_item = state['selected']
+            blocked = self.m_item_combo.blockSignals(True)
+            try:
+                self.m_item_combo.setCurrentIndex(self.m_item)
+            finally:
+                self.m_item_combo.blockSignals(blocked)
+            if state['outer_phase'] == 4:
+                self.update_navigation_status('Native route: %s' %
+                                              state['completion'])
+            else:
+                self.update_navigation_status()
+        self.update_native_status()
+        self.m_canvas.update()
+        return state
 
     def toggle_play(self):
         self.m_playing = not self.m_playing
@@ -439,6 +577,10 @@ class c_menu_editor(W.QWidget):
     def advance(self):
         if not self.m_data:
             self.m_timer.stop()
+            return
+        if self.m_native_mode:
+            if self.m_playing:
+                self.step_native()
             return
         rate = self.m_rate_combo.currentData() or 1.0
         if self.m_playing:
@@ -636,7 +778,10 @@ class c_menu_editor(W.QWidget):
             for part in arrow_parts(self.m_menu_report, self.m_item, self.m_navigation.m_previous):
                 geometry = part['geometry']
                 if self.m_arrow_bob:
-                    geometry = bobbed_arrow_geometry(geometry, self.m_time)
+                    arrow_age = self.m_time
+                    if self.m_native_mode:
+                        arrow_age = self.m_native_runtime.m_item_ages[self.m_item]
+                    geometry = bobbed_arrow_geometry(geometry, arrow_age)
                 enqueue(0, geometry, 95)
 
         if self.m_first:
