@@ -505,5 +505,50 @@ class MenuDragonParticleTests(unittest.TestCase):
                                   for i in range(4)])
 
 
+    def test_runtime_pending_interruption_reentry_and_reset_ownership(self):
+        from arika_menu_runtime import c_menu_runtime
+
+        runtime = c_menu_runtime(self.report, particle_seed=1)
+        pool = runtime.m_particle_pool
+        self.assertIsNotNone(pool)
+        original = runtime.snapshot()['particles']
+        first = runtime.m_first_states[3]
+        runtime.m_item_phases[3] = 2
+        first.update(phase=2, age=0.0, offset=[0.0, 0.0],
+                     particle_timer=0.0, depth=15.0)
+        runtime._update_item(3, 'particle_ownership_test')
+        active = runtime.snapshot()['particles']
+        self.assertNotEqual(active, original)
+        self.assertEqual(active['total_random_draws'], 19)
+        self.assertIs(runtime.m_particle_pool, pool,
+                      'phase-2 update must not allocate a second pool')
+
+        # Pending exit keeps the original owner; inactive first-phase
+        # stops callbacks but does not destroy or fork the global pool.
+        runtime.m_pending = 3
+        runtime.m_selected = 0
+        runtime.m_item_phases[3] = 4
+        first['phase'] = 4
+        self.assertTrue(runtime.particle_geometry(3))
+        self.assertEqual(runtime.particle_geometry(3),
+                         runtime.particle_geometry(3))
+        for _ in range(3):
+            runtime._update_item(3, 'particle_ownership_test')
+        self.assertEqual(runtime.snapshot()['particles'], active)
+        first['phase'] = 0
+        self.assertEqual(runtime.particle_geometry(3), [])
+        self.assertIs(runtime.m_particle_pool, pool)
+        self.assertEqual(runtime.snapshot()['particles'], active)
+
+        # A new runtime instance never shares mutable slots or RNG state.
+        other = c_menu_runtime(self.report, particle_seed=1)
+        self.assertEqual(other.snapshot()['particles'], original)
+        self.assertIsNot(other.m_particle_pool, pool)
+        runtime.reset()
+        self.assertEqual(runtime.snapshot()['particles'], original)
+        self.assertIsNot(runtime.m_particle_pool, pool)
+        self.assertEqual(other.snapshot()['particles'], original)
+
+
 if __name__ == '__main__':
     unittest.main()
