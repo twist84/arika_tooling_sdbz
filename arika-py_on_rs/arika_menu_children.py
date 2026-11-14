@@ -128,7 +128,7 @@ def step_character(state, component, kernel, emphasis_kernel=None,
             state['age'], component['direction'], emphasis_kernel)
 
 
-def draw_character(state, item, report):
+def draw_character(state, item, report, include_idle=True):
     """Native character pose (common component motion only, no authored clock).
 
     Per-part idle oscillation is deliberately not injected here until the
@@ -143,7 +143,7 @@ def draw_character(state, item, report):
         offset = list(state['offset'])
         if item == 2 and index >= 4:
             offset = [-value for value in offset]
-        part_offsets = state.get('part_offsets', [])
+        part_offsets = state.get('part_offsets', []) if include_idle else []
         geometry = pose_part(
             composite, part, anchors, component_offset=offset,
             part_offset=(part_offsets[index]
