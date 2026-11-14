@@ -160,3 +160,36 @@ agreement. The static first/strip and shared diagnostic pose remains
 visible in native Qt mode; only the common character/label motion is
 currently driven by per-child states. Keep PR #14 in draft until these
 dependencies and end-to-end oracle coverage are addressed.
+
+### Phase-2 character callback correction
+
+The common dispatcher `0x0037F100` does **not** implement a universal
+phase-2 idle callback. It calls each character's vtable `+0x24`.
+All seven **selected-item** phase-2 callbacks increment the same
+character-local `+0x08` age using an IEEE754 1.0 before testing their
+own time table, and subtract one cycle when age reaches its period:
+
+| Item | Phase-2 callback | Period (logical updates) | Recovered preview |
+| --- | --- | --- | --- |
+| 0 | `0x0037FFE0` | 120 | Seven per-part weights |
+| 1 | `0x003809A0` | 120 | Four per-part weights |
+| 2 | `0x00381210` | 120 | Nine per-part weights |
+| 3 | `0x00380450` | 480 | Eight-part circular + sway subset |
+| 4 | `0x00380D50` | 80 | Five per-part weights |
+| 5 | `0x0037F7F0` | 160 primary | CUSTOMIZE primary component only; secondary `+0x1E8` unknown |
+| 6 | `0x0037FC00` | 240 | Two-part circular subset |
+
+These periods come from `character_idle.components[*].curve.times[-1]`
+decoded from the ELF, not editorial preview frame numbers. Examples:
+`0x00380004` advances item 0's character `+0x08` age, and
+`0x003800E0..0x003800E8` subtract its 120-step period on wrap.
+Likewise `0x003809C4` increments item 1 and
+`0x00380AA0..0x00380AA8` wraps its period.
+
+The runtime now advances these exact per-item periodic clocks and
+reuses the previously extracted `arika_menu_idle.py` per-part offsets
+for items 0, 1, 2 and 4. Items 3 and 6 use host trigonometry and
+therefore are **not** claimed bitwise-equal to EE libm; item 5 exposes
+only primary motion until secondary-age initialization is traced.
+Unlike the diagnostic timeline, native mode does not start idle at an
+authored sample 23 or transition to exit at authored sample 120.
