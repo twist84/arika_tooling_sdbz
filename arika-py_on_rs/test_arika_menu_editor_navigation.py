@@ -436,6 +436,20 @@ class MenuEditorNavigationTests(unittest.TestCase):
                             'native character movement must reach Qt pixels')
         self.assertEqual(editor.m_time, 70.0,
                          'native child updates must not scrub diagnostic time')
+        # Check phase-two per-part offsets reach actual Qt pixels as well.
+        for _ in range(22):
+            editor.step_native()
+        idle_before = draw()
+        self.assertEqual(
+            editor.m_native_runtime.snapshot()['character_phases'][0], 2)
+        for _ in range(26):
+            editor.step_native()
+        idle_after = draw()
+        self.assertNotEqual(idle_before, idle_after,
+                            'phase-two per-part idle must animate the canvas')
+        self.assertTrue(
+            editor.m_native_runtime.snapshot()['character_part_offsets'][0])
+        self.assertEqual(editor.m_time, 70.0)
         editor.m_timer.stop()
 
     def test_opt_in_native_lifecycle_queues_edges_without_authoring_timing(self):
