@@ -122,11 +122,63 @@ Native stubbed-call tests validate their exact stated scope only. In
 particular they do not establish complete GS blending or live-context RNG
 parity.
 
+## Follow-up: lifetime, clip-init provenance and draw instruction audit
+
+The exact EU-beta ELF vtable at `0x004F1D80` has item-3 first-component
+constructor `0x0037A7D0` at +8 and destructor `0x0037A820` at +12.
+No direct `JAL 0x37A820` exists in the file-backed image: the owning
+runtime invokes its destructor via the vtable. The destructor calls
+`0x37AC00`, then the six-slot `0x37AF60` reset loop, then `0x37AD10`
+to invoke the pool vtable +8 destructor with a delete flag of one.
+Native `0x37AD10` **does not zero** the global `0x4FDC64` pointer.
+A pointer left in that location is not proof that the pool remains alive.
+
+The Python `close()` operation now represents the native reset/destructor:
+it resets exactly the six slots without RNG input and invalidates the host
+object. Subsequent `step()`, `geometry()`, or a second `close()` raise
+rather than dereference a destroyed pool. Editor `c_menu_runtime.reset()`
+retires the previous object before building a fresh one. Selection changes
+do not trigger global-pool destruction. This deliberately prevents the
+native dangling-pointer hazard in a safe host implementation while preserving
+the observed lifetime/order.
+
+The only direct GP-relative write to `gp-0x1710 = 0x4FDC60` in the
+file-backed EU-beta image occurs at `0x004E23CC`, a **return delay-slot**
+of initialization function `0x004E23B0`. It loads `249.0f` from
+`gp-0x4C78 = 0x4FA6F8`, subtracts literal `10.0f`, and stores
+`239.0f`. The direct reader is `0x0037B23C`. This exhaustive direct
+GP-access scan does not exclude pointer-based aliases or external writes;
+therefore it establishes the initializer, not a proof that the field is
+globally immutable at runtime.
+
+The clipping path `0x0037B26C..0x0037B324` uses `CVT.W.S` at
+`0x0037B288` and applies a 16-bit mask at `0x0037B294`. The EE's
+conversion truncates fractional bits, whereas Python `round()` uses
+ties-to-even; the host model now uses `int(float32_delta)` for the
+verified nonnegative sub-`2**31` game-coordinate range. Out-of-range
+inputs are flagged instead of assuming native behavior in the large-value
+split path `0x0037B298`. The test-only scalar interpreter implements this
+conversion with `math.trunc`. More fractional-boundary tests cover cases
+where rounding and truncation disagree. EE arithmetic last-bit differences,
+signed-short overflow and pathological deltas still need hardware checks.
+
+The native draw callback `0x0037B370` is separately interpreted: its
+position/depth stores at sprite +`0x10`/+ `0x14`/+ `0x18` occur
+before sprite vtable +`0x10` is called, and an inactive slot skips all
+writes. The Qt geometry builder computes identical presentation values
+without modifying the logical particle slots or advancing RNG. Separate
+instruction tests cover the draw-write boundary; GPU backend draw is a stub.
+
+The tests in `test_arika_menu_particle_teardown.py` and
+`test_arika_menu_particle_draw.py` use extracted native words and controlled
+resource/destructor callbacks. The new tests are part of Windows/Linux CI.
+Check the current head's Action run before marking this checkpoint green.
+
 ## Remaining before Phase A can be signed off
 
-- Verify full pool destruction and pointer invalidation context (the destructor wrapper itself leaves `0x004FDC64` intact).
-- Recover the sprite UV setter side effects and float-to-s16 conversion at clipping boundaries, then run instruction-level boundary oracle.
-- Confirm global clip-boundary runtime writes beyond the startup 239.0 value.
+- [x] Verify pool reset/destructor ordering and document dangling global-pointer behavior; the host representation explicitly invalidates the object and the indirect owner destruction timing beyond its vtable remains runtime-dependent.
+- [ ] Recover all sprite UV setter side effects, overflow CVT.W.S branches and EE hardware float-to-short behavior; host-chop fractional instruction tests are added but are not a full hardware oracle.
+- [x] Establish the unique direct GP-relative initializer at `0x4E23CC` (`249 - 10 = 239`), and mark pointer-based runtime writers unresolved.
 - Validate `ADDA.S/MADD.S` float32/ACC precision against interpreted instructions.
 - Confirm real runtime seed/context sharing with other systems; explicit seeded replay is not the same as a captured game.
 - Confirm draw ordering relative to the item's other first-layer sprite draws and resource depth/blending.
