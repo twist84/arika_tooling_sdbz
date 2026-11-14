@@ -120,14 +120,29 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(editor.presentation_height(), 512)
         logical_bounds = list(editor.m_data['background']['bounds'])
         for mode, expected_height in (
-            ('raw', 448), ('tv_4_3', 384), ('square', 512),
+            ('fit', 448), ('raw', 448),
+            ('tv_4_3', 384), ('wide_16_9', 288),
+            ('native_10_7', 358.4), ('square', 512),
         ):
             idx = editor.m_presentation_combo.findData(mode)
             self.assertGreaterEqual(idx, 0)
             editor.m_presentation_combo.setCurrentIndex(idx)
-            self.assertEqual(editor.presentation_height(), expected_height)
+            self.assertAlmostEqual(editor.presentation_height(), expected_height)
             self.assertEqual(editor.m_data['background']['bounds'],
                              logical_bounds)
+        auto = editor.m_presentation_combo.findData('auto')
+        editor.m_presentation_combo.setCurrentIndex(auto)
+        self.assertTrue(editor.m_scan_combo.isVisibleTo(editor))
+        self.assertEqual(editor.presentation_height(), 384)
+        progressive = editor.m_scan_combo.findData('progressive')
+        editor.m_scan_combo.setCurrentIndex(progressive)
+        self.assertAlmostEqual(editor.presentation_height(), 512.0 * 2.0 / 3.0)
+        editor.m_scan_combo.setCurrentIndex(
+            editor.m_scan_combo.findData('interlaced'))
+        self.assertEqual(editor.presentation_height(), 384)
+        editor.m_presentation_combo.setCurrentIndex(
+            editor.m_presentation_combo.findData('square'))
+        self.assertFalse(editor.m_scan_combo.isVisibleTo(editor))
         self.assertEqual(logical_bounds[3], 448)
 
     def test_logical_448_background_fills_square_presentation(self):
