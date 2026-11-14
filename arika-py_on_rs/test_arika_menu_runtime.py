@@ -148,9 +148,67 @@ class MenuRuntimeNativeLabelTests(unittest.TestCase):
             state = runtime.step()
         self.assertEqual(state['label_phases'][0], 0)
         self.assertIsNone(runtime.label_geometry(0))
-        self.assertEqual(state['pending'], 0,
-                         'unverified character/first-part completion must not be guessed')
+        self.assertEqual(state['pending'], -1,
+                         'all three ELF-backed exit callbacks have completed')
+        self.assertEqual(state['item_phases'][0], 0)
+        self.assertEqual(state['first_phases'][0], 0)
+        self.assertEqual(state['character_phases'][0], 0)
         self.assertEqual(state['label_ages'][1], 10.0)
+
+    def test_child_entry_ages_and_parent_readiness(self):
+        from arika_menu_navigation import read_menu_report
+        runtime = c_menu_runtime(read_menu_report())
+        ready(runtime)
+        start = runtime.snapshot()
+        self.assertEqual(start['first_phases'][0], 1)
+        self.assertEqual(start['character_phases'][0], 1)
+        self.assertEqual(start['item_phases'][0], 1)
+        self.assertEqual(start['character_ages'][0], 0.0)
+        self.assertTrue(runtime.character_geometry(0))
+        self.assertEqual(runtime.character_geometry(1), [])
+        for _ in range(16):
+            state = runtime.step()
+        self.assertEqual((state['first_phases'][0],
+                          state['item_phases'][0]), (1, 1))
+        self.assertEqual(state['first_ages'][0], 16.0)
+        state = runtime.step()
+        self.assertEqual((state['first_phases'][0],
+                          state['item_phases'][0]), (2, 2))
+        self.assertEqual(state['first_ages'][0], 0.0)
+        self.assertEqual(state['character_phases'][0], 1)
+        for _ in range(5):
+            state = runtime.step()
+        self.assertEqual((state['character_phases'][0],
+                          state['character_ages'][0]), (2, 0.0))
+
+    def test_old_selection_retires_exactly_after_child_exit(self):
+        from arika_menu_navigation import read_menu_report
+        runtime = c_menu_runtime(read_menu_report())
+        ready(runtime)
+        for _ in range(28):
+            runtime.step()
+        state = runtime.step(input_mask=2)
+        self.assertEqual((state['selected'], state['pending']), (1, 0))
+        self.assertEqual(state['first_phases'][0], 4)
+        self.assertEqual(state['character_phases'][0], 4)
+        self.assertEqual(state['label_phases'][0], 4)
+        self.assertEqual(state['character_ages'][0], 0.0)
+        initial_pose = runtime.character_geometry(0)
+        for _ in range(9):
+            state = runtime.step()
+        self.assertEqual((state['pending'], state['item_phases'][0]), (0, 4))
+        self.assertNotEqual(runtime.character_geometry(0), initial_pose)
+        self.assertEqual((state['first_phases'][0],
+                          state['character_phases'][0],
+                          state['label_phases'][0]), (4, 4, 4))
+        state = runtime.step()
+        self.assertEqual((state['pending'], state['item_phases'][0]), (-1, 0))
+        self.assertEqual((state['first_phases'][0],
+                          state['character_phases'][0],
+                          state['label_phases'][0]), (0, 0, 0))
+        self.assertEqual(runtime.character_geometry(0), [])
+        self.assertNotEqual(state['character_ages'][0],
+                            state['character_ages'][1])
 
     def test_confirm_exit_and_cancel_emphasis_are_distinct(self):
         from arika_menu_navigation import read_menu_report
@@ -159,11 +217,15 @@ class MenuRuntimeNativeLabelTests(unittest.TestCase):
         state = runtime.step(confirm_mask=0x40)
         self.assertEqual((state['outer_phase'], state['exit_phase']), (3, 30))
         self.assertEqual(state['label_phases'][0], 4)
+        self.assertEqual(state['first_phases'][0], 4)
+        self.assertEqual(state['character_phases'][0], 4)
         runtime = c_menu_runtime(read_menu_report())
         ready(runtime)
         state = runtime.step(controller_qualified=False)
         self.assertEqual((state['outer_phase'], state['exit_phase']), (3, 0))
         self.assertEqual(state['label_phases'][0], 3)
+        self.assertEqual(state['first_phases'][0], 3)
+        self.assertEqual(state['character_phases'][0], 3)
         state = runtime.step(fade_busy=False)
         self.assertEqual((state['label_phases'][0], state['label_ages'][0]), (3, 1.0))
 
