@@ -141,8 +141,54 @@ These are separate milestones, not blockers for shipping a tested lifecycle emul
 - [ ] Research notes distinguish recovered behavior, runtime-dependent values, and remaining approximations.
 - [ ] Changes committed to PR #14 in reviewable increments.
 
-## First task for next chat
+## Current checkpoint — DRAGON SUMMONING particle milestone (14 November 2026)
 
-**Start with Phase 0 and Phase 1:** inspect current PR #14 and its CI, disassemble EU-beta `0x00379B50` and its direct call graph, identify state fields `+0xC8..+0xD5`, and commit an address-annotated state/transition table before implementing the runtime engine. Keep all work on `feature/main-menu-native-navigation`. Continue to Phase 2 if the transition table is verified.
+The historic "first task" below this section has been superseded: outer lifecycle,
+selection, first/character/label clocks and scrolling strips were implemented and
+validated previously. The next ongoing scope is **the item-3 six-slot particle pool**.
+See [NATIVE_DRAGON_PARTICLES.md](NATIVE_DRAGON_PARTICLES.md) for ELF addresses,
+ownership, precise branch order and validation limitations.
 
-Do not use a guessed timeout or transition delay. If a field's role isn't supported by the ELF, explicitly label it unknown.
+### Implementation/ownership checklist
+
+- [x] Verified source ELF SHA-256 and disassembled 0x37A860, 0x37AC10,
+  0x37ADB0, 0x37AE80, 0x37AFC0, 0x37B0A0, 0x37B210 and 0x37B370.
+- [x] Identified 0x4FDC64 global allocation pointer, 6 * 176-byte slots,
+  item-3 instance +0x320 timer and global context +0xA8 RNG.
+- [x] Modeled one authoritative six-slot pool per isolated menu runtime,
+  plus explicitly shared stream and stable indexed slots.
+- [x] Preserved initial five seed positions and 15 RNG outputs, followed by
+  timer-expiry spawn/skip and timer RNG calls.
+- [x] Fixed the 0x37A8F4 branch ordering: expiry spawns **before** a single
+  common movement pass, not afterward.
+- [x] Wired the phase-2 callback through `step_first`; paints only read geometry.
+- [x] Added Qt particle rendering for selected and pending item 3 and a
+  synthetic-texture pixel regression; diagnostic timeline remains independent.
+- [x] Added deterministic independent-instance, slot-reuse, reset/replay and
+  non-mutating snapshot/repaint tests.
+- [x] Added controlled-stub instruction oracle for first-component timer
+  (0x37A860), movement/clip (0x37B210), and initial slot sequencing
+  (0x37ADB0). These compare supported instructions, **not** the full GS,
+  sprite setup/texture setter or real RNG context.
+- [x] Registered the new test module in the Windows/Linux CI workflow.
+- [ ] Verify the **latest commit** passes both Windows/Linux CI; record the
+  run IDs in the particle research file.
+- [ ] Complete all native instruction oracle cases for sprite initialization
+  (0x37B0A0), clipping conversion corner cases, slot exhaustion, draw-time
+  sprite writes, reset and pool destruction.
+- [ ] Establish live-context RNG seed/external consumers, and verify all
+  runtime boundary writes to global clip field 0x4FDC60. An isolated
+  `particle_seed=1` editor run is a diagnostic replay, not captured game state.
+- [ ] Prove 512×448 native PIX scale, depth, transparency, blending and
+  ordering against a game capture before claiming pixel-perfect rendering.
+- [ ] Integrate shared tile, banner and companion effects with verified
+  scheduler ownership and independent clocks.
+- [ ] Keep PR #14 draft until acceptance criteria are satisfied; do not
+  conflate passing stubbed instruction tests with complete ELF parity.
+
+### Follow-up
+
+Continue from the exact existing PR head, consult the particle research file
+and CI logs, resolve any oracle discrepancies and keep making reviewable
+commits. Do **not** restart at the historic outer-state-machine research
+milestone or reintroduce sample-23/sample-120 timing assumptions.
