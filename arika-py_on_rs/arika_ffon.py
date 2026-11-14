@@ -328,7 +328,7 @@ def render_text(font: c_ffon_font, data: bytes, text: str,
         for seg in row:
             if not first_seg:
                 # A space is an advance, not glyph record zero.
-                x += space_width() + 2 * spacing
+                x += space_width() + spacing
             first_seg = False
             first_char = True
             for ch in seg:
