@@ -86,6 +86,7 @@ class c_menu_editor(W.QWidget):
         super().__init__(parent)
         self.m_data = None
         self.m_textures = {}
+        self.m_help_panel_uv = None
         self.m_time = 70.0
         self.m_item = 0
         self.m_navigation = c_menu_navigation()
@@ -249,6 +250,7 @@ class c_menu_editor(W.QWidget):
         a previously opened archive when the new one has no menu PIX.
         """
         self.m_textures.clear()
+        self.m_help_panel_uv = None
         if not pix_data:
             self.m_texture_status.setText('Menu textures: open INFO.DAT + GAME.DAT')
             self.m_canvas.update()
@@ -263,6 +265,7 @@ class c_menu_editor(W.QWidget):
             if len(chunks) != expected:
                 raise ValueError('expected %d menu atlases, got %d' % (expected, len(chunks)))
             decoded = {}
+            help_panel_uv = None
             for chunk in chunks:
                 start = chunk['offset']
                 body = pix_data[start:start + chunk['size']]
@@ -276,7 +279,18 @@ class c_menu_editor(W.QWidget):
                 if image.isNull():
                     raise ValueError('unable to create texture image')
                 decoded[chunk['index']] = G.QPixmap.fromImage(image)
+                if chunk['index'] == 4:
+                    # Atlas 4 contains the actual help frame with transparent
+                    # padding. Its nonempty rectangle is much smaller than
+                    # the 512x512 atlas, so drawing the whole atlas crushes
+                    # the frame vertically.
+                    from PIL import Image
+                    bounds = Image.frombytes('RGBA', (width, height), rgba).getchannel('A').getbbox()
+                    if bounds is not None:
+                        left, top, right, bottom = bounds
+                        help_panel_uv = C.QRectF(left, top, right - left, bottom - top)
             self.m_textures = decoded
+            self.m_help_panel_uv = help_panel_uv
             self.m_texture_status.setText('Menu textures: %d atlases from opened GAME.DAT' % len(decoded))
             self.m_canvas.update()
             return True
@@ -504,9 +518,9 @@ class c_menu_editor(W.QWidget):
         # Placement/crop are provisional until its draw helper is traced.
         # Render the game texture, never a synthetic QPainter border.
         panel = self.m_textures.get(4)
-        if panel is not None and not panel.isNull():
+        if panel is not None and not panel.isNull() and self.m_help_panel_uv is not None:
             painter.drawPixmap(C.QRectF(30, 282, 450, 175), panel,
-                               C.QRectF(0, 0, panel.width(), panel.height()))
+                               self.m_help_panel_uv)
         if self.m_help_font is None:
             painter.restore()
             return
