@@ -171,6 +171,9 @@ class c_menu_editor(W.QWidget):
 
         self.m_canvas = c_menu_canvas(self)
         layout.addWidget(self.m_canvas, 1)
+        self.m_texture_status = W.QLabel('Menu textures: open INFO.DAT + GAME.DAT')
+        self.m_texture_status.setToolTip('Textures are decoded from your own dis/main_menu.pix; no game artwork is bundled')
+        layout.addWidget(self.m_texture_status)
         self.m_help_text = W.QLabel('')
         self.m_help_text.setWordWrap(True)
         self.m_help_text.setMaximumHeight(42)
@@ -181,29 +184,73 @@ class c_menu_editor(W.QWidget):
         self.update_navigation_status()
 
     def load_data(self):
-        # Locate the bundled preview independently of the caller's cwd:
-        # root/launch_editor.bat and arika-py_on_rs/launch_editor.bat both work.
-        candidates = (
-            Path(__file__).resolve().parent / 'previews' / 'menu_textured.html',
-            Path(__file__).resolve().parent.parent / 'previews' / 'menu_textured.html',
-            Path.cwd() / 'previews' / 'menu_textured.html',
-        )
-        path = next((candidate for candidate in candidates if candidate.is_file()), None)
-        if path is None:
+        """Load recovered animation and geometry, not copyrighted texture data."""
+        root = Path(__file__).resolve().parent.parent / 'previews'
+        manifest = root / 'menu_layout.json'
+        if not manifest.is_file():
+            self.m_texture_status.setText('Menu layout data missing: ' + str(manifest))
             return
-        html = path.read_text(encoding='utf-8')
-        match = re.search(r'const DATA=(.*?);\nconst \$', html, re.S)
-        if not match:
-            return
-        self.m_data = json.loads(match.group(1))
-        self.m_time_slider.setMaximum(len(self.m_data['frames']) - 1)
-        for t in self.m_data['textures']:
-            pixmap = G.QPixmap()
-            pixmap.loadFromData(base64.b64decode(t['png'].split(',', 1)[1]))
-            self.m_textures[t['index']] = pixmap
-        self.m_time = min(self.m_time, len(self.m_data['frames']) - 1)
-        self.m_time_slider.setValue(self.m_time)
+        data = json.loads(manifest.read_text(encoding='utf-8'))
+        if data.get('format') != 'arika-menu-layout' or data.get('version') != 1:
+            raise ValueError('unsupported menu layout manifest')
+        frames = []
+        for name in data.pop('frame_files'):
+            # The fixed-name manifest is checked into the repo; refuse paths
+            # outside the layout directory if a local copy is edited.
+            if not re.fullmatch(r'menu_frames_[0-9]{3}\.json', name):
+                raise ValueError('invalid menu frame filename: ' + name)
+            frames.extend(json.loads((root / name).read_text(encoding='utf-8')))
+        if len(frames) != data['frame_count']:
+            raise ValueError('menu layout frame-count mismatch')
+        data['frames'] = frames
+        self.m_data = data
+        self.m_time_slider.setMaximum(len(frames) - 1)
+        self.m_time = min(self.m_time, len(frames) - 1)
+        self.m_time_slider.setValue(int(self.m_time))
         self.m_canvas.update()
+
+    def load_textures(self, pix_data=None):
+        """Decode dis/main_menu.pix from an opened game archive, entirely in memory.
+
+        Clears old textures first to avoid displaying copyrighted assets from
+        a previously opened archive when the new one has no menu PIX.
+        """
+        self.m_textures.clear()
+        if not pix_data:
+            self.m_texture_status.setText('Menu textures: open INFO.DAT + GAME.DAT')
+            self.m_canvas.update()
+            return False
+        try:
+            from arika_dat import container, tim2_rgba
+            metadata = container(pix_data)
+            if metadata['magic'] != 'FPIX':
+                raise ValueError('menu asset is not FPIX')
+            chunks = metadata['chunks']
+            expected = self.m_data['expected_texture_count']
+            if len(chunks) != expected:
+                raise ValueError('expected %d menu atlases, got %d' % (expected, len(chunks)))
+            decoded = {}
+            for chunk in chunks:
+                start = chunk['offset']
+                body = pix_data[start:start + chunk['size']]
+                if chunk['magic'] != 'XPIX' or body[32:36] != b'TIM2':
+                    raise ValueError('invalid XPIX/TIM2 chunk %d' % chunk['index'])
+                width, height, rgba = tim2_rgba(body[32:])
+                if len(rgba) != width * height * 4:
+                    raise ValueError('invalid RGBA buffer size')
+                image = G.QImage(rgba, width, height, width * 4,
+                                 G.QImage.Format.Format_RGBA8888).copy()
+                if image.isNull():
+                    raise ValueError('unable to create texture image')
+                decoded[chunk['index']] = G.QPixmap.fromImage(image)
+            self.m_textures = decoded
+            self.m_texture_status.setText('Menu textures: %d atlases from opened GAME.DAT' % len(decoded))
+            self.m_canvas.update()
+            return True
+        except (ValueError, RuntimeError, KeyError, TypeError) as error:
+            self.m_texture_status.setText('Menu texture decoding failed: %s' % error)
+            self.m_canvas.update()
+            return False
 
     def update_navigation_status(self, action=None):
         selected = self.m_navigation.m_selected
@@ -296,9 +343,11 @@ class c_menu_editor(W.QWidget):
 
     def render(self, painter, rect):
         painter.fillRect(rect, G.QColor('#10151c'))
-        if not self.m_data:
+        if not self.m_data or not self.m_textures:
             painter.setPen(G.QColor('#e8edf3'))
-            painter.drawText(rect, C.Qt.AlignmentFlag.AlignCenter, 'Menu data not found')
+            text = 'Recovered menu layout not found' if not self.m_data else (
+                'Open INFO.DAT and GAME.DAT to display original menu textures')
+            painter.drawText(rect, C.Qt.AlignmentFlag.AlignCenter, text)
             return
         n = len(self.m_data['frames'])
         t = self.m_time % n
