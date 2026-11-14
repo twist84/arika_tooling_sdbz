@@ -37,7 +37,8 @@ class c_menu_runtime:
     input_mask is native pressed-edge bits from 0x336600, not auto-repeat bits.
     """
 
-    def __init__(self, report=None, child_callback=None, item_update=None):
+    def __init__(self, report=None, child_callback=None, item_update=None,
+                 particle_seed=None):
         if report is None:
             report = read_menu_report()
         self.m_report = report
@@ -47,6 +48,9 @@ class c_menu_runtime:
             report.get('item_emphasis', {}).get('kernels', {}).get('labels'))
         self.m_child_callback = child_callback
         self.m_item_update = item_update
+        # Isolated deterministic RNG seed, NOT a captured game-context seed.
+        # None leaves the native-global particle state explicitly unresolved.
+        self.m_particle_seed = particle_seed
         self.m_first_kernel = report.get('first_components', {}).get('animation')
         self.m_character_kernel = report.get('item_character_animation')
         self.m_idle_components = {
@@ -80,6 +84,25 @@ class c_menu_runtime:
         self.m_item_ages = [0.0] * 7
         self.m_label_states = [initialize_label() for _ in range(7)]
         self.m_first_states = [initialize_child() for _ in range(7)]
+        self.m_particle_pool = None
+        if self.m_native_children and self.m_particle_seed is not None:
+            particle_spec = self.m_report['first_components'].get('particles')
+            if particle_spec is not None:
+                # The boundary is a native runtime global; its verified
+                # startup-constructor value is used only for isolated replay.
+                clip = next((entry['value'] for entry in
+                             self.m_report.get('startup', {}).get(
+                                 'position_values', [])
+                             if entry['address'] == particle_spec[
+                                 'runtime_clip_boundary_address'] and
+                             entry['source'] == 'startup_constructor'), None)
+                if clip is not None:
+                    from arika_menu_rng import c_native_rng
+                    from arika_menu_particles import c_dragon_particle_pool
+                    # A single context stream and a single global-pool
+                    # abstraction for this entire runtime instance.
+                    self.m_particle_pool = c_dragon_particle_pool(
+                        particle_spec, c_native_rng(self.m_particle_seed), clip)
         self.m_character_states = [initialize_child() for _ in range(7)]
         self.m_updates = 0
         self.m_last_calls = []
@@ -111,7 +134,10 @@ class c_menu_runtime:
                     first, self.m_first_kernel['components'][index],
                     self.m_first_kernel,
                     self.m_report['first_components']['groups'][index].get(
-                        'scroll_strip'))
+                        'scroll_strip'),
+                    particle_update=(self.m_particle_pool.step
+                                     if index == 3 and
+                                     self.m_particle_pool is not None else None))
                 step_character(
                     character, self.m_character_kernel['components'][index],
                     self.m_character_kernel, self.m_character_emphasis,
@@ -354,6 +380,18 @@ class c_menu_runtime:
         return draw_first_strip(self.m_first_states[item], item,
                                 self.m_report)
 
+    def particle_geometry(self, item):
+        """Pure six-slot presentation. A paint event cannot advance RNG."""
+        if item != 3 or self.m_particle_pool is None:
+            return []
+        first = self.m_first_states[3]
+        if first['phase'] == 0:
+            return []
+        # 0x37A980 computes 1.0f + first depth; 0x37AA5C
+        # supplies first+0x0C XY directly to the pool draw.
+        return self.m_particle_pool.geometry(
+            first['offset'], f32(f32(1.0) + first['depth']))
+
     def character_geometry(self, item, include_idle=True):
         """Return current native character quads, not diagnostic sample 70."""
         if not self.m_native_children or not 0 <= item < 7:
@@ -384,6 +422,9 @@ class c_menu_runtime:
                                    for state in self.m_first_states),
             'first_strip_phases': tuple(state['strip_phase']
                                         for state in self.m_first_states),
+            'particle_timer': self.m_first_states[3]['particle_timer'],
+            'particles': (self.m_particle_pool.snapshot()
+                          if self.m_particle_pool is not None else None),
             'first_particles_unresolved': tuple(
                 bool(state.get('particle_update_unresolved'))
                 for state in self.m_first_states),
