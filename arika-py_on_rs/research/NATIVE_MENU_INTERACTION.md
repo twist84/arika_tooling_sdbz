@@ -74,7 +74,11 @@ non-wrapped lines) and scales without distorting aspect ratio. Atlas 4 is
 cropped to its nontransparent alpha bounds before being fitted to the
 help-panel destination; stretching the entire 512x512 atlas compressed the
 visible frame to a narrow strip. The game viewport and all sprite/text clips
-are intersected so clouds and borders cannot leak into the Qt editor margins. Native exact
+are intersected so clouds and borders cannot leak into the Qt editor margins.
+The original main-menu screen is 512×512, not 512×448: the Qt viewport
+now uses square scaling and the help panel occupies the bottom 199 pixels
+starting at canvas y=313, with text starting at y=370. These help-panel
+coordinates are screenshot-aligned and still require native draw-call proof. Native exact
 frame draw geometry remains an open reverse-engineering task. The existing Qt help
 label remains an inspection aid.
 
