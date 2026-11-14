@@ -7,6 +7,8 @@ from pathlib import Path
 
 from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
 
+from arika_menu_navigation import c_menu_navigation, MENU_ITEM_NAMES, DIRECTION_NAMES, DIRECTION_MASKS
+
 
 def lerp_values(a, b, t):
     if isinstance(a, bool) or isinstance(b, bool):
@@ -43,6 +45,7 @@ class c_menu_canvas(W.QWidget):
     def __init__(self, editor):
         super().__init__()
         self.m_editor = editor
+        self.setFocusPolicy(C.Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(0, 0)
         self.setSizePolicy(W.QSizePolicy.Policy.Expanding, W.QSizePolicy.Policy.Expanding)
 
@@ -50,6 +53,28 @@ class c_menu_canvas(W.QWidget):
         painter = G.QPainter(self)
         self.m_editor.render(painter, self.rect())
         painter.end()
+
+    def mousePressEvent(self, event):
+        self.setFocus(C.Qt.FocusReason.MouseFocusReason)
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        # Key mapping is a preview convenience, not a controller trace.
+        directions = {
+            C.Qt.Key.Key_Right: 0, C.Qt.Key.Key_Left: 1,
+            C.Qt.Key.Key_Up: 2, C.Qt.Key.Key_Down: 3,
+        }
+        direction = directions.get(event.key())
+        if direction is not None:
+            self.m_editor.navigate(direction)
+        elif event.key() in (C.Qt.Key.Key_Return, C.Qt.Key.Key_Enter):
+            self.m_editor.inspect_route(False)
+        elif event.key() == C.Qt.Key.Key_Escape:
+            self.m_editor.inspect_route(True)
+        else:
+            super().keyPressEvent(event)
+            return
+        event.accept()
 
 
 class c_menu_editor(W.QWidget):
@@ -59,6 +84,7 @@ class c_menu_editor(W.QWidget):
         self.m_textures = {}
         self.m_time = 70.0
         self.m_item = 0
+        self.m_navigation = c_menu_navigation()
         self.m_playing = False
         self.m_timer = C.QTimer(self)
         self.m_timer.timeout.connect(self.advance)
@@ -81,8 +107,8 @@ class c_menu_editor(W.QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         controls = W.QHBoxLayout()
         self.m_item_combo = W.QComboBox()
-        for i in range(7):
-            self.m_item_combo.addItem('%d' % i)
+        for i, name in enumerate(MENU_ITEM_NAMES):
+            self.m_item_combo.addItem('%d %s' % (i, name))
         self.m_item_combo.currentIndexChanged.connect(self.set_item)
         controls.addWidget(W.QLabel('Item'))
         controls.addWidget(self.m_item_combo)
@@ -108,6 +134,28 @@ class c_menu_editor(W.QWidget):
         controls.addWidget(self.m_status)
         layout.addLayout(controls)
 
+        navigation = W.QHBoxLayout()
+        navigation.addWidget(W.QLabel('Native graph'))
+        for label, direction in (('←', 1), ('↑', 2), ('↓', 3), ('→', 0)):
+            button = W.QPushButton(label)
+            button.setFixedWidth(32)
+            button.setToolTip('%s: ELF direction %d, input mask 0x%X' %
+                              (DIRECTION_NAMES[direction], direction, DIRECTION_MASKS[direction]))
+            button.clicked.connect(lambda _checked=False, d=direction: self.navigate(d))
+            navigation.addWidget(button)
+        confirm = W.QPushButton('Confirm route')
+        confirm.setToolTip('Inspect the original destination; does not launch an app')
+        confirm.clicked.connect(lambda _checked=False: self.inspect_route(False))
+        navigation.addWidget(confirm)
+        cancel = W.QPushButton('Cancel route')
+        cancel.setToolTip('Inspect the native cancel destination (app 3)')
+        cancel.clicked.connect(lambda _checked=False: self.inspect_route(True))
+        navigation.addWidget(cancel)
+        self.m_navigation_status = W.QLabel('')
+        self.m_navigation_status.setMinimumWidth(160)
+        navigation.addWidget(self.m_navigation_status, 1)
+        layout.addLayout(navigation)
+
         layers = W.QHBoxLayout()
         for name, attr in (('Background', 'm_background'), ('Motion', 'm_motion'), ('Tint', 'm_tint'),
                            ('Scenery', 'm_first'), ('Characters', 'm_middle'), ('Label', 'm_overlay'),
@@ -117,7 +165,7 @@ class c_menu_editor(W.QWidget):
             box = W.QCheckBox(name)
             box.setChecked(getattr(self, attr))
             box.toggled.connect(lambda value, a=attr: setattr(self, a, value))
-            box.toggled.connect(lambda _value: self.update())
+            box.toggled.connect(lambda _value: self.m_canvas.update())
             layers.addWidget(box)
         layout.addLayout(layers)
 
@@ -125,6 +173,7 @@ class c_menu_editor(W.QWidget):
         layout.addWidget(self.m_canvas, 1)
 
         self.load_data()
+        self.update_navigation_status()
 
     def load_data(self):
         path = Path(__file__).with_name('previews') / 'menu_textured.html'
