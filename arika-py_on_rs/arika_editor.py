@@ -1733,6 +1733,8 @@ class c_scene_editor(W.QMainWindow):
         self.m_project=None
         if hasattr(self.m_menu_view, 'load_textures'):
             self.m_menu_view.load_textures(None)
+        if hasattr(self.m_menu_view, 'load_help_font'):
+            self.m_menu_view.load_help_font(None)
         try:
             self.m_tree.clear();self.m_items={}
         except Exception:pass
@@ -1758,6 +1760,18 @@ class c_scene_editor(W.QMainWindow):
             menu_pix=next((data for name,data in self.m_virtual_files.items()
                            if name.replace('\\','/').lower().lstrip('/')=='dis/main_menu.pix'),None)
             self.m_menu_view.load_textures(menu_pix)
+        if hasattr(self.m_menu_view, 'load_help_font'):
+            # FFON is already supported by the editor's Fonts panel.
+            # Load it directly from this archive without exporting a file.
+            font_data = next((data for name, data in self.m_virtual_files.items()
+                              if name.replace('\\\\', '/').lower().lstrip('/') ==
+                              'font/5-24-2.fon'), None)
+            if font_data:
+                try:
+                    self.m_menu_view.load_help_font(font_data)
+                except (ValueError, RuntimeError) as error:
+                    self.statusBar().showMessage('Native menu font: %s' % error)
+
         self.statusBar().showMessage('Loaded archive %s — %d entries'%(info_path.name,len(self.m_virtual_files)))
         self.m_scene_status.setText('Archive: %d entries'%len(self.m_virtual_files))
         self.remember_file(str(info_path),'archive')
