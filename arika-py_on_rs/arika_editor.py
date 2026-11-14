@@ -1723,7 +1723,11 @@ class c_scene_editor(W.QMainWindow):
 
     def load_archive(self,info_path,game_path=None):
         if not self.discard():return
-        info_path, game_path = resolve_archive_paths(info_path, game_path)
+        try:
+            info_path, game_path = resolve_archive_paths(info_path, game_path)
+        except OSError as error:
+            self.fail(error)
+            return
         self.m_virtual_files={}
         self.m_virtual=True
         self.m_project=None
