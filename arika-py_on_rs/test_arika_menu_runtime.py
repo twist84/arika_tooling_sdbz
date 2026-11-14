@@ -241,8 +241,8 @@ class MenuRuntimeNativeLabelTests(unittest.TestCase):
             self.assertEqual((state['age'], state['secondary_age']),
                              (expect_age, expect_secondary))
             self.assertEqual(state['part_offsets'], expect_offsets)
-        self.assertEqual(len(runtime.character_geometry(5)), 0,
-                         'inert item is not drawn before selection')
+        self.assertEqual(len(runtime.character_geometry(5)), 3,
+                         'all three CUSTOMIZE parts have coupled motion')
 
         # The next activation must re-zero secondary even after a prior idle.
         state['secondary_age'] = 123.0
