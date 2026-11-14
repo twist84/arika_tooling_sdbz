@@ -171,6 +171,11 @@ class c_menu_editor(W.QWidget):
 
         self.m_canvas = c_menu_canvas(self)
         layout.addWidget(self.m_canvas, 1)
+        self.m_help_text = W.QLabel('')
+        self.m_help_text.setWordWrap(True)
+        self.m_help_text.setMaximumHeight(42)
+        self.m_help_text.setToolTip('Original ELF text description for the selected item')
+        layout.addWidget(self.m_help_text)
 
         self.load_data()
         self.update_navigation_status()
@@ -208,6 +213,8 @@ class c_menu_editor(W.QWidget):
                 title, source, route['next_app_id'], route['mode_selector'])
         self.m_navigation_status.setText(text)
         lines = self.m_navigation.help_lines()
+        self.m_help_text.setText('ELF help: ' + ' '.join(lines))
+        self.m_help_text.setToolTip('\n'.join(lines))
         directions = self.m_navigation.available_directions()
         self.m_navigation_status.setToolTip(
             '%s\nELF help ID %d:\n%s\n\nNeighbours: %s\n'
