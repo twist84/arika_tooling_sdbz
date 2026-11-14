@@ -192,12 +192,22 @@ regional builds without hardcoding the beta's offsets.
 
 ### Current editor presentation modes
 
-The Qt preview now provides **Square capture** (existing default),
-**Raw 512×448**, and **4:3 television** modes. These choices change
-only the final presentation transform and intentionally leave all
-native sprite and tile coordinates at 512×448. The 4:3 mode is a
-comparison view, **not a claim that the native GS registers have been
-verified for the main menu**.
+The Qt preview now mirrors the PCSX2 menu aspect-ratio choices:
+
+- **Fit to Window / Fullscreen**: fill the menu widget, without preserving aspect.
+- **Auto Standard (4:3 Interlaced / 3:2 Progressive)**: select a manual
+  interlaced/progressive assumption next to the aspect selector; the editor
+  cannot detect the game-visible GS scan mode yet.
+- **Standard (4:3)**, **Widescreen (16:9)**, **Native/Full (10:7)**:
+  aspect-corrected comparison views.
+- **Square capture (debug)** and **Raw 512×448 (debug)**: retained for
+  comparing prior screenshots and unmodified logical aspect.
+
+All choices change only the final presentation transform and leave native
+sprite/tile coordinates at 512×448. Square capture remains the default to
+avoid changing existing editor comparisons. In particular, **Auto Standard**
+is not automatically synchronized with PCSX2 or the game's GS mode until we
+have a runtime register capture.
 
 ## Remaining ELF work
 
