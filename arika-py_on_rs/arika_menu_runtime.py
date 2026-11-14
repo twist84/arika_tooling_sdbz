@@ -1,14 +1,20 @@
-"""ELF-backed outer main-menu lifecycle shell, not an authored sample timeline.
+"""ELF-backed outer main-menu lifecycle, including common child phases.
 
-One step is one logical update. The remaining item-animation callbacks and
-fade-completion query are injected instead of inventing their durations.
-Native evidence: 0x333920, 0x379A40, 0x379B50, 0x379C80.
+One step is one logical update. Shared per-item first/character/label entry and
+exit transitions are recovered; item-specific phase-2 effects, fade completion
+and native sound queries remain externally supplied or explicitly unresolved.
+Native evidence: 0x333920, 0x379A40, 0x375630, 0x379B50, 0x379C80.
 """
 import struct
 
 from arika_menu_navigation import c_menu_navigation, read_menu_report
 from arika_menu_shared import initialize_shared, request_exit, step_shared
 from arika_menu_input import decode_menu_input
+from arika_menu_children import (
+    initialize_child, start_first, exit_first, emphasize_first, step_first,
+    start_character, exit_character, emphasize_character, step_character,
+    draw_character,
+)
 from arika_menu_labels import (
     initialize_label, start_label, exit_label, emphasize_label,
     step_label, draw_label,
@@ -23,8 +29,9 @@ class c_menu_runtime:
     """The verified parent/shared state machines with explicit child oracles.
 
     child_callback(role, index) receives native shared scheduler child calls.
-    item_update(index, phase, age) returns the phase actually reached by an
-    externally verified item animation update. No guessed completion is used.
+    item_update(index, phase, age) optionally overrides native item-phase
+    transitions; otherwise complete first/character/label children drive the
+    verified item phase-1/4 transitions when their kernels are available.
     fade_busy is the return of native 0x2C0C20; None means unobserved/busy.
     sound_busy is the return of native 0x2FCC00; None retains the sound latch.
     input_mask is native pressed-edge bits from 0x336600, not auto-repeat bits.
@@ -40,6 +47,13 @@ class c_menu_runtime:
             report.get('item_emphasis', {}).get('kernels', {}).get('labels'))
         self.m_child_callback = child_callback
         self.m_item_update = item_update
+        self.m_character_kernel = report.get('item_character_animation')
+        self.m_character_emphasis = (
+            report.get('item_emphasis', {}).get('kernels', {}).get('characters'))
+        self.m_native_children = (
+            self.m_character_kernel is not None and
+            self.m_label_kernel is not None and
+            'composite_layout' in report)
         self.reset()
 
     def reset(self):
@@ -59,6 +73,8 @@ class c_menu_runtime:
         self.m_item_phases = [0] * 7
         self.m_item_ages = [0.0] * 7
         self.m_label_states = [initialize_label() for _ in range(7)]
+        self.m_first_states = [initialize_child() for _ in range(7)]
+        self.m_character_states = [initialize_child() for _ in range(7)]
         self.m_updates = 0
         self.m_last_calls = []
         self.m_completion = None
@@ -81,9 +97,18 @@ class c_menu_runtime:
             self.m_item_ages[index] = age
             self._emit(role, index=index, phase=phase, age=age)
             # 0x374FF4 -> item vtable +0x20 (0x375630):
-            # first-part, character, then 0x37DF90 label update.
-            # Label entry/exit implementation has independent ELF oracle
-            # coverage (test_arika_menu_labels.py).
+            # first 0x373A10, character 0x37F100, label 0x37DF90.
+            if self.m_native_children:
+                first = self.m_first_states[index]
+                character = self.m_character_states[index]
+                step_first(first)
+                step_character(
+                    character, self.m_character_kernel['components'][index],
+                    self.m_character_kernel, self.m_character_emphasis)
+                self._emit('first_update', index=index,
+                           phase=first['phase'], age=first['age'])
+                self._emit('character_update', index=index,
+                           phase=character['phase'], age=character['age'])
             if self.m_label_kernel is not None:
                 step_label(
                     self.m_label_states[index],
@@ -98,6 +123,16 @@ class c_menu_runtime:
                 new_phase = self.m_item_update(index, phase, age)
                 if new_phase is not None:
                     self.m_item_phases[index] = int(new_phase)
+            elif self.m_native_children:
+                # 0x374FB0: entry polls 0x375690 (first child phase 2).
+                # Exit polls 0x3756E0 (all three child phases zero).
+                if phase == 1 and self.m_first_states[index]['phase'] == 2:
+                    self.m_item_phases[index] = 2
+                elif (phase == 4 and
+                      self.m_first_states[index]['phase'] == 0 and
+                      self.m_character_states[index]['phase'] == 0 and
+                      self.m_label_states[index]['phase'] == 0):
+                    self.m_item_phases[index] = 0
         else:
             self._emit(role, index=index, phase=0, age=self.m_item_ages[index])
 
@@ -129,6 +164,9 @@ class c_menu_runtime:
         self.m_pending = old_index  # 0x379F24 delay-slot store
         if old_index >= 0:
             self.m_item_phases[old_index] = 4
+            if self.m_native_children:
+                exit_first(self.m_first_states[old_index])
+                exit_character(self.m_character_states[old_index])
             if self.m_label_kernel is not None:
                 exit_label(self.m_label_states[old_index],
                            self.m_label_kernel)
@@ -136,6 +174,12 @@ class c_menu_runtime:
         self.m_navigation.select(new_index)
         self.m_selected = new_index
         self.m_item_phases[new_index] = 1
+        if self.m_native_children:
+            start_first(self.m_first_states[new_index])
+            start_character(
+                self.m_character_states[new_index],
+                self.m_character_kernel['components'][new_index],
+                self.m_character_kernel)
         if self.m_label_kernel is not None:
             start_label(
                 self.m_label_states[new_index],
@@ -159,6 +203,9 @@ class c_menu_runtime:
             self.m_exit_phase = 30
             if self.m_selected >= 0:
                 self.m_item_phases[self.m_selected] = 4
+                if self.m_native_children:
+                    exit_first(self.m_first_states[self.m_selected])
+                    exit_character(self.m_character_states[self.m_selected])
                 if self.m_label_kernel is not None:
                     exit_label(self.m_label_states[self.m_selected],
                                self.m_label_kernel)
@@ -170,6 +217,10 @@ class c_menu_runtime:
         else:
             if self.m_selected >= 0:
                 self.m_item_phases[self.m_selected] = 3
+                if self.m_native_children:
+                    emphasize_first(self.m_first_states[self.m_selected])
+                    emphasize_character(
+                        self.m_character_states[self.m_selected])
                 if self.m_label_kernel is not None:
                     emphasize_label(
                         self.m_label_states[self.m_selected],
@@ -270,6 +321,13 @@ class c_menu_runtime:
             self.m_label_states[item],
             self.m_label_kernel['components'][item])
 
+    def character_geometry(self, item):
+        """Return current native character quads, not diagnostic sample 70."""
+        if not self.m_native_children or not 0 <= item < 7:
+            return None
+        return draw_character(self.m_character_states[item], item,
+                              self.m_report)
+
     def snapshot(self):
         return {
             'update': self.m_updates,
@@ -285,6 +343,16 @@ class c_menu_runtime:
             'pending': self.m_pending,
             'item_phases': tuple(self.m_item_phases),
             'item_ages': tuple(self.m_item_ages),
+            'first_phases': tuple(state['phase']
+                                  for state in self.m_first_states),
+            'first_ages': tuple(state['age']
+                                for state in self.m_first_states),
+            'character_phases': tuple(state['phase']
+                                      for state in self.m_character_states),
+            'character_ages': tuple(state['age']
+                                    for state in self.m_character_states),
+            'character_offsets': tuple(tuple(state['offset'])
+                                       for state in self.m_character_states),
             'label_phases': tuple(state['phase']
                                   for state in self.m_label_states),
             'label_ages': tuple(state['age']
