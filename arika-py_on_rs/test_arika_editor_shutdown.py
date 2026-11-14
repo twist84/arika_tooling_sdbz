@@ -28,7 +28,7 @@ class EditorShutdownTests(unittest.TestCase):
         previous=C.qInstallMessageHandler(handler)
         try:
             panel=c_font_panel(SimpleNamespace(m_font_font=None,m_font_data=None))
-            self.assertEqual(panel.layout().count(),4)
+            self.assertEqual(panel.layout().count(),5)
             panel.close()
             panel.deleteLater()
             self.m_app.processEvents()
@@ -43,7 +43,6 @@ class EditorShutdownTests(unittest.TestCase):
 
         tree=W.QTreeWidget()
         tree.setHeaderLabels(['Scene / object','Show','Lock'])
-        tree.viewport().installEventFilter
         shiboken6.delete(tree)
         self.assertFalse(shiboken6.isValid(tree))
 
