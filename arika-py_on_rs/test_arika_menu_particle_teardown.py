@@ -57,6 +57,26 @@ class DragonParticleTeardownTests(unittest.TestCase):
         return c_dragon_particle_pool(
             self.spec, c_test_rng(1), self.boundary)
 
+    def test_native_clip_boundary_constructor_writes_both_globals(self):
+        """0x4E23B0 must store 204 and 239; the latter is a JR delay slot."""
+        from menu_strip_oracle import bits
+        initializer = [
+            3347166088, 1006846240, 1149435904, 3347231632,
+            1174407169, 3884116204, 65011720, 3883985136,
+        ]
+        oracle = c_strip_oracle(
+            dict(draw_address=0x4e23b0, draw_words=initializer,
+                 clock_address=0, clock_words=[]),
+            [0, 0, 1, 1], 0, 0, 1, 1, 0, [0, 0])
+        oracle.m_registers[28] = 0x4ff370
+        oracle.write_float(0x4fa6f8, 249.0)
+        oracle.write_float(0x4fa700, 204.0)
+        oracle.write_float(0x4fdc5c, -999.0)
+        oracle.write_float(0x4fdc60, -999.0)
+        oracle.run(0x4e23b0)
+        self.assertEqual(oracle.read_int(0x4fdc5c, 4), bits(204.0))
+        self.assertEqual(oracle.read_int(0x4fdc60, 4), bits(239.0))
+
     def test_native_destructor_order_and_global_pointer_not_cleared(self):
         oracle = c_strip_oracle(
             dict(draw_address=0x37a820, draw_words=DESTRUCTOR,
