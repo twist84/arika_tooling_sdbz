@@ -66,9 +66,12 @@ Qt controls. The editor draws the four original ELF-extracted strings in its
 512×448 canvas through the existing native FFON decoder, using the archive's
 `font/5-24-2.fon` automatically on archive load. Text rasterisation shares
 `arika_ffon.render_text` with the Fonts panel; the temporary QPainter
-frame and system-font substitutions have been removed. **The native textbox
-border/background texture is still pending its exact PIX atlas UVs and
-geometry** and must not be represented as complete. The existing Qt help
+frame and system-font substitutions have been removed. The native textbox is identified as **FPIX atlas entry 4** in
+`research/TEXTURED_MENU.md` and now renders behind the font. Its **source crop
+and final quad placement remain provisional**, not extracted native UVs.
+The FFON text renderer now preserves word spacing (previously lost for
+non-wrapped lines) and scales without distorting aspect ratio. Native exact
+frame draw geometry remains an open reverse-engineering task. The existing Qt help
 label remains an inspection aid.
 
 Arrow UVs, base coordinates, and the history-dependent variants are taken from
@@ -82,7 +85,7 @@ embedded in the repo; arrow sprites still load from the user's FPIX atlas.
 
 ```sh
 cd arika-py_on_rs
-python -m unittest test_arika_menu_navigation test_arika_menu_selection_effect test_arika_menu_arrow_preview test_arika_menu_editor_navigation -v
+python -m unittest test_arika_menu_navigation test_arika_menu_selection_effect test_arika_menu_arrow_preview test_arika_ffon_spacing test_arika_menu_editor_navigation -v
 ```
 
 The CI matrix also runs these checks headlessly on Windows and Ubuntu. Native
