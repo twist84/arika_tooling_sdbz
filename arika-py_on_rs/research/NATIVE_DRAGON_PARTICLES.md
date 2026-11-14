@@ -18,8 +18,8 @@ The allocation and timer lifetimes are *not identical*: constructor/setup `0x003
   -> 0x0037AC10 allocate pool (0x430; stride 0xB0; six slots)
   -> 0x0037AC00 fetch pool
   -> 0x0037ADB0 initialize six slots
-       for slot 0..5: 0x0037B050 reset slot
-       for slot 0..4 only: 0x00190450 RNG(template)
+       for slot 0..5, in order: 0x0037B050 reset this slot
+       if slot < 5: 0x00190450 RNG(template)
           -> 0x0037B0A0 sprite initialize
                -> 0x00190450 RNG(position Y)
                -> 0x00190450 RNG(speed)
@@ -86,6 +86,41 @@ The PS2 FPU `ADDA.S` / `MADD.S` instructions must be modeled using explicit floa
 `0x0037AE80` invokes `0x0037B210` for every slot, in index order; an inactive slot is skipped. Active X is decremented by speed before the clip check. At `0x0037B244`, X below global clip boundary at `gp-0x1710 = 0x004FDC60` triggers left UV clipping. The amount is converted to a signed-halfword-compatible value and added to UV-left; the sprite UV setter is called at `0x0037B2E4`, the clipped amount is added back into X, and the code rechecks whether left < right. If left >= right it invokes the embedded sprite reset, marks the slot inactive, zeros speed and restores reset XY (`0x0037B328..0x0037B350`). The present research verifies the control flow; exact EE float-to-s16 saturation/rounding and sprite setter side effects need differential cases before claiming parity on all clip boundaries.
 
 **Draw is not fully read-only in the ELF**: `0x0037B370` tests active, then writes sprite +0x10 = parentX+localX, +0x14 = parentY+localY, and +0x18 = passed depth+localDepth before invoking sprite vtable +0x10. These draw-time writes are embedded sprite presentation fields, **not** logical lifetime or RNG updates. The native draw loop does not call `0x00190450`.
+
+## Deterministic validation checkpoint
+
+The Windows/Linux Actions suite `43651092179` passed after registering the
+particle tests in the workflow (155 menu/editor tests). Subsequent work
+adds a native-word sprite-initialization oracle and pending-item ownership
+regressions, and must be verified again on the final head.
+
+- `0x0037A860`: 30 native instruction comparisons (six timer values × five
+  RNG outputs), checking timer float bits, scan/RNG/update call ordering and
+  the branch-delay timer store. Pool calls are controlled stubs.
+- `0x0037B210`: seven native instruction comparison cases covering active,
+  inactive, movement, clip and retirement. Sprite UV setter/reset calls are
+  controlled stubs; tests intentionally use integral clip deltas while
+  FCR31 rounding remains unverified.
+- `0x0037ADB0`: native loop test establishes reset interleaving, six stable
+  slots, initial five activations, three RNG inputs each, template indices,
+  seed position overrides and final context state. Sprite setup is stubbed,
+  so this test does not validate its internal numeric arithmetic.
+- `0x0037B0A0`: 12 further native instruction cases over all four templates
+  and three RNG pairs compare exact float32 X/Y, speed, depth contribution,
+  active flag and UV edges. Resource/GS setters are controlled stubs; the
+  Python UV order [left,top,right,bottom] maps to native fields
+  [left,right,top,bottom] at +0x28..+0x2E.
+- Independent-runtime, deterministic replay, first-free slot reuse,
+  pending exit, snapshot immutability and pure Qt paint tests exercise
+  ownership rather than only arithmetic.
+- The Qt first-layer has item-3 depth tiers from `0x0037A9B4`,
+  `0x0037A980` and `0x0037AA24`: literal sprites at first depth,
+  particles at first depth + 1 + 0.1 * speed, and decorations at first
+  depth + 10. This replaces a generic depth fallback for item 3.
+
+Native stubbed-call tests validate their exact stated scope only. In
+particular they do not establish complete GS blending or live-context RNG
+parity.
 
 ## Remaining before Phase A can be signed off
 
