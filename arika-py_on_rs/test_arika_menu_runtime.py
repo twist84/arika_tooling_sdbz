@@ -198,7 +198,8 @@ class MenuRuntimeNativeLabelTests(unittest.TestCase):
         for item in range(7):
             character = runtime.m_character_states[item]
             runtime.m_item_phases[item] = 2
-            character.update(phase=2, age=0.0)
+            character.update(phase=2, age=0.0,
+                             secondary_age=0.0 if item == 5 else None)
             # For exact period, MIPS phase-two callbacks subtract once
             # rather than wrapping with an arbitrary wall-clock duration.
             period = idle[item]['curve']['times'][-1]
@@ -207,11 +208,61 @@ class MenuRuntimeNativeLabelTests(unittest.TestCase):
             self.assertEqual(character['age'], 0.0,
                              'item %d period %s' % (item, period))
             self.assertEqual(character['phase'], 2)
-            if item not in (5,):
-                self.assertEqual(
-                    len(character['part_offsets']),
-                    len(runtime.m_report['composite_layout']
-                        ['composites'][item]['parts']))
+            self.assertEqual(
+                len(character['part_offsets']),
+                len(runtime.m_report['composite_layout']
+                    ['composites'][item]['parts']))
+
+    def test_customize_entry_resets_secondary_clock_and_replays_coupled_idle(self):
+        from arika_menu_navigation import read_menu_report
+        from arika_menu_idle import step_coupled_idle
+        runtime = c_menu_runtime(read_menu_report())
+        component = runtime.m_idle_components[5]
+        self.assertEqual(component['kind'], 'coupled')
+        state = runtime.m_character_states[5]
+        character = runtime.m_character_kernel['components'][5]
+        self.assertEqual(character['callbacks'][3], 0x37f7e0)
+
+        from arika_menu_children import start_character, step_character
+        start_character(state, character, runtime.m_character_kernel)
+        self.assertIsNone(state['secondary_age'],
+                          'entry callback has not fired yet')
+        # The active callback is invoked after the final 22-step entry.
+        for _ in range(22):
+            step_character(state, character, runtime.m_character_kernel,
+                           runtime.m_character_emphasis, component)
+        self.assertEqual((state['phase'], state['age'],
+                          state['secondary_age']), (2, 0.0, 0.0))
+        for tick in range(1, 8):
+            step_character(state, character, runtime.m_character_kernel,
+                           runtime.m_character_emphasis, component)
+            expect_age, expect_secondary, expect_offsets = step_coupled_idle(
+                float(tick - 1), float(tick - 1), component)
+            self.assertEqual((state['age'], state['secondary_age']),
+                             (expect_age, expect_secondary))
+            self.assertEqual(state['part_offsets'], expect_offsets)
+        self.assertEqual(len(runtime.character_geometry(5)), 0,
+                         'inert item is not drawn before selection')
+
+        # The next activation must re-zero secondary even after a prior idle.
+        state['secondary_age'] = 123.0
+        start_character(state, character, runtime.m_character_kernel)
+        for _ in range(22):
+            step_character(state, character, runtime.m_character_kernel,
+                           runtime.m_character_emphasis, component)
+        self.assertEqual(state['secondary_age'], 0.0)
+
+    def test_customize_phase_two_without_active_callback_is_rejected(self):
+        from arika_menu_navigation import read_menu_report
+        from arika_menu_children import step_character
+        runtime = c_menu_runtime(read_menu_report())
+        state = runtime.m_character_states[5]
+        state.update(phase=2, age=0.0)
+        component = runtime.m_character_kernel['components'][5]
+        with self.assertRaisesRegex(ValueError, 'requires entry callback'):
+            step_character(state, component, runtime.m_character_kernel,
+                           runtime.m_character_emphasis,
+                           runtime.m_idle_components[5])
 
     def test_old_selection_retires_exactly_after_child_exit(self):
         from arika_menu_navigation import read_menu_report
