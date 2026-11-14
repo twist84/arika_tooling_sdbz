@@ -500,9 +500,13 @@ class MenuDragonParticleTests(unittest.TestCase):
                                      (entry['index'], y_value, speed_value, key))
                 self.assertEqual(int(slot['active']),
                                  machine.read_int(0x10a0, 4))
-                self.assertEqual(slot['uv'],
-                                 [machine.read_int(0x1028 + i*2, 2)
-                                  for i in range(4)])
+                # Python stores [left,top,right,bottom], while the
+                # native embedded sprite packs [left,right,top,bottom].
+                self.assertEqual(
+                    [slot['uv'][0], slot['uv'][2],
+                     slot['uv'][1], slot['uv'][3]],
+                    [machine.read_int(0x1028 + i*2, 2)
+                     for i in range(4)])
 
 
     def test_runtime_pending_interruption_reentry_and_reset_ownership(self):
