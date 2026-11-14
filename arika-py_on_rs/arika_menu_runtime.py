@@ -470,6 +470,31 @@ class c_menu_runtime:
         return draw_character(self.m_character_states[item], item,
                               self.m_report, include_idle=include_idle)
 
+    def companion_geometry(self):
+        """Read-only 0x378170 -> 0x376290 -> 0x376600 -> 0x376950.
+
+        The native loop visits ten 0x70-byte slots in ascending address
+        order. 0x376950 tests active +0x6C and copies local X/Y +0x60/
+        +0x64 to embedded sprite presentation +0x10/+0x14, preserving
+        the depth initialized by 0x376790. Rendering never advances the
+        shared RNG, companion event timer, or owner state.
+        """
+        if self.m_companion_state is None:
+            return []
+        from arika_menu_plain import plain_sprite
+        result = []
+        for index, slot in enumerate(self.m_companion_state['slots']):
+            if not slot['active']:
+                continue
+            geometry = plain_sprite(
+                slot['uv_xywh'], [slot['x'], slot['y']])
+            geometry['depth'] = slot['depth']
+            result.append(dict(
+                slot=index,
+                texture_entry=self.m_companion_spec['texture_entry'],
+                geometry=geometry))
+        return result
+
     def companion_snapshot(self):
         """Copy the recovered ten-slot owner, not the mutable live state."""
         state = self.m_companion_state
