@@ -300,7 +300,7 @@ class c_viewport(QRenderWidget):
         # without discarding a user's temporary viewport colour on every edit.
         key=(id(project),getattr(project,'m_background_preset',None))
         if key!=getattr(self,'m_stage_background_key',None):
-            background=project.background_rgba() if project else None
+            background=project.background_rgba() if project is not None and hasattr(project,'background_rgba') else None
             self.m_options['background']=background or DEFAULT_BACKGROUND
             self.m_stage_background_key=key
         self.m_project=project;self.m_world_cache=None;self.m_upload=True;self.m_geometry=geometry;self.m_fit=fit or self.m_fit;self.request_draw()
