@@ -251,9 +251,23 @@ unseeded unresolved state. The isolated seed (1 in the Qt diagnostic
 preview) is not the game's captured active-context seed; other systems can
 also consume this context RNG and have not all been accounted for.
 
-These changes reconstruct logical owner/RNG ordering only. They do not yet
-render the companions through Qt's native mode, claim pixel-exact GS
-blending, or establish actual in-game seed/state/call-count parity.
+These changes reconstruct logical owner/RNG ordering and a read-only
+companion sprite draw pass. The ELF shared draw callback
+`0x00378170` calls `0x00376290`; its `0x00376600` loop walks exactly
+ten slots at stride `0x70` in ascending order, invoking `0x00376950`
+for each. The per-slot callback checks +`0x6C` active, then copies
+local X/Y +`0x60`/+`0x64` into embedded sprite presentation
++`0x10`/+`0x14`, and calls sprite vtable +`0x10` to draw.
+Its initialized depth is not overwritten in that callback. The Qt
+native-mode canvas now draws `texture_entry 2` companion quads from
+this runtime state at their native layer depth, leaving the 140-frame
+diagnostic timeline unaffected. A native-word draw oracle and an
+offscreen synthetic-texture pixel regression verify active gating,
+slot order, read-only repaint and visible movement.
+
+This is **not** a claim of pixel-exact GS blending or real in-game
+seed/state/call-count parity; native tile/banner clocks and further
+graphics paths remain to be integrated.
 
 ## Remaining before Phase A can be signed off
 
