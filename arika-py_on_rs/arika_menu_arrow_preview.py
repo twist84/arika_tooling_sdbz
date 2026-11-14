@@ -1,8 +1,9 @@
 """Main-menu arrow layouts from the ELF, with preview-only idle bob.
 
-The recovered base positions, UV rectangles, and history variants are exact
-to the saved research. The periodic bob is an authored visual approximation
-until the arrow helper at 0x3753A0 is fully recovered.
+The recovered base positions, UV rectangles, history variants, and the
+40-tick interpolation curve are extracted from the EU beta ELF at 0x3753A0.
+Only the binding of the native object's +0xB0 age to the editor's preview
+timeline remains an unverified scheduling approximation.
 """
 import math
 
@@ -35,16 +36,46 @@ def arrow_direction(geometry):
     raise ValueError('unrecognised native arrow UV rectangle')
 
 
-def bobbed_arrow_geometry(geometry, tick, amplitude=3.0, period=32.0):
-    """Translate a copy along the arrow's direction of travel.
+# Native float tables referenced by the helper at ELF 0x003753A0:
+# times @ 0x004A9E80 = (0, 10, 30, 40)
+# values @ 0x004A9E90 = (0, 3, -3, 0)
+# The object stores its animation clock as float at offset +0xB0.
+NATIVE_ARROW_PERIOD = 40.0
+NATIVE_ARROW_TIMES = (0.0, 10.0, 30.0, 40.0)
+NATIVE_ARROW_VALUES = (0.0, 3.0, -3.0, 0.0)
 
-    This sinusoidal displacement remains an authored preview effect.
-    It does not claim to reproduce the native 0x3753A0 animation curve.
+
+def native_arrow_displacement(age):
+    """Reconstruct 0x3753A0's fmod and four-key scalar interpolation.
+
+    The MIPS routine calls the libm remainder at 0x185E50 and the scalar
+    interpolation helper 0x2C2C10. This models their finite, nonnegative
+    animation-age behavior; it does not infer the object's clock origin.
+    """
+    phase = math.fmod(float(age), NATIVE_ARROW_PERIOD)
+    for index in range(len(NATIVE_ARROW_TIMES) - 1):
+        start = NATIVE_ARROW_TIMES[index]
+        finish = NATIVE_ARROW_TIMES[index + 1]
+        if start <= phase < finish:
+            fraction = (phase - start) / (finish - start)
+            return (NATIVE_ARROW_VALUES[index] +
+                    (NATIVE_ARROW_VALUES[index + 1] -
+                     NATIVE_ARROW_VALUES[index]) * fraction)
+    # Matches the interpolation helper's first-value fallback for a
+    # negative fmod remainder (normal animation ages are nonnegative).
+    return NATIVE_ARROW_VALUES[0]
+
+
+def bobbed_arrow_geometry(geometry, tick):
+    """Apply the native arrow displacement to a copy of the base quad.
+
+    'tick' is an editor sample clock; the native component's +0xB0 age
+    phase at the moment a menu opens is not yet runtime-verified.
     """
     direction_x, direction_y = arrow_direction(geometry)
-    offset = amplitude * math.sin(2.0 * math.pi * tick / period)
-    dx = direction_x * offset
-    dy = direction_y * offset
+    displacement = native_arrow_displacement(tick)
+    dx = direction_x * displacement
+    dy = direction_y * displacement
     result = dict(geometry)
     result['vertices'] = [[x + dx, y + dy] for x, y in geometry['vertices']]
     if 'position' in geometry:
