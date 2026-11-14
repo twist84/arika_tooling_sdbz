@@ -525,7 +525,7 @@ class c_menu_editor(W.QWidget):
         if self.m_help_font is None:
             painter.restore()
             return
-        painter.setClipRect(C.QRectF(76, 312, 359, 116))
+        painter.setClipRect(C.QRectF(76, 312, 359, 116), C.Qt.ClipOperation.IntersectClip)
         for index, text in enumerate(self.m_navigation.help_lines()[:4]):
             pixmap = self.help_line_pixmap(text)
             if pixmap is None or pixmap.isNull():
@@ -569,7 +569,7 @@ class c_menu_editor(W.QWidget):
         painter.save()
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth or ((abs(du) == 1 and abs(dv) > 4) or (abs(dv) == 1 and abs(du) > 4)))
         painter.setOpacity(alpha)
-        painter.setClipPath(path)
+        painter.setClipPath(path, C.Qt.ClipOperation.IntersectClip)
         transform = G.QTransform(a, b, c, d, tx, ty)
         painter.setTransform(transform, True)
         painter.drawPixmap(0, 0, pixmap)
