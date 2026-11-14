@@ -489,15 +489,15 @@ class c_menu_editor(W.QWidget):
 
         draw_queue.sort(key=lambda q: q['depth'])
 
-        scale = min(rect.width() / 512.0, rect.height() / 448.0)
+        scale = min(rect.width() / 512.0, rect.height() / 512.0)
         offset_x = rect.x() + (rect.width() - 512 * scale) / 2
-        offset_y = rect.y() + (rect.height() - 448 * scale) / 2
+        offset_y = rect.y() + (rect.height() - 512 * scale) / 2
 
         painter.save()
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth)
         painter.translate(offset_x, offset_y)
         painter.scale(scale, scale)
-        painter.setClipRect(C.QRectF(0, 0, 512, 448))
+        painter.setClipRect(C.QRectF(0, 0, 512, 512))
 
         for q in draw_queue:
             self.draw_sprite(painter, q['entry'], q['geometry'], q['alpha'])
@@ -520,12 +520,12 @@ class c_menu_editor(W.QWidget):
         # Render the game texture, never a synthetic QPainter border.
         panel = self.m_textures.get(4)
         if panel is not None and not panel.isNull() and self.m_help_panel_uv is not None:
-            painter.drawPixmap(C.QRectF(30, 282, 450, 175), panel,
+            painter.drawPixmap(C.QRectF(30, 313, 450, 199), panel,
                                self.m_help_panel_uv)
         if self.m_help_font is None:
             painter.restore()
             return
-        painter.setClipRect(C.QRectF(76, 312, 359, 116), C.Qt.ClipOperation.IntersectClip)
+        painter.setClipRect(C.QRectF(76, 358, 359, 136), C.Qt.ClipOperation.IntersectClip)
         for index, text in enumerate(self.m_navigation.help_lines()[:4]):
             pixmap = self.help_line_pixmap(text)
             if pixmap is None or pixmap.isNull():
@@ -533,7 +533,7 @@ class c_menu_editor(W.QWidget):
             # Original FFON glyphs are 24 pixels high. Preserve native
             # nearest-neighbour appearance while fitting the four-line box.
             scale = min(1.0, 337.0 / pixmap.width())
-            painter.drawPixmap(C.QRectF(87, 320 + index * 28,
+            painter.drawPixmap(C.QRectF(87, 370 + index * 28,
                                        pixmap.width() * scale,
                                        pixmap.height() * scale),
                                pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
