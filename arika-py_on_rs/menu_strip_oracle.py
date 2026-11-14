@@ -87,8 +87,9 @@ class c_strip_oracle:
             is_jump=op==0 and fn in (8,9)
             if is_branch:
                 if op==1:
-                    if rt != 0:raise AssertionError('unsupported REGIMM branch 0x%08X'%word)
-                    take=r[rs]<0
+                    if rt==0:take=r[rs]<0
+                    elif rt==1:take=r[rs]>=0
+                    else:raise AssertionError('unsupported REGIMM branch 0x%08X'%word)
                 elif op==4:take=r[rs]==r[rt]
                 elif op==5:take=r[rs]!=r[rt]
                 elif op==6:take=r[rs]<=0
