@@ -207,8 +207,9 @@ class MenuRuntimeNativeLabelTests(unittest.TestCase):
                           state['character_phases'][0],
                           state['label_phases'][0]), (0, 0, 0))
         self.assertEqual(runtime.character_geometry(0), [])
-        self.assertNotEqual(state['character_ages'][0],
-                            state['character_ages'][1])
+        self.assertEqual(state['character_ages'][1], 10.0)
+        self.assertEqual(state['character_phases'][1], 1,
+                         'new character is still entering as old exits')
 
     def test_confirm_exit_and_cancel_emphasis_are_distinct(self):
         from arika_menu_navigation import read_menu_report
