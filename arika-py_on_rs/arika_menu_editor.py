@@ -116,7 +116,7 @@ class c_menu_editor(W.QWidget):
         self.m_arrow_bob = True
         self.m_help_panel = True
         self.m_bounds = False
-        self.m_smooth = False
+        self.m_smooth = True
 
         layout = W.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
