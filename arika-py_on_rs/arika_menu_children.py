@@ -31,7 +31,8 @@ def initialize_child():
     # Only the transition to character phase 2 establishes the secondary
     # clock's origin. Constructor contents prior to that are not assumed.
     return dict(phase=0, age=0.0, offset=[0.0, 0.0], depth=0.0,
-                secondary_age=None, strip_phase=0.0)
+                secondary_age=None, strip_phase=0.0,
+                particle_timer=0.0)
 
 
 def first_offset(age, component, kernel, exiting=False):
@@ -73,7 +74,8 @@ def emphasize_first(state, kernel):
                  offset=list(kernel['reset_position']))
 
 
-def step_first(state, component, kernel, strip=None):
+def step_first(state, component, kernel, strip=None,
+               particle_update=None):
     # 0x373A10 increments the first child's +0x08 age before its callback.
     if state['phase'] == 0:
         return
@@ -103,7 +105,14 @@ def step_first(state, component, kernel, strip=None):
             state['strip_phase'] = step_phase(
                 state['strip_phase'], strip['parameters']['period'])
         elif component['item'] == 3:
-            state['particle_update_unresolved'] = True
+            if particle_update is None:
+                state['particle_update_unresolved'] = True
+            else:
+                # 0x37A860: timer is first-instance +0x320; the shared
+                # global six-slot pool and context RNG are owned by runtime.
+                state['particle_timer'] = particle_update(
+                    state['particle_timer'])
+                state.pop('particle_update_unresolved', None)
 
 
 def translate_first_geometry(geometry, offset):
