@@ -116,8 +116,8 @@ class MenuEditorNavigationTests(unittest.TestCase):
     def test_presentation_mode_changes_display_only(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
-        self.assertEqual(editor.m_presentation, 'square')
-        self.assertEqual(editor.presentation_height(), 512)
+        self.assertEqual(editor.m_presentation, 'tv_4_3')
+        self.assertEqual(editor.presentation_height(), 384)
         logical_bounds = list(editor.m_data['background']['bounds'])
         for mode, expected_height in (
             ('fit', 448), ('raw', 448),
@@ -148,6 +148,7 @@ class MenuEditorNavigationTests(unittest.TestCase):
     def test_logical_448_background_fills_square_presentation(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
+        editor.m_presentation_combo.setCurrentIndex(editor.m_presentation_combo.findData('square'))
         background = G.QPixmap(512, 512)
         background.fill(G.QColor('#47aabb'))
         editor.m_textures[1] = background
@@ -170,6 +171,7 @@ class MenuEditorNavigationTests(unittest.TestCase):
     def test_cloud_tiles_fill_bottom_of_square_menu(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
+        editor.m_presentation_combo.setCurrentIndex(editor.m_presentation_combo.findData('square'))
         for index in range(13):
             pixmap = G.QPixmap(512, 512)
             pixmap.fill(G.QColor('#ffffff'))
@@ -192,6 +194,7 @@ class MenuEditorNavigationTests(unittest.TestCase):
     def test_menu_uses_square_native_viewport(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
+        editor.m_presentation_combo.setCurrentIndex(editor.m_presentation_combo.findData('square'))
         for index in range(13):
             pixmap = G.QPixmap(512, 512)
             pixmap.fill(G.QColor('#3f3f3f'))
@@ -211,6 +214,35 @@ class MenuEditorNavigationTests(unittest.TestCase):
         editor.render(painter, C.QRect(0, 0, 512, 512))
         painter.end()
         self.assertNotEqual(image.pixelColor(100, 480), G.QColor('#10151c'))
+
+    def test_4_3_help_frame_matches_reference_top(self):
+        from PySide6 import QtCore as C, QtGui as G
+        editor = self.m_editor
+        self.assertEqual(editor.m_presentation, 'tv_4_3')
+        editor.m_motion = False
+        editor.m_background = False
+        editor.m_tint = False
+        editor.m_first = False
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = True
+        editor.m_help_font = None
+        editor.m_help_panel_uv = C.QRectF(0, 0, 2, 2)
+        panel = G.QPixmap(2, 2)
+        panel.fill(G.QColor('#e04020'))
+        editor.m_textures[4] = panel
+        image = G.QImage(512, 384, G.QImage.Format.Format_ARGB32)
+        image.fill(G.QColor('#10151c'))
+        painter = G.QPainter(image)
+        editor.render(painter, C.QRect(0, 0, 512, 384))
+        painter.end()
+        # The image stretches 448 logical Y coordinates to 384 TV pixels.
+        top_y = int(272.0 * 384.0 / 448.0)
+        self.assertEqual(image.pixelColor(40, top_y + 1),
+                         G.QColor('#e04020'))
+        self.assertEqual(image.pixelColor(40, top_y - 2),
+                         G.QColor('#10151c'))
 
     def test_layout_has_no_embedded_images(self):
         editor = self.m_editor
