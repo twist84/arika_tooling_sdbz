@@ -49,7 +49,9 @@ class c_menu_runtime:
         self.m_child_callback = child_callback
         self.m_item_update = item_update
         # Isolated deterministic RNG seed, NOT a captured game-context seed.
-        # None leaves the native-global particle state explicitly unresolved.
+        # The injected seed drives ONE context RNG for both Dragon
+        # particles and the shared ten-slot companion owner. It is not
+        # the actual game's captured seed. Without it both remain unresolved.
         self.m_particle_seed = particle_seed
         # Learned from a decoded game TIM2/PIX, never guessed from the
         # diagnostic 512x448 display coordinate system.
@@ -94,6 +96,12 @@ class c_menu_runtime:
         self.m_label_states = [initialize_label() for _ in range(7)]
         self.m_first_states = [initialize_child() for _ in range(7)]
         self.m_particle_pool = None
+        self.m_context_rng = None
+        self.m_companion_state = None
+        self.m_companion_spec = None
+        self.m_companion_total_draws = 0
+        self.m_companion_random_draws = ()
+        self.m_companion_last_event = None
         if self.m_native_children and self.m_particle_seed is not None:
             particle_spec = self.m_report['first_components'].get('particles')
             if particle_spec is not None:
@@ -108,11 +116,19 @@ class c_menu_runtime:
                 if clip is not None:
                     from arika_menu_rng import c_native_rng
                     from arika_menu_particles import c_dragon_particle_pool
-                    # A single context stream and a single global-pool
-                    # abstraction for this entire runtime instance.
+                    # A single context stream shared with the native
+                    # companion owner and one global-pool abstraction.
+                    self.m_context_rng = c_native_rng(self.m_particle_seed)
                     self.m_particle_pool = c_dragon_particle_pool(
-                        particle_spec, c_native_rng(self.m_particle_seed),
+                        particle_spec, self.m_context_rng,
                         clip, texture_dimensions=self.m_particle_texture_dimensions)
+                    self.m_companion_spec = self.m_report.get(
+                        'shared_companions')
+                    owner_spec = self.m_report.get('tile_companion_owner')
+                    if self.m_companion_spec is not None and owner_spec is not None:
+                        from arika_menu_owner import initialize_owner
+                        self.m_companion_state = initialize_owner(
+                            self.m_companion_spec, owner_spec)
         self.m_character_states = [initialize_child() for _ in range(7)]
         self.m_updates = 0
         self.m_last_calls = []
@@ -198,12 +214,34 @@ class c_menu_runtime:
         else:
             self._emit(role, index=index, phase=0, age=self.m_item_ages[index])
 
+    def _draw_companion_random(self, role):
+        """Consume the same 0x190450 stream as the six Dragon slots."""
+        if self.m_context_rng is None:
+            raise RuntimeError('no native RNG context was supplied')
+        value = self.m_context_rng.next()
+        self.m_companion_total_draws += 1
+        self.m_companion_random_draws += ((role, value),)
+        return value
+
     def _update_components(self):
-        # vtable +0x40: shared -> pending old item -> current -> inner.
+        # 0x379A40: shared -> pending old item -> current -> inner.
+        # 0x377DE0 updates 0x376080 ten-slot owner BEFORE the item.
+        # Do not confuse with draw callback 0x379E60 / 0x378170.
         self._emit('shared_update', phase=self.m_shared['phase'])
 
         def child(role, index):
             self._emit('shared_' + role, index=index)
+            if self.m_companion_state is not None:
+                if role == 'update_owner':
+                    from arika_menu_owner import step_owner
+                    self.m_companion_random_draws = ()
+                    self.m_companion_last_event = step_owner(
+                        self.m_companion_state,
+                        self.m_companion_spec['templates'],
+                        self._draw_companion_random)
+                elif role == 'start_owner':
+                    from arika_menu_owner import start_owner
+                    start_owner(self.m_companion_state)
             if self.m_child_callback is not None:
                 self.m_child_callback(role, index)
 
@@ -432,6 +470,25 @@ class c_menu_runtime:
         return draw_character(self.m_character_states[item], item,
                               self.m_report, include_idle=include_idle)
 
+    def companion_snapshot(self):
+        """Copy the recovered ten-slot owner, not the mutable live state."""
+        state = self.m_companion_state
+        if state is None:
+            return None
+        return dict(
+            owner_phase=state['owner_phase'],
+            owner_age=state['owner_age'], phase=state['phase'],
+            timer=state['timer'], offset=tuple(state['offset']),
+            slots=tuple(dict(
+                active=slot['active'], x=slot['x'], y=slot['y'],
+                speed=slot['speed'], depth=slot['depth'],
+                uv_xywh=tuple(slot['uv_xywh']),
+                template=slot['template']) for slot in state['slots']),
+            total_random_draws=self.m_companion_total_draws,
+            random_draws=tuple(self.m_companion_random_draws),
+            last_event=(dict(self.m_companion_last_event)
+                        if self.m_companion_last_event is not None else None))
+
     def snapshot(self):
         return {
             'update': self.m_updates,
@@ -458,6 +515,9 @@ class c_menu_runtime:
             'particle_timer': self.m_first_states[3]['particle_timer'],
             'particles': (self.m_particle_pool.snapshot()
                           if self.m_particle_pool is not None else None),
+            'companions': self.companion_snapshot(),
+            'context_rng_state': (self.m_context_rng.get_state()
+                                  if self.m_context_rng is not None else None),
             'first_particles_unresolved': tuple(
                 bool(state.get('particle_update_unresolved'))
                 for state in self.m_first_states),
