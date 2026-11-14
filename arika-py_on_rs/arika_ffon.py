@@ -310,7 +310,7 @@ def render_text(font: c_ffon_font, data: bytes, text: str,
                     current = [word]
             rows.append(current)
         else:
-            rows.append([line])
+            rows.append(line.split(' '))
 
     if not rows:
         return Image.new("RGBA", (cell_w, cell_h), (0, 0, 0, 0))
@@ -321,16 +321,14 @@ def render_text(font: c_ffon_font, data: bytes, text: str,
         return Image.new("RGBA", (cell_w, cell_h), (0, 0, 0, 0))
 
     img = Image.new("RGBA", (max_w, total_h), (0, 0, 0, 0))
-    space_glyph_img, space_glyph_w, _ = get_trimmed(0)
-    space_mask = space_glyph_img.getchannel("A").point(lambda p: 255 if p else 0)
     y = 0
     for row in rows:
         x = 0
         first_seg = True
         for seg in row:
             if not first_seg:
-                img.paste(space_glyph_img.convert("RGB"), (x, y), mask=space_mask)
-                x += space_width()
+                # A space is an advance, not glyph record zero.
+                x += space_width() + 2 * spacing
             first_seg = False
             first_char = True
             for ch in seg:
