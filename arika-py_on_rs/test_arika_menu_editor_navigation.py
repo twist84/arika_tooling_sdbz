@@ -917,6 +917,127 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(render(), hidden_pixels)
 
 
+    def test_native_draw_queue_preserves_actual_call_order_not_global_z_sort(self):
+        """0x379E60 draws shared, pending, selected, then arrows.
+
+        Synthetic texture-entry tags let the painter record draw order
+        independently of GS sampling, alpha or depth interpretation.
+        """
+        from PySide6 import QtCore as C, QtGui as G
+
+        editor = self.m_editor
+        editor.m_textures[1] = G.QPixmap(2, 2)
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        runtime = editor.m_native_runtime
+        runtime.m_outer_phase = 2
+        runtime.m_pending = 0
+        runtime.m_selected = 1
+        runtime.m_item_phases[0] = 4
+        runtime.m_item_phases[1] = 2
+        runtime.m_first_states[0]['phase'] = 4
+        runtime.m_first_states[1]['phase'] = 2
+        runtime.m_small_states[0]['phase'] = 2
+        runtime.m_shared['overlay_hidden'] = False
+        runtime.m_shared['overlay_alpha'] = .5
+        editor.m_item = 1
+        editor.m_background = True
+        editor.m_motion = True
+        editor.m_tint = True
+        editor.m_first = True
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+
+        # These source geometry tags are deliberately unique; the first
+        # item draw must follow the shared overlay and precede current.
+        old_item = editor.m_data['items'][0]['first']
+        new_item = editor.m_data['items'][1]['first']
+        editor.m_data['items'][0]['first'] = [
+            {'texture_entry': 100, 'geometry': old_item[0]['geometry']}]
+        editor.m_data['items'][1]['first'] = [
+            {'texture_entry': 101, 'geometry': new_item[0]['geometry']}]
+        # Remove the independently tested dynamic strip geometry, leaving
+        # this test focused on native parent and shared draw ordering.
+        runtime.first_strip_geometry = lambda item: []
+        runtime.particle_geometry = lambda item: []
+        commands = []
+        editor.draw_sprite = lambda painter, entry, geometry, alpha: (
+            commands.append((entry, geometry.get('depth', None))))
+        image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+        painter = G.QPainter(image)
+        try:
+            editor.render(painter, C.QRect(0, 0, 512, 448))
+        finally:
+            painter.end()
+        self.assertEqual([entry for entry, depth in commands],
+                         [1, 2, 2, 2, 3, 8, 100, 101])
+        self.assertGreater(commands[1][1], commands[3][1],
+                           'banner depth is greater than small depth')
+        self.assertLess(commands[4][1], commands[5][1],
+                        'native draw sequence is not an arbitrary Z sort')
+
+        # The diagnostic timeline retains the original depth sort.
+        editor.m_lifecycle_combo.setCurrentIndex(0)
+        diagnostic = []
+        editor.draw_sprite = lambda painter, entry, geometry, alpha: (
+            diagnostic.append((entry, geometry.get('depth', 0))))
+        painter = G.QPainter(image)
+        try:
+            editor.render(painter, C.QRect(0, 0, 512, 448))
+        finally:
+            painter.end()
+        self.assertEqual(
+            [d for _, d in diagnostic],
+            sorted(d for _, d in diagnostic),
+            'the independent 140-frame diagnostic renderer keeps Z sorting')
+
+    def test_native_item3_draws_decorations_before_particle_pass(self):
+        """0x37A910 draws two literals, then six decorations, then pool."""
+        from PySide6 import QtCore as C, QtGui as G
+
+        editor = self.m_editor
+        editor.m_textures[1] = G.QPixmap(2, 2)
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        runtime = editor.m_native_runtime
+        runtime.m_outer_phase = 2
+        runtime.m_selected = 3
+        runtime.m_pending = -1
+        runtime.m_item_phases[3] = 2
+        runtime.m_first_states[3]['phase'] = 2
+        editor.m_item = 3
+        editor.m_background = False
+        editor.m_motion = False
+        editor.m_tint = False
+        editor.m_first = True
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+        runtime.first_strip_geometry = lambda item: []
+        parts = editor.m_data['items'][3]['first']
+        self.assertEqual(len(parts), 8)
+        # Eight first-layer sprite entries are followed by six-slot pool
+        # quads. Their Z values differ but do not authorize reordering.
+        editor.m_data['items'][3]['first'] = [
+            {'texture_entry': i + 100,
+             'geometry': original['geometry']}
+            for i, original in enumerate(parts)]
+        commands = []
+        editor.draw_sprite = lambda painter, entry, geometry, alpha: (
+            commands.append(entry))
+        painter_image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+        painter = G.QPainter(painter_image)
+        try:
+            editor.render(painter, C.QRect(0, 0, 512, 448))
+        finally:
+            painter.end()
+        self.assertEqual(commands[:8], list(range(100, 108)))
+        expected_particle_quads = len(runtime.particle_geometry(3))
+        self.assertGreater(expected_particle_quads, 0)
+        self.assertEqual(commands[8:], [11] * expected_particle_quads)
+
+
 
 if __name__ == '__main__':
     unittest.main()
