@@ -34,6 +34,15 @@ SPRITE_OBJECT_RESOURCE_OFFSET = 0x44
 CACHE_POINTER_ADDRESS = 0x4FD40C
 CACHE_FLAGS_ADDRESS = 0x4FD410
 
+# 0x374DE0 global manager; 0x374F10 returned count 13 via vtable +0x0C.
+# Selector 0..12 routes through 0x3725E0 -> 0x2FB990, then record +0x34.
+RESOURCE_MANAGER_GLOBAL_ADDRESS = 0x4FDC48
+RESOURCE_MANAGER_VTABLE = 0x4F1880
+RESOURCE_MANAGER_ENTRY_COUNT = 13
+RESOURCE_WRAPPER_FLAGS_OFFSET = 0x04
+RESOURCE_WRAPPER_RECORD_OFFSET = 0x08
+RESOURCE_RECORD_TABLE_OFFSET = 0x34
+
 
 def _address(value):
     if type(value) is not int or not 0 <= value <= 0xFFFFFFFF:
@@ -82,8 +91,95 @@ def binding_cache_decision(resource_pointer, sampler_bytes,
     return tuple(sampler_bytes) != tuple(cached_bytes)
 
 
+def resolve_resource_selector_from_ram(ram, selector):
+    """Follow 0x374DE0 -> 0x3725E0 and its verified 13-entry manager.
+
+    For a fully captured, low-address EE memory image, this resolves
+    a selector to the object stored into sprite +0x44. It does NOT
+    resolve the resource object's virtual +0x4C callback return,
+    a texture slot, or the final active GS state.
+    """
+    if not isinstance(ram, bytes):
+        raise TypeError('RAM capture must be bytes')
+    if type(selector) is not int or not 0 <= selector <= 0xFFFFFFFF:
+        raise ValueError('resource selector must be an unsigned u32')
+    result = {
+        'selector': selector,
+        'manager_address': None,
+        'wrapper_address': None,
+        'record_address': None,
+        'entry_table_address': None,
+        'resource_object_pointer': None,
+        'status': 'unknown',
+    }
+
+    def captured_word(address):
+        data = _memory_bytes(ram, address, 4)
+        return struct.unpack('<I', data)[0] if data is not None else None
+
+    manager = captured_word(RESOURCE_MANAGER_GLOBAL_ADDRESS)
+    if manager is None:
+        result['status'] = 'global_outside_ram'
+        return result
+    if manager == 0:
+        result['status'] = 'manager_not_initialized'
+        return result
+    result['manager_address'] = hex(manager)
+    vtable = captured_word(manager)
+    if vtable is None:
+        result['status'] = 'manager_outside_ram'
+        return result
+    if vtable != RESOURCE_MANAGER_VTABLE:
+        result['status'] = 'unverified_manager_vtable'
+        return result
+    if selector >= RESOURCE_MANAGER_ENTRY_COUNT:
+        # This manager's +0x10 fallback (0x354870) returns zero.
+        result['status'] = 'native_fallback_null'
+        result['resource_object_pointer'] = hex(0)
+        return result
+    wrapper = captured_word(manager + 4)
+    if wrapper is None:
+        result['status'] = 'manager_outside_ram'
+        return result
+    if wrapper == 0:
+        result['status'] = 'wrapper_not_initialized'
+        return result
+    result['wrapper_address'] = hex(wrapper)
+    flags = captured_word(wrapper + RESOURCE_WRAPPER_FLAGS_OFFSET)
+    if flags is None:
+        result['status'] = 'wrapper_outside_ram'
+        return result
+    # 0x2FB990 returns zero unless wrapper+4 bit 0 is set.
+    if not flags & 1:
+        result['status'] = 'wrapper_not_ready'
+        return result
+    record = captured_word(wrapper + RESOURCE_WRAPPER_RECORD_OFFSET)
+    if record is None:
+        result['status'] = 'wrapper_outside_ram'
+        return result
+    if record == 0:
+        result['status'] = 'record_not_available'
+        return result
+    result['record_address'] = hex(record)
+    entry_table = captured_word(record + RESOURCE_RECORD_TABLE_OFFSET)
+    if entry_table is None:
+        result['status'] = 'record_outside_ram'
+        return result
+    if entry_table == 0:
+        result['status'] = 'entry_table_null'
+        return result
+    result['entry_table_address'] = hex(entry_table)
+    resource = captured_word(entry_table + selector * 4)
+    if resource is None:
+        result['status'] = 'entry_outside_ram'
+        return result
+    result['resource_object_pointer'] = hex(resource)
+    result['status'] = 'resolved' if resource else 'entry_null'
+    return result
+
+
 def correlate_capture(packet, ram, sprite_addresses=(),
-                      callback_returns=None):
+                      callback_returns=None, resource_selectors=()):
     """Follow actual captured pointers without inventing sprite ownership.
 
     The RAM argument is a contiguous byte image mapped at EE address 0.
@@ -125,6 +221,18 @@ def correlate_capture(packet, ram, sprite_addresses=(),
             if int(sprite['sprite_address'], 16) == address:
                 sprite['callback_return_pointer'] = hex(result_pointer)
                 break
+
+    selector_entries = [
+        resolve_resource_selector_from_ram(ram, selector)
+        for selector in resource_selectors
+    ]
+    for entry in selector_entries:
+        pointer = entry['resource_object_pointer']
+        entry['matching_captured_sprites'] = [
+            sprite['sprite_address'] for sprite in sprites
+            if pointer not in (None, hex(0))
+            and sprite['resource_object_pointer'] == pointer
+        ]
 
     decoded = decode_packet_sampling(packet)
     bindings = []
@@ -209,16 +317,19 @@ def correlate_capture(packet, ram, sprite_addresses=(),
     return {
         'bindings': bindings,
         'sprites': sprites,
+        'selector_entries': selector_entries,
         'capture_scope': {
             'packet_commands': len(decoded['commands']),
             'ram_bytes': len(ram),
             'sprite_addresses': len(sprites),
+            'selector_lookups': len(selector_entries),
             'observed_callback_return_count': len(callback_returns),
         },
         'limitations': [
             'Same-frame EE RAM and intermediate engine command data are required.',
             'Sprite +0x44 is NOT the opcode-1 +0x08 pointer.',
-            'Sprite associations require captured vtable +0x4C return values.',
+            'A verified manager selector resolves sprite +0x44 only, not command +0x08.',
+            'Sprite-to-command associations require captured vtable +0x4C return values.',
             'A cache hit can omit opcode-1 even when a sprite is drawn.',
             'Writer preflight is not actual GS/DMA submission or draw-time state.',
             'Indirect callbacks and subsequent GS commands may override state.',
@@ -248,6 +359,9 @@ def main():
     parser.add_argument('ram', type=Path, help='same-frame direct 0-based EE RAM dump')
     parser.add_argument('--sprite', action='append', type=_parse_address,
                         default=[], help='sprite EE address (repeatable)')
+    parser.add_argument('--resource-selector', action='append',
+                        type=_parse_address, default=[],
+                        help='lookup original 13-entry menu resource selector')
     parser.add_argument('--observed-return', action='append',
                         type=_parse_callback_mapping, default=[],
                         help='sprite address:captured vtable +0x4C return')
@@ -258,7 +372,7 @@ def main():
             raise ValueError('duplicate observed callback return address')
         result = correlate_capture(
             args.packet.read_bytes(), args.ram.read_bytes(),
-            args.sprite, mapping)
+            args.sprite, mapping, args.resource_selector)
     except (OSError, ValueError, TypeError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2))
