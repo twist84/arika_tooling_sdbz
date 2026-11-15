@@ -178,7 +178,13 @@ completed in subsequent PR #14 checkpoints. The current status is:
 \n- [x] Follow sprite resource attachment through `0x2FD8F0`
   into `0x2FE920` opcode-1 packet fields, verifying four
   named menu constructors and a bounded exact-ELF inventory
-  of 59 linear / 7 nearest / 11 unclassified callsites.
+  of 59 literal-linear / 7 literal-nearest and 11
+  initially unclassified callsites. Follow-up ELF-backed
+  reaching-definition analysis resolved all eleven as 7 linear
+  and 4 nearest: **66 initial-linear / 11 initial-nearest**
+  in a menu-adjacent shared-code region. Five containing
+  routines have direct external callers, so 77 scanned
+  direct calls are **not** 77 proven menu sprite owners.
   Constructor flags are **not** live GS filtering captures.
 - [x] Remove the screenshot comparator's hardcoded
   four-help-line assumption; VERSUS and OPTIONS use their
