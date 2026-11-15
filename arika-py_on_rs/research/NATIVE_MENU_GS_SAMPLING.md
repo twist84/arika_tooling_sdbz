@@ -173,26 +173,77 @@ does not prove the resource selector's runtime pointer is non-null,
 that other draws reuse this object, or that a later setter/callback
 has not changed the GS state.
 
-### Broader code-region scan, strict unknowns
+### Broader code-region scan and audited argument reaching definitions
 
-A SHA-256-gated offline scan of **direct** `JAL 0x2FD8F0`
-within the EU-beta menu-code range `[0x370000,0x3B0000)`
-found **77** matching call instructions. Only an *exact*
-consecutive constant-argument signature (three instructions
-before JAL and its delay slot) was classified:
+**Scope correction:** The previous report called all 77 direct attachment
+calls "menu" sites. This was too broad. The function at `0x370A00` is
+called at `0x417EF8`, and `0x37C470` at `0x408338`, outside the
+bounded `[0x370000,0x3B0000)` scan region. This is a
+**menu-adjacent shared-code region**, not a list of 77 proven
+main-menu-owned sprites. The four separately identified menu
+constructor sites above remain verified.
 
-| Class | Verified direct sites |
-| --- | ---: |
-| Literal (0,1,0,0): initial linear filtering | 59 |
-| Literal (0,0,0,0): initial nearest filtering | 7 |
-| Noncanonical/conditional argument setup: **unknown** | 11 |
+The exact-SHA-gated scanner starts with the strict four-instruction
+literal argument pattern. Eleven direct calls depart from that layout
+because their argument moves occur earlier, their JAL delay slot
+contains an unrelated store, or the caller takes a branch. All
+eleven have now been **individually reviewed** at the original
+R5900 instruction words; the patched scanner records each argument
+definition address rather than relying on a generic speculative
+interprocedural register trace.
 
-The seven nearest-initialization JAL sites are
-`0x370A6C`, `0x370B7C`, `0x370BE4`,
-`0x370C08`, `0x37C56C`, `0x37C67C`,
-and `0x37D8D0`. Some use dynamic resource pointers;
-their PIX indices and draw-time GS state have **not**
-been claimed or filled in.
+| Proof category | Initial linear | Initial nearest | Unknown |
+| --- | ---: | ---: | ---: |
+| Four-instruction adjacent literal pattern | 59 | 7 | 0 |
+| Individually audited reaching definitions | 7 | 4 | 0 |
+| **Total direct sites in scanned code range** | **66** | **11** | **0** |
+
+The newly classified eleven call sites are:
+
+| Setter JAL | a2/a3/a4/a5 definition VAs | Initial filter |
+| --- | --- | --- |
+| `0x37086C` | `0x37085C/0x37082C/0x370834/0x37083C` | linear |
+| `0x370930` | `0x370908/0x37090C/0x370914/0x37091C` | linear |
+| `0x37098C` | `0x370968/0x37096C/0x370970/0x370974` | nearest |
+| `0x3709AC` | `0x37099C/0x3709A0/0x3709A4/0x3709A8` | linear |
+| `0x3727B4` | `0x3727B8/0x372794/0x37279C/0x3727A4` | nearest |
+| `0x37C53C` | `0x37C528/0x37C52C/0x37C530/0x37C534` | linear |
+| `0x37C5BC` | `0x37C5A8/0x37C5AC/0x37C5B0/0x37C5B4` | nearest |
+| `0x37C624` | `0x37C604/0x37C60C/0x37C610/0x37C614` | nearest |
+| `0x37C754` | `0x37C73C/0x37C740/0x37C744/0x37C748` | linear |
+| `0x37D864` | `0x37D83C/0x37D844/0x37D84C/0x37D868` | linear |
+| `0x3810D8` | `0x3810D0/0x38103C/0x3810D4/0x3810DC` | linear |
+
+At `0x3727B4`, the a2 assignment happens **in the JAL delay
+slot** at `0x3727B8`. At `0x3810D8`, a3=1 is established by
+`0x38103C` before the branch at `0x381040` to
+`0x3810C8`. The delay slot and the taken-branch path
+preserve that value. Both paths were inspected explicitly;
+simple "the nearest preceding opcode" analysis would miss
+them.
+
+### Nearest-initializer routine ownership, without inventing menu sprites
+
+The eleven verified nearest-initializer calls are grouped into five
+**containing functions**, not assigned PIX indices:
+
+| Containing function | Nearest setter JALs | Direct callsites outside scanner |
+| --- | --- | --- |
+| `0x3707F0` | `0x37098C` | `0x41665C` |
+| `0x370A00` | `0x370A6C/0x370B7C/0x370BE4/0x370C08` | `0x417EF8` |
+| `0x372790` | `0x3727B4` | `0x34266C/0x344864` |
+| `0x37C470` | `0x37C56C/0x37C5BC/0x37C624/0x37C67C` | `0x408338` |
+| `0x37C7C0` | `0x37D8D0` | `0x408B28` (also `0x37C4AC` inside range) |
+
+Each direct caller's `JAL` instruction was verified against the exact
+original ELF. External calls establish that these functions are
+**not exclusive to the menu range**; they do not prove their
+absence from a particular menu display or rule out indirect calls.
+
+The original initializers are **not** active-GS proofs. The recovered
+logic still does not identify resource success, lifetime of attached
+texture pointers, intervening setters or a specific screenshot
+draw's final GS state.
 
 The parser `arika_menu_gs_attachment.py` accepts a captured
 sprite memory image through offset `+0x4B`. It reports the
@@ -210,7 +261,7 @@ python arika_menu_gs_attachment_elf.py path/to/SLES_541.61 --only-nearest
 ```
 
 The first command lists only four named source-to-attachment
-constructors, and the last scans the bounded code region. Neither
+constructors, and the last scans the bounded shared-code region. Neither
 accepts archive filenames as a substitute for captured resource
 pointers.
 
