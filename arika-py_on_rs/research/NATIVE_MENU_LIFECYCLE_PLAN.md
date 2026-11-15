@@ -289,6 +289,32 @@ to a real GS register dump before altering the Qt compositor's
 blend or depth modes. See
 [NATIVE_MENU_GS_COMMANDS.md](NATIVE_MENU_GS_COMMANDS.md).
 
+### PCSX2 versus Qt screenshot: banner occlusion regression
+
+The supplied 15 November 2026 screenshot pair (958×719 PCSX2 and
+706×529 Qt) pinpoints the missing `MAIN MENU` header. The banner is
+**not** missing from the PNG atlas or its animation state. Native
+`0x378170` submits the title at `[0,16]..[264,64]`, Z=99,
+then submits small sprite #2 at `[0,0]..[320,152]`, Z=5.
+A QPainter source-over implementation that directly follows the EE
+call sequence necessarily hides the entire title. The reference game
+renders it in front, so EE submission order alone cannot specify
+the final graphics composition.
+
+The editor now retains that exact recovered **submission order**
+and separately applies `software_painter_order` as a stable
+low-to-high-depth **Qt approximation**. Equal-Z sprites retain
+native callback order, while the banner is painted after the
+overlapping small sprite. The fix has synthetic-asset offscreen
+pixel coverage and is read-only with respect to logical native
+state/RNG. It introduces no guessed offsets or clocks.
+See [NATIVE_MENU_GS_COMMANDS.md](NATIVE_MENU_GS_COMMANDS.md).
+
+Unresolved: hardware GS depth compare/write bits, alpha test and
+blending for semitransparent overlapping sprites. The screenshot is
+empirical evidence for this one visible stacking result, **not**
+an exhaustive GS trace.
+
 ### Follow-up
 
 Continue from the exact existing PR head, consult the particle research file
