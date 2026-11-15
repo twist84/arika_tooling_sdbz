@@ -917,13 +917,11 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(render(), hidden_pixels)
 
 
-    def test_native_draw_queue_preserves_actual_call_order_not_global_z_sort(self):
-        """0x379E60 draws shared, pending, selected, then arrows.
-
-        Synthetic texture-entry tags let the painter record draw order
-        independently of GS sampling, alpha or depth interpretation.
-        """
+    def test_native_submission_order_and_depth_aware_painter_order(self):
+        """Source command order is preserved, while Qt approximates Z layers."""
         from PySide6 import QtCore as C, QtGui as G
+        from unittest.mock import patch
+        from arika_menu_compositor import software_painter_order
 
         editor = self.m_editor
         editor.m_textures[1] = G.QPixmap(2, 2)
@@ -962,20 +960,33 @@ class MenuEditorNavigationTests(unittest.TestCase):
         runtime.first_strip_geometry = lambda item: []
         runtime.particle_geometry = lambda item: []
         commands = []
+        submissions = []
+
+        def capture_native_submission(queue):
+            submissions.extend(queue)
+            return software_painter_order(queue)
+
         editor.draw_sprite = lambda painter, entry, geometry, alpha: (
             commands.append((entry, geometry.get('depth', None))))
         image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
         painter = G.QPainter(image)
         try:
-            editor.render(painter, C.QRect(0, 0, 512, 448))
+            with patch('arika_menu_editor.software_painter_order',
+                       side_effect=capture_native_submission):
+                editor.render(painter, C.QRect(0, 0, 512, 448))
         finally:
             painter.end()
-        self.assertEqual([entry for entry, depth in commands],
-                         [1, 2, 2, 2, 3, 8, 100, 101])
-        self.assertGreater(commands[1][1], commands[3][1],
-                           'banner depth is greater than small depth')
-        self.assertLess(commands[4][1], commands[3][1],
-                        'small sprite draws after higher-Z tile in native order')
+        self.assertEqual([q['entry'] for q in submissions],
+                         [1, 2, 2, 2, 3, 8, 100, 101],
+                         'native commands preserve shared/pending/current')
+        self.assertEqual([entry for entry, _ in commands],
+                         [q['entry'] for q in sorted(
+                             submissions, key=lambda q: q['depth'])],
+                         'Qt must compose by depth without changing commands')
+        self.assertGreater(submissions[1]['depth'], submissions[4]['depth'],
+                           'banner Z is above small sprite Z')
+        self.assertLess(commands.index((3, 5)), commands.index((2, 99)),
+                        'small sprite must paint behind the title')
 
         # The diagnostic timeline retains the original depth sort.
         editor.m_lifecycle_combo.setCurrentIndex(0)
@@ -1025,19 +1036,87 @@ class MenuEditorNavigationTests(unittest.TestCase):
             {'texture_entry': i + 100,
              'geometry': original['geometry']}
             for i, original in enumerate(parts)]
+        from unittest.mock import patch
+        from arika_menu_compositor import software_painter_order
+
         commands = []
+        submissions = []
+
+        def capture_native_submission(queue):
+            submissions.extend(queue)
+            return software_painter_order(queue)
+
         editor.draw_sprite = lambda painter, entry, geometry, alpha: (
             commands.append(entry))
         painter_image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
         painter = G.QPainter(painter_image)
         try:
+            with patch('arika_menu_editor.software_painter_order',
+                       side_effect=capture_native_submission):
+                editor.render(painter, C.QRect(0, 0, 512, 448))
+        finally:
+            painter.end()
+        self.assertEqual([q['entry'] for q in submissions[:8]],
+                         list(range(100, 108)))
+        expected_particle_quads = len(runtime.particle_geometry(3))
+        self.assertGreater(expected_particle_quads, 0)
+        self.assertEqual([q['entry'] for q in submissions[8:]],
+                         [11] * expected_particle_quads)
+        self.assertEqual(commands, [q['entry'] for q in sorted(
+            submissions, key=lambda q: q['depth'])])
+
+
+    def test_title_depth_overlap_matches_reference_capture(self):
+        """EE submits banner before small #2, but the title is visible.
+
+        PCSX2 reference: banner [0,16]-[264,64] Z99 survives small #2
+        [0,0]-[320,152] Z5, which is submitted afterward.
+        Synthetic solid atlases test the overlap without game assets.
+        """
+        from PySide6 import QtCore as C, QtGui as G
+
+        editor = self.m_editor
+        banner_atlas = G.QPixmap(512, 512)
+        banner_atlas.fill(G.QColor('#0838ff'))
+        small_atlas = G.QPixmap(512, 512)
+        small_atlas.fill(G.QColor('#ff3300'))
+        editor.m_textures[2] = banner_atlas
+        editor.m_textures[3] = small_atlas
+
+        editor.m_background = False
+        editor.m_motion = True
+        editor.m_tint = False
+        editor.m_first = False
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+        editor.m_presentation = 'raw'
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+
+        runtime = editor.m_native_runtime
+        runtime.m_outer_phase = 2
+        runtime.m_banner_state.update(
+            phase=2, age=0.0, offset=[0.0, 0.0])
+        for state in runtime.m_small_states:
+            state.update(phase=0, offset=[0.0, 0.0])
+        runtime.m_small_states[2]['phase'] = 2
+
+        image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+        image.fill(G.QColor('#10151c'))
+        painter = G.QPainter(image)
+        before = runtime.snapshot()
+        try:
             editor.render(painter, C.QRect(0, 0, 512, 448))
         finally:
             painter.end()
-        self.assertEqual(commands[:8], list(range(100, 108)))
-        expected_particle_quads = len(runtime.particle_geometry(3))
-        self.assertGreater(expected_particle_quads, 0)
-        self.assertEqual(commands[8:], [11] * expected_particle_quads)
+
+        self.assertEqual(image.pixelColor(100, 40), G.QColor('#0838ff'),
+                         'banner is above small sprite at the overlap')
+        self.assertEqual(image.pixelColor(100, 10), G.QColor('#ff3300'),
+                         'small sprite remains visible outside title')
+        self.assertEqual(before, runtime.snapshot(),
+                         'software composition cannot advance native state')
 
 
 
