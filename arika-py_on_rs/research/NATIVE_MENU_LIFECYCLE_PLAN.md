@@ -167,6 +167,14 @@ completed in subsequent PR #14 checkpoints. The current status is:
 - [x] Reconstruct file-backed PS2 GS TEST/ALPHA/ZBUF and texture
   register writers, including the six-register TEX0/TEX1/TEXA/CLAMP
   GIF path and 240 synthetic ELF differential cases.
+- [x] Trace the native sprite-command opcode-1 filtering and
+  clamping selector tables (EE `0x4F73C8` / `0x4F73D0`),
+  `0x104820` flag setter and `0x10DA20 → 0x10C3E0`
+  conditional `TEX1` emission. Synthetic packet and
+  optional original-ELF-word tests added, plus a
+  `--resolve-sampling` packet-inspection flag. A periodic
+  PR-diff review also corrected stale decoder documentation.
+  **Do not apply per-atlas filters without a captured binding map.**
 - [ ] Capture **active** GS register state, runtime texture records,
   actual filtering/blending and per-pixel depth behavior via PCSX2.
 
