@@ -424,6 +424,27 @@ frame, and 4:3/output/FFON screenshot parity.
 The Qt software painter is unchanged until those
 runtime values are observed.
 
+### Offline native sine/cosine dispatch checkpoint
+
+The remaining OPTIONS and DRAGON SUMMONING idle precision gap has been
+narrowed. The actual `0x1859D8` cosine and `0x185C78` sine wrappers
+compare float32 `abs(input)` bits with `0x3F490FD8` (π/4). For
+larger arguments they call native reducer `0x182900`, receive a
+quadrant and two-word f32 remainder, and dispatch to leaf
+`0x183DE0` (cosine) or `0x184798` (sine) with native quadrant
+sign changes. The complete four-quadrant kernel map is in
+[NATIVE_MENU_TRIG_DISPATCH.md](NATIVE_MENU_TRIG_DISPATCH.md).
+
+`arika_menu_native_trig.py` implements a **read-only dispatch
+decoder**, including native NEG.S signed-zero handling; it refuses
+to invent reducer outputs. The new tests cover thresholds, both
+wrappers, four quadrants, signs and the exact native JAL/NEG.S
+instruction sites when a SHA256-verified user-owned ELF is supplied.
+This is not an EE polynomial or argument-reduction port, so Qt's
+host sine/cosine motion remains unchanged. Next: recover the
+normal-menu-angle range of the native reducer and the leaf kernels
+before claiming last-bit idle-motion parity.
+
 ### Follow-up
 
 Continue from the exact existing PR head, consult the particle research file
