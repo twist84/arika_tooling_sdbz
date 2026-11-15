@@ -130,6 +130,20 @@ font already being loaded by the editor is the right *asset path*:
   into the menu FFON decoder; no filename/path
   change is required.
 
+The ORIGINAL help-text record is likewise file-backed:
+at EE VA `0x004FC180` the `u32` line count is
+**4**, followed by four `u32` string pointers
+`0x4D3740`, `0x4D3760`, `0x4D3790`,
+`0x4D37C0`. They resolve to the four
+ORIGINAL description lines already exposed by
+`c_menu_navigation.help_lines()`.
+The native `0x003A2780` text-table initializer
+installs data pointers for the global lookup;
+these are **content references**, not instructions
+that set text X/Y or FFON advance. This further
+narrows the missing work to the actual text/frame
+draw owner rather than language or filename lookup.
+
 This verifies the *resource source*, not the native
 glyph-advance formula, layout rectangle or text
 compositor. The initializer's file-read state
