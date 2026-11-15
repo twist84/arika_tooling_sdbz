@@ -175,6 +175,16 @@ completed in subsequent PR #14 checkpoints. The current status is:
   `--resolve-sampling` packet-inspection flag. A periodic
   PR-diff review also corrected stale decoder documentation.
   **Do not apply per-atlas filters without a captured binding map.**
+\n- [x] Follow sprite resource attachment through `0x2FD8F0`
+  into `0x2FE920` opcode-1 packet fields, verifying four
+  named menu constructors and a bounded exact-ELF inventory
+  of 59 linear / 7 nearest / 11 unclassified callsites.
+  Constructor flags are **not** live GS filtering captures.
+- [x] Remove the screenshot comparator's hardcoded
+  four-help-line assumption; VERSUS and OPTIONS use their
+  verified three-line ELF text records, with all seven
+  item counts regression-tested.
+
 - [ ] Capture **active** GS register state, runtime texture records,
   actual filtering/blending and per-pixel depth behavior via PCSX2.
 
