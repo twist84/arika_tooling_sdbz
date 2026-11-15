@@ -319,6 +319,36 @@ blending for semitransparent overlapping sprites. The screenshot is
 empirical evidence for this one visible stacking result, **not**
 an exhaustive GS trace.
 
+### Hardware GS ALPHA/TEST/ZBUF emitter checkpoint
+
+The previously unresolved backend calls now reach confirmed GS
+register writes. The exact EU-beta `0x103F20` function emits
+`ZBUF_1/TEST_1` and optionally `ZBUF_2/TEST_2`; `0x104210`
+emits `ALPHA_1/ALPHA_2`, both using GIF A+D packets through the
+`0x103B00` allocator and `0x102C90` submission path.
+
+The renderer startup selector values map to `TEST=0x0005000F`
+(alpha test NOTEQUAL zero and depth comparison GEQUAL) and the
+file-backed lookup at `0x4392DB` maps to `ALPHA=0x44`
+(source-alpha equation). These explain a plausible native
+reason why the later-submitted Z=5 small sprite does not cover
+the Z=99 menu banner. They are **not** live-frame GS captures.
+The actual ZBUF values depend on BSS globals `0x4FF3BC`
+and `0x4FF3B0`, still unknown without running the game.
+
+`arika_menu_gs_registers.py` recovers the GS bit fields,
+emitter DMA/GIF packet layout, native lookup selectors and an
+optional exact-ELF alpha table reader. Regression tests cover
+the default mode, alternative comparison selections, AREF
+conversion, packet branches and unknown runtime data.
+See [NATIVE_MENU_GS_COMMANDS.md](NATIVE_MENU_GS_COMMANDS.md).
+
+The remaining GS task is narrowing **actual active-frame state**
+via PCSX2 GS dumps or instrumentation (including texture
+`TEX0/TEX1/CLAMP/TEXA`, Z allocation, alpha and depth write
+rules) and then updating Qt compositing. Do not mark pixel
+parity complete from a recovered default alone.
+
 ### Follow-up
 
 Continue from the exact existing PR head, consult the particle research file
