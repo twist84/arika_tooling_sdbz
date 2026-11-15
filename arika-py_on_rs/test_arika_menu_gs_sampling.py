@@ -5,9 +5,13 @@ original-ELF oracle verifies both table values and native call sites
 without shipping any copyrighted executable data.
 """
 import hashlib
+import json
 import os
 from pathlib import Path
 import struct
+import subprocess
+import sys
+import tempfile
 import unittest
 
 from arika_menu_gs_sampling import (
@@ -106,6 +110,29 @@ class NativeTextureSamplingTests(unittest.TestCase):
         original = decode_packet(native)
         self.assertNotIn('texture_binding', original['commands'][1])
         self.assertNotIn('binding_at_callback_entry', original['commands'][4])
+
+    def test_command_line_opt_in_outputs_native_flags_as_json(self):
+        source = packet(texture_binding(1, 1), callback(b'draw'))
+        with tempfile.TemporaryDirectory() as root:
+            filename = Path(root) / 'synthetic-command.bin'
+            filename.write_bytes(source)
+            executable = Path(__file__).with_name('arika_menu_gs_packet.py')
+            out = subprocess.run(
+                [sys.executable, str(executable), str(filename),
+                 '--resolve-sampling'],
+                capture_output=True, text=True, check=True)
+            decoded = json.loads(out.stdout)
+            binding = decoded['commands'][0]['texture_binding']
+            self.assertEqual(binding['filter_flag'], 1)
+            self.assertEqual(binding['clamp_flag'], 0)
+            self.assertEqual(binding['tex1_if_texture_writer_succeeds'], 0x60)
+            self.assertEqual(decoded['commands'][1][
+                'binding_at_callback_entry']['texture_filter'], 'linear')
+            plain = subprocess.run(
+                [sys.executable, str(executable), str(filename)],
+                capture_output=True, text=True, check=True)
+            self.assertNotIn(
+                'texture_binding', json.loads(plain.stdout)['commands'][0])
 
     def test_rejects_invalid_input_without_corrupting_source(self):
         with self.assertRaises(ValueError):
