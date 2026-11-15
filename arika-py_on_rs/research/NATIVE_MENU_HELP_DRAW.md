@@ -180,3 +180,74 @@ diagnostic timeline remains independent.
 **Still outstanding:** the actual `0x2CDCA0` FFON glyph-run
 rendering metrics, PS2 GS blend and per-pixel depth state,
 and live original console/PCSX2 framebuffer capture.
+
+## Font cell metrics and downstream glyph path (next checkpoint)
+
+The actual font object is **not** initialized by the help panel. The
+global startup constructor at `0x004E2E60` calls `0x0019A120`
+for the resident font object `0x0063BE80`, installing
+vtable `0x004E3390`. The resource startup path `0x00326488–0x003264AC`
+then installs the loaded `font/5-24-2.fon` data and writes
+**24.0f** (instruction `LUI 0x41C0` at `0x32648C`) to
+the font object's `+0x04` and `+0x08` size fields.
+The source FFON header also describes 24×24 cells.
+
+The menu's `0x0037C240` direct call to `0x002CDCA0`
+is a **text API wrapper**, not the low-level bitmap blitter.
+It saves the incoming coordinates/font scale, builds a four-channel
+color, then dispatches the resident font object's vtable
+**`+0x20`** (at `0x2CDF14–0x2CDF54`).
+The menu supplies a null color pointer and the wrapper uses its
+four-float default at `0x00439FB0 = (1,1,1,1)`.
+The font object's verified vtable slots are:
+
+| Vtable offset | ELF callback | Purpose |
+| --- | --- | --- |
+| +0x10 | `0x19A1B0` | Measure a text run, handle special input characters |
+| +0x14 | `0x199DC0` | Space advance: 0.5× font `+4` |
+| +0x18 | `0x199DE0` | Line height: font `+8` |
+| +0x1C | `0x19A030` | Advance per codepoint |
+| +0x20 | `0x199EE0` | Font drawing/command emission path |
+
+At `0x19A030–0x19A05C`, the native code masks the codepoint
+to 16 bits and returns **font width ×0.5 for codes below
+0x100**, otherwise full font width. This is a branch
+(`SLTI 0x100` at `0x19A034`), not a proportional advance
+calculated from a glyph's opaque pixel bounds. `0x199DC0`
+independently implements the same half-width for the space.
+`0x19A1B0` iterates string bytes, accumulates these advances
+with native `MUL.S`/`ADD.S`, and treats newline, `$` escape
+sequences and multibyte characters specially. The seven original
+main-menu descriptions have **only ordinary printable ASCII**
+and spaces, no escape sequences or multibyte characters.
+
+Consequently, the native text **origin-to-origin advance** for
+every existing help glyph and space is **12.0 units** before
+the menu's `0.75f` scale: **9.0 logical units** between glyph
+origins at menu scale. No per-glyph bounding-box trim, 3-pixel
+tracking constant, or author-defined max-width fit is present in
+this recovered font-width path.
+
+`arika_menu_ffon_native.py` now implements these fixed advances
+and a *host preview* raster using the decoded FFON bitmaps.
+In **native mode only**, the editor uses it instead of the prior
+`render_text(..., spacing=3)` proportional/trimmed preview.
+The old renderer and 140-sample timeline remain available in
+diagnostic mode, with independent caches. Native placement is
+validated with synthetic 24×24 cells and an optional exact-ELF
+opcode/vtable oracle.
+
+**Boundary of proof:** `0x199EE0` submits text via the engine
+command path `0x112780`, with downstream resource and glyph
+rendering not yet reconstructed. The Python/Pillow raster still
+uses full 4-bpp glyph bitmaps, and exact UV selection, source
+clipping, PS2 filtering, coverage and alpha compositing are
+**host approximations**; matching a 12-unit *advance* does not
+prove pixel-exact native bitmap compositing. Do not infer FFON
+glyph UVs, source cropping, multiline escape semantics or GS
+blend modes from the width callback alone.
+
+**Next:** trace the text command consumer reached through
+`0x199EE0 → 0x112780` and the resource-specific FFON raster
+path; compare the positions of several glyph edges with a
+runtime GS capture to prove original UV bounds.
