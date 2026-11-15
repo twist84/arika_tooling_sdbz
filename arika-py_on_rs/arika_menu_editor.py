@@ -13,6 +13,10 @@ from arika_menu_arrow_preview import arrow_parts, bobbed_arrow_geometry
 from arika_menu_navigation import read_menu_report
 from arika_menu_runtime import c_menu_runtime
 from arika_menu_compositor import software_painter_order
+from arika_menu_help_geometry import (
+    HELP_PANEL_RECT, HELP_TEXT_CLIP, HELP_TEXT_MAX_WIDTH,
+    help_text_row_rect,
+)
 import arika_ffon
 from arika_menu_frame_match import normalize_reference, rank_samples
 from PIL import Image
@@ -969,12 +973,13 @@ class c_menu_editor(W.QWidget):
         # Render the game texture, never a synthetic QPainter border.
         panel = self.m_textures.get(4)
         if panel is not None and not panel.isNull() and self.m_help_panel_uv is not None:
-            painter.drawPixmap(C.QRectF(30, 272, 450, 175), panel,
+            painter.drawPixmap(C.QRectF(*HELP_PANEL_RECT), panel,
                                self.m_help_panel_uv)
         if self.m_help_font is None:
             painter.restore()
             return
-        painter.setClipRect(C.QRectF(76, 312, 359, 116), C.Qt.ClipOperation.IntersectClip)
+        painter.setClipRect(C.QRectF(*HELP_TEXT_CLIP),
+                            C.Qt.ClipOperation.IntersectClip)
         # The four ELF lines share one font scale. Scaling each line to the
         # maximum width independently makes every line equally long and does
         # not match the original game's fixed glyph advance.
@@ -983,14 +988,14 @@ class c_menu_editor(W.QWidget):
         widths = [pixmap.width() for pixmap in pixmaps
                   if pixmap is not None and not pixmap.isNull()]
         if widths:
-            scale = min(1.0, 303.0 / max(widths))
+            scale = min(1.0, HELP_TEXT_MAX_WIDTH / max(widths))
             for index, pixmap in enumerate(pixmaps):
                 if pixmap is None or pixmap.isNull():
                     continue
-                painter.drawPixmap(C.QRectF(87, 324 + index * 25,
-                                           pixmap.width() * scale,
-                                           pixmap.height() * scale),
-                                   pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
+                painter.drawPixmap(
+                    C.QRectF(*help_text_row_rect(
+                        index, pixmap.width(), pixmap.height(), scale)),
+                    pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
         painter.restore()
 
     def draw_sprite(self, painter, entry, geometry, alpha):
