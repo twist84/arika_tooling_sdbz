@@ -20,8 +20,9 @@ SPRITE_RESET_WORDS = [
     0xa085005c, 0xa085004d, 0xa480004e, 0x03e00008, 0xa4800052,
 ]
 
-# 0x2FD8A0..0x2FD8E4, sprite vtable +0x10 dispatcher. +0x40
-# selects vtable+0x28 (zero) or vtable+0x30 (nonzero).
+# 0x2FD8A0..0x2FD8E4, sprite vtable +0x10 dispatcher.
+# +0x40 selects +0x28 (zero) or +0x30 (nonzero).
+# These are abstract engine methods; no GS draw mode is inferred.
 SPRITE_DRAW_DISPATCH_WORDS = [
     0x27bdfff0, 0xffbf0000, 0x90820040, 0x10400007, 0x00000000,
     0x8c990000, 0x8f390030, 0x0320f809, 0x00000000, 0x10000006,
@@ -91,8 +92,8 @@ class MenuGsStateBoundaryTests(unittest.TestCase):
     def test_sprite_draw_dispatch_selects_correct_native_method(self):
         self.assertEqual(len(SPRITE_DRAW_DISPATCH_WORDS),
                          (0x2fd8e8 - 0x2fd8a0) // 4)
-        for mode, expected in ((0, 'immediate'), (1, 'packet'),
-                               (2, 'packet'), (255, 'packet')):
+        for mode, expected in ((0, 'vtable_28'), (1, 'vtable_30'),
+                               (2, 'vtable_30'), (255, 'vtable_30')):
             machine = machine_for(0x2fd8a0, SPRITE_DRAW_DISPATCH_WORDS)
             machine.m_registers[4] = 0x1000
             machine.write_int(0x1000, 0x3000, 4)
@@ -101,14 +102,14 @@ class MenuGsStateBoundaryTests(unittest.TestCase):
             machine.write_int(0x3030, 0xf00030, 4)
             dispatched = []
 
-            def immediate(oracle):
-                dispatched.append('immediate')
+            def method_28(oracle):
+                dispatched.append('vtable_28')
 
-            def packet(oracle):
-                dispatched.append('packet')
+            def method_30(oracle):
+                dispatched.append('vtable_30')
 
             machine.m_indirect_stubs = {
-                0xf00028: immediate, 0xf00030: packet,
+                0xf00028: method_28, 0xf00030: method_30,
             }
             machine.run(0x2fd8a0)
             self.assertEqual(dispatched, [expected])
