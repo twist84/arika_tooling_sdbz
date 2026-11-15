@@ -334,6 +334,24 @@ these exact mode settings, or that the Qt stable-Z
 fallback correctly simulates semitransparent pixel
 writes in all cases.
 
+### Texture resource chain located, not yet captured
+
+The next texture-related intermediate packet opcode reaches
+`0x104820`, whose 6-instruction body stores two
+resource-selection words at `0x4FF470` and `0x4FF474`.
+`0x10DA20` then loads these words, resolves the current
+resource through `0x10D7C0`, and passes the texture handle
+plus mode/table pointers to `0x10C3E0`.
+The latter checks the resolved texture object and packs
+texture-dependent bit fields from offsets including
+`+0x02/+0x04/+0x06/+0x08/+0x0E/+0x10/+0x14/+0x16/+0x18`.
+Those fields are from **runtime objects**, so their values
+cannot be inferred from the ELF's startup data. A future
+texture capture or more complete `0x10C3E0` trace is needed
+before declaring the menu's `TEX0/TEX1/CLAMP`, sampling
+and alpha expansion state. This is the next hardware
+investigation target.
+
 ### Remaining hardware evidence
 
 - Obtain runtime values for `0x4FF3BC` and
