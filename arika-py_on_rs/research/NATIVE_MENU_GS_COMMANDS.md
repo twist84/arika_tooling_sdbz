@@ -28,22 +28,40 @@ calls `0x37AEE0` for the six-slot particles. The scalar depth values
 used by these sprites do **not** provide proof that the engine sorts
 the callbacks or that the GS depth-test is disabled.
 
-The Qt editor previously sorted *all* commands by a synthetic
-`geometry.depth` key, which changed the verified source call order:
-the small sprites could precede the higher-depth banner and the shared
-overlay could be placed below tiles despite being called afterward.
-Native mode now preserves the ELF-issued sequence and paints pending
-before current. It also places the item-3 particle pass immediately
-after that item's other first-layer sprites. The authored 140-frame
-diagnostic timeline still uses its earlier depth sorting for
-comparison. This is a call-order correction, **not proof of final
-pixel-level Z/alpha compositing parity**. A future GS replay may
-require depth testing *on top of* the preserved submission order.
+The Qt editor originally sorted commands by `geometry.depth`,
+then briefly changed to painting in strict EE submission order. That
+recovered call order but introduced a **visible regression**: the
+`MAIN MENU` title disappeared. In the user-provided PCSX2/Qt
+comparison from 15 November 2026, the PCSX2 capture (958×719) shows
+the title, while the corresponding Qt capture (706×529) lacks it;
+the two images share an approximately 4:3 presentation ratio.
 
-Offscreen Qt tests record sprite draws with synthetic texture-entry
-tags and confirm that native submission order differs from the
-diagnostic depth sort; another verifies the eight item-3 first-layer
-sprites precede particle commands. No game art is committed.
+The recovered geometry explains why: banner `0x3786A0` is
+`[0,16]–[264,64]` at Z **99**, while shared small sprite #2
+covers `[0,0]–[320,152]` at Z **5**. The small sprite
+is submitted **after** the banner in `0x378170`, and opaque
+QPainter source-over would cover the entire title. The PCSX2 image
+demonstrates that *native draw submission order is not equivalent
+to the game's final compositing/occlusion order*.
+
+The fix separates these two concepts: `render()` builds its
+`draw_queue` in native EE submission order (shared, pending, current,
+arrows; first-layer decorations before particle submission). The
+pure `software_painter_order()` then returns a **stable, ascending
+depth** order for the Qt-only rasterization fallback, without
+mutating the source command queue. Equal depths preserve native
+submission order. This brings the banner in front of small sprite #2
+in the editor without hardcoding a title overlay, offset, texture
+or animation timing. It is a **software approximation** rather
+than a reconstruction of GS `TEST`, `ZBUF`, `ALPHA` or its
+per-pixel depth writing rules; blending and semitransparent
+overlaps may still require further recovery.
+
+Offscreen Qt regressions record the unchanged ELF call order,
+verify the stable painter-depth order and test the banner/small
+overlap using synthetic blue/red atlases at the native coordinates.
+No game artwork or supplied screenshots are committed. The
+independent 140-frame diagnostic timeline remains functional.
 
 ## Generic sprite reset: `0x2FDA00`
 
