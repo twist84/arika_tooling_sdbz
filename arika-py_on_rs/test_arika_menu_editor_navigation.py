@@ -791,7 +791,13 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertEqual(runtime.snapshot()['context_rng_state'],
                          state['context_rng_state'])
         editor.m_lifecycle_combo.setCurrentIndex(0)
-        self.assertEqual(render(), blank,
+        # Native preview now draws independently clocked banner/tiles,
+        # so its baseline is not the old diagnostic frame. Instead
+        # verify changing the live companion slot cannot change any
+        # diagnostic pixels.
+        diagnostic_pixels = render()
+        slot['x'] = 275.0
+        self.assertEqual(render(), diagnostic_pixels,
                          'diagnostic timeline cannot draw live companions')
 
 
