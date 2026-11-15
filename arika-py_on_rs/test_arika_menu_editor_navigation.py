@@ -795,6 +795,122 @@ class MenuEditorNavigationTests(unittest.TestCase):
                          'diagnostic timeline cannot draw live companions')
 
 
+    def test_native_shared_tiles_banner_and_small_reach_qt_pixels(self):
+        """Use synthetic unlicensed atlases; sample frames cannot drive native."""
+        from PySide6 import QtCore as C, QtGui as G
+
+        editor = self.m_editor
+        self.assertTrue(editor.load_textures(synthetic_menu_pix()))
+        patterned = G.QImage(512, 512, G.QImage.Format.Format_ARGB32)
+        for x in range(512):
+            color = G.QColor.fromHsv((x * 7) % 360, 220, 240)
+            for y in range(512):
+                patterned.setPixelColor(x, y, color)
+        editor.m_textures[2] = G.QPixmap.fromImage(patterned)
+        small_texture = G.QPixmap(512, 512)
+        small_texture.fill(G.QColor('#43e68c'))
+        editor.m_textures[3] = small_texture
+
+        editor.m_background = False
+        editor.m_motion = True
+        editor.m_tint = False
+        editor.m_first = False
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+        runtime = editor.m_native_runtime
+        self.assertTrue(editor.m_native_mode)
+        self.assertIsNotNone(runtime.m_companion_state)
+
+        def render():
+            image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            image.fill(G.QColor('#10151c'))
+            painter = G.QPainter(image)
+            try:
+                editor.render(painter, C.QRect(0, 0, 512, 448))
+            finally:
+                painter.end()
+            return bytes(image.constBits())
+
+        initial = render()
+        state = runtime.snapshot()
+        self.assertEqual(initial, render())
+        # Deliberately corrupt the authored diagnostic frame. Native
+        # drawing must use banner/tile/small state and ignore this frame.
+        frame = editor.m_data['frames'][int(editor.m_time)]
+        frame['banner'] = None
+        frame['tiles'] = []
+        frame['small'] = []
+        self.assertEqual(render(), initial)
+        self.assertEqual(runtime.snapshot(), state)
+
+        runtime.m_banner_state['offset'][0] = 0.0
+        banner_pixels = render()
+        self.assertNotEqual(banner_pixels, initial,
+                            'shared banner native offset must reach Qt')
+        runtime.m_companion_state['phase'] = 1024.0
+        tile_pixels = render()
+        self.assertNotEqual(tile_pixels, banner_pixels,
+                            'native owner tile phase must reach Qt pixels')
+        component = runtime.m_small_states[0]
+        component.update(phase=2, offset=[0.0, 0.0])
+        small_pixels = render()
+        self.assertNotEqual(small_pixels, tile_pixels,
+                            'active small native child must reach Qt pixels')
+        after = runtime.snapshot()
+        self.assertEqual(small_pixels, render())
+        self.assertEqual(runtime.snapshot(), after,
+                         'paint cannot advance native child clocks or RNG')
+        editor.m_lifecycle_combo.setCurrentIndex(0)
+        # The diagnostic frame was deliberately cleared and remains the
+        # independent source when we switch back.
+        self.assertFalse(editor.m_native_mode)
+        self.assertNotEqual(render(), small_pixels)
+
+    def test_native_overlay_uses_shared_visibility_and_alpha(self):
+        from PySide6 import QtCore as C, QtGui as G
+
+        editor = self.m_editor
+        self.assertTrue(editor.load_textures(synthetic_menu_pix()))
+        for i in range(13):
+            atlas = G.QPixmap(512, 512)
+            atlas.fill(G.QColor('#913ed0'))
+            editor.m_textures[i] = atlas
+        editor.m_background = False
+        editor.m_motion = False
+        editor.m_first = False
+        editor.m_middle = False
+        editor.m_overlay = False
+        editor.m_arrows = False
+        editor.m_help_panel = False
+        editor.m_tint = True
+        editor.m_lifecycle_combo.setCurrentIndex(1)
+
+        def render():
+            image = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            image.fill(G.QColor('#10151c'))
+            painter = G.QPainter(image)
+            try:
+                editor.render(painter, C.QRect(0, 0, 512, 448))
+            finally:
+                painter.end()
+            return bytes(image.constBits())
+
+        runtime = editor.m_native_runtime
+        hidden_pixels = render()
+        runtime.m_shared['overlay_hidden'] = False
+        runtime.m_shared['overlay_alpha'] = 0.5
+        visible_pixels = render()
+        self.assertNotEqual(hidden_pixels, visible_pixels)
+        snapshot = runtime.snapshot()
+        self.assertEqual(visible_pixels, render())
+        self.assertEqual(snapshot, runtime.snapshot())
+        runtime.m_shared['overlay_hidden'] = True
+        self.assertEqual(render(), hidden_pixels)
+
+
 
 if __name__ == '__main__':
     unittest.main()
