@@ -9,6 +9,7 @@ The source glyph alpha and final GS blending are not yet proven pixel
 identical. Rasterization below is an isolated host preview, not an
 emulation of the GS or of the complete native font command pipeline.
 """
+import math
 import struct
 
 from PIL import Image
@@ -47,8 +48,11 @@ def native_help_glyph_origins(text, scale=NATIVE_MENU_FONT_SCALE):
     Every ADD.S/MUL.S result rounds to binary32 like the native EE.
     """
     _validate_help_line(text)
-    scale = f32(scale)
-    if not 0.0 < scale <= 16.0:
+    try:
+        scale = f32(scale)
+    except (TypeError, ValueError, OverflowError, struct.error) as exc:
+        raise ValueError('finite positive font scale required') from exc
+    if not math.isfinite(scale) or scale <= 0.0:
         raise ValueError('finite positive font scale required')
     advance = f32(float(NATIVE_ASCII_ADVANCE) * scale)
     x = 0.0
