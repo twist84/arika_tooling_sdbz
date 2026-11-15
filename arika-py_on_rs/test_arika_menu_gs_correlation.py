@@ -220,11 +220,15 @@ class NativeGsCorrelationTests(unittest.TestCase):
             resolve_resource_selector_from_ram(bytearray(make_ram()), 4)
 
     def test_manager_partial_capture_does_not_fabricate_a_pointer(self):
-        tiny = bytearray(RESOURCE_MANAGER_GLOBAL_ADDRESS + 4)
-        struct.pack_into('<I', tiny, RESOURCE_MANAGER_GLOBAL_ADDRESS, 0x3000)
-        result = resolve_resource_selector_from_ram(bytes(tiny), 4)
-        self.assertEqual(result['status'], 'unverified_manager_vtable'
-                         if len(tiny) > 0x3000 else 'manager_outside_ram')
+        self.assertEqual(
+            resolve_resource_selector_from_ram(bytes(32), 4)['status'],
+            'global_outside_ram')
+        missing_vtable = bytearray(RESOURCE_MANAGER_GLOBAL_ADDRESS + 4)
+        struct.pack_into('<I', missing_vtable,
+                         RESOURCE_MANAGER_GLOBAL_ADDRESS, 0x3000)
+        self.assertEqual(
+            resolve_resource_selector_from_ram(bytes(missing_vtable), 4)['status'],
+            'unverified_manager_vtable')
         # Manager+4 points at wrapper outside a truncated capture.
         partial = bytearray(RESOURCE_MANAGER_GLOBAL_ADDRESS + 4)
         struct.pack_into('<I', partial, RESOURCE_MANAGER_GLOBAL_ADDRESS, 0x3000)
