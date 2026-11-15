@@ -66,6 +66,11 @@ def decode_sprite_sampler_flags(flags, resource_pointer=None):
                                   if resource_pointer is not None else None)
     parsed['opcode1_possible'] = (resource_pointer != 0
                                  if resource_pointer is not None else None)
+    if resource_pointer == 0:
+        # 0x2FD078 branches around the opcode-1 producer on null +0x44.
+        # A derived sampler setting is not an emitted TEX1 register.
+        parsed['tex1_if_texture_writer_succeeds'] = None
+        parsed['tex1_fields_if_emitted'] = None
     parsed['native_sprite_setter'] = hex(SAMPLER_SETTER_ADDRESS)
     parsed['native_packet_producer'] = hex(SAMPLER_PACKET_PRODUCER)
     return parsed
