@@ -8,6 +8,7 @@ stay None. The tool does not invent blend modes or video register settings.
 Usage:
     python arika_menu_gs_packet.py packet_buffer.bin
     python arika_menu_gs_packet.py packet_buffer.bin --initial-state '{"word0": 1}'
+    python arika_menu_gs_packet.py packet_buffer.bin --resolve-sampling
 """
 import argparse
 import json
@@ -77,7 +78,9 @@ def decode_packet(buffer, initial_state=None, allow_padding=False):
         elif opcode == 1:
             # The actual interpreter reads +4 halfword and +6 byte
             # to index two engine resource tables at GP-0x7FA8/0x7FA0.
-            # The selector names and resulting GS modes remain unknown.
+            # Native filter/clamp flag tables are now verified, but
+            # this basic decoder keeps the raw fields. Use
+            # --resolve-sampling for optional ELF-backed interpretation.
             command['selectors'] = [
                 struct.unpack_from('<H', buffer, cursor + off)[0]
                 for off in (2, 4)]
@@ -111,7 +114,8 @@ def decode_packet(buffer, initial_state=None, allow_padding=False):
         commands=commands,
         limitations=[
             'Engine command list, not hardware GS/GIF register data.',
-            'Texture flags, GS blend/depth/filter semantics unverified.',
+            'Texture flags require optional selector resolution; active GS '
+            'blend/depth/filter state remains unobserved.',
             'Initial render state requires an external observed context.'
         ])
 
