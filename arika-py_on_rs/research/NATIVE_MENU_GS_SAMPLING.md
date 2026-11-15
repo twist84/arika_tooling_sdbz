@@ -274,3 +274,10 @@ per-atlas switches would erase that distinction. The next
 step is to correlate a captured menu sprite instance and
 opcode-1 resource pointer with its runtime texture descriptor
 and active GS registers.
+
+
+## Runtime resource-pointer indirection and producer cache
+
+Further exact-ELF tracing establishes that sprite `+0x44` is passed as the **resource object** into `0x2FE920`; the resource vtable `+0x4C` callback supplies opcode-1 **`+0x08`** (`0x2FE990–0x2FE9A4`). At `0x19B6B4–0x19B6BC`, the consumer dereferences that returned object's **`+0x38` texture ID** and passes it to `0x10DA20`. Therefore sprite `+0x44` cannot be matched by direct pointer equality to the opcode-1 field.
+
+The producer's BSS cache at `0x4FD40C` (resource pointer) and `0x4FD410..0x4FD413` (four sampler bytes) suppresses redundant opcode-1 records on an exact cache hit. It is not a proof of the absence of a texture draw. `arika_menu_gs_correlation.py` now correlates **captured** command +0x08 pointers, 48-byte runtime descriptors and conditional GS register words, with sprite ownership only when the vtable callback return has been **observed**. See `NATIVE_MENU_RESOURCE_CORRELATION.md` for the evidence table, optional ELF oracle, and precise PCSX2 capture procedure. The Qt filtering preset and editor lifecycle have not been changed.
