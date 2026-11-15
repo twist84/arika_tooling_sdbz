@@ -123,11 +123,16 @@ def main():
                         help='JSON object of observed initial state fields')
     parser.add_argument('--allow-padding', action='store_true',
                         help='accept unused allocation bytes after commands')
+    parser.add_argument('--resolve-sampling', action='store_true',
+                        help='annotate opcode-1 native filter/clamp table flags')
     args = parser.parse_args()
     try:
         state = json.loads(args.initial_state)
         data = decode_packet(args.packet.read_bytes(),
                              state, args.allow_padding)
+        if args.resolve_sampling:
+            from arika_menu_gs_sampling import annotate_packet_sampling
+            data = annotate_packet_sampling(data)
     except (OSError, ValueError, TypeError) as error:
         parser.error(str(error))
     print(json.dumps(data, indent=2))
