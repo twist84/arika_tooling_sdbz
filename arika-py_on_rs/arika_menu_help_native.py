@@ -1,8 +1,9 @@
 """ELF-derived relative layout for the SDBZ EU-beta main-menu help owner.
 
-This models the actual text-record mapping, panel sprite bounds and
-float32 FFON line placement. It deliberately does not choose an absolute
-component position: that owner state has not yet been recovered.
+This models the native text-record mapping, panel sprite bounds and
+float32 FFON line placement. The settled component origin is verified;
+animated X/Y must be supplied by arika_menu_help_lifecycle instead of
+a diagnostic-frame sample or screenshot calibration.
 
 Source: SLES_541.61, see research/NATIVE_MENU_HELP_DRAW.md.
 """
