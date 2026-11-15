@@ -54,8 +54,25 @@ VERIFIED_NONCANONICAL_BY_SITE = {site: (a2, a3, a4, a5)
 EXTERNAL_CALLER_EVIDENCE = (
     (0x3707f0, 0x41665c),
     (0x370a00, 0x417ef8),
+    (0x372790, 0x34266c),
+    (0x372790, 0x344864),
     (0x37c470, 0x408338),
+    (0x37c7c0, 0x408b28),
 )
+# Containing routine identities are backed by inspected function bodies
+# and direct caller JALs, NOT claims of exclusive main-menu ownership.
+NEAREST_ROUTINE_SITES = (
+    (0x3707f0, (0x37098c,)),
+    (0x370a00, (0x370a6c, 0x370b7c, 0x370be4, 0x370c08)),
+    (0x372790, (0x3727b4,)),
+    (0x37c470, (0x37c56c, 0x37c5bc, 0x37c624, 0x37c67c)),
+    (0x37c7c0, (0x37d8d0,)),
+)
+NEAREST_ROUTINE_BY_SITE = {
+    addr: entry
+    for entry, addresses in NEAREST_ROUTINE_SITES for addr in addresses
+}
+
 JAL_SETTER = 0x0c000000 | (SAMPLER_SETTER_ADDRESS >> 2)
 ZERO_A2 = 0x0000302d
 ZERO_A3 = 0x0000382d
@@ -154,10 +171,18 @@ def scan_menu_sprite_attachments(elf):
                                    if flags is not None else None,
             'known_resource_entry': entry,
             'known_owner': owner,
+            'containing_routine_if_verified_nearest': (
+                hex(NEAREST_ROUTINE_BY_SITE[addr])
+                if addr in NEAREST_ROUTINE_BY_SITE
+                and kind == 'nearest' else None),
         })
 
     if noncanonical_verified != set(VERIFIED_NONCANONICAL_BY_SITE):
         raise ValueError('audited noncanonical callsite inventory changed')
+    if set(NEAREST_ROUTINE_BY_SITE) != {
+            int(row['callsite'], 16)
+            for row in result if row['initial_filter'] == 'nearest'}:
+        raise ValueError('nearest routine provenance inventory changed')
 
     summary = {
         'elf_sha256': EU_BETA_SHA256,
@@ -179,6 +204,11 @@ def scan_menu_sprite_attachments(elf):
                             for site in result),
         'total_nearest': sum(site['initial_filter'] == 'nearest'
                              for site in result),
+        'nearest_routine_groups': [
+            {'function': hex(entry), 'nearest_calls': [
+                hex(a) for a in addresses]}
+            for entry, addresses in NEAREST_ROUTINE_SITES
+        ],
         'external_callers_in_scanned_range': [
             {'function': hex(function), 'caller': hex(caller)}
             for function, caller in EXTERNAL_CALLER_EVIDENCE
