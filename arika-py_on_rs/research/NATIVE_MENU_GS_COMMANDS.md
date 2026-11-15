@@ -169,6 +169,71 @@ switch targets, each opcode's record length, mixed command/state
 sequences, opcode-8 reset, and truncation/unknown-input rejection.
 No game files or command-buffer captures are included.
 
+## Renderer context translation: `0x199500` and `0x199340`
+
+`0x199C60` constructs a renderer singleton at `0x00566500`
+with vtable `0x004E3300`. The opcode-0 consumer invokes its
+vtable +0x34, which resolves to **`0x00199340`**. That method
+takes an optional six-field local state, translates several fields
+through file-backed tables, and invokes backend setters
+`0x00104920` (three integer arguments) and
+`0x00104840` (four integer arguments). The latter return
+paths cache their **engine setter inputs**, not GS register
+contents. The dispatcher also copies the chosen state to
+renderer +0x66..+0x6E.
+
+The state copier `0x00199500` consists of 13 MIPS words,
+including a return-delay-slot short store. It copies these
+ten-byte context fields:
+
+| Source renderer | Destination local state | Type |
+| --- | --- | --- |
+| +0x5C | +0x00 | signed 16-bit |
+| +0x5E | +0x02 | signed 8-bit |
+| +0x5F | +0x03 | signed 8-bit |
+| +0x60 | +0x04 | signed 8-bit |
+| +0x62 | +0x06 | signed 16-bit |
+| +0x64 | +0x08 | signed 16-bit |
+
+The **constructor's direct** stores in `0x199CDC..0x199D14`
+initialize +0x5C=1, +0x5E=2, +0x5F=0, +0x62=3,
++0x64=1. A direct initialized write to +0x60 was **not**
+observed in that function; it is treated as unknown rather
+than presumed zero, and runtime writes to any fields remain
+possible. These defaults correspond to raw backend setter
+inputs `0x104920(2,3,0)` and `0x104840(7,1,3,0)`
+when translation is invoked on a matching state.
+
+The first call resolves state word0 through three separate
+eight-element u32 tables at `0x4630F0`, `0x463110`,
+`0x463130`. The second call resolves word6 through
+`0x463150` (four verified values), word8 through the
+table at `GP-0x7FC0` (only the first two entries are
+treated as a verified array), and byte2 through
+`0x463160` (eight values) and `0x463180` (six verified
+values). The last two u32s after `0x463180` may be
+neighboring data, so their mere presence does not
+authorize extending the table. Invalid/unobserved indices
+are rejected, not masked into a guessed enumeration.
+
+The pure decoder `arika_menu_gs_context.py` exposes
+`decode_render_context(bytes)` for ten bytes copied by
+`0x199500` and
+`resolve_backend_arguments({word0,byte2,byte3,byte4,word6,word8})`
+for the *raw* values used at the two backend call sites.
+Its validation suite interprets all 13 copier instructions
+over several signed fields, tests the table ranges and
+verifies that missing values remain unresolved. The
+tables and result arguments are **not** identified as PS2
+GS mode enums or final command-register values.
+
+Backend calls now have clear targets for further analysis:
+`0x104920` caches and sends three values via `0x104210`;
+`0x104840` caches and sends four via `0x103F20`.
+The latter routines and their IOP/DMAC/GS effects still
+require tracing before any change to alpha, depth or filtering
+is justified.
+
 ## Still unresolved before native GS parity
 
 - Follow the now-identified command consumer `0x19B5C0`, specifically
