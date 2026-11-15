@@ -18,16 +18,18 @@ from arika_menu_pixel_comparison import (
     RESAMPLE_MODES, compare_screenshot_pixels, difference_preview,
 )
 
-from arika_menu_help_native import (HELP_LINE_ADVANCE,
+from arika_menu_help_native import (help_record, HELP_LINE_ADVANCE,
                                     HELP_SETTLED_COMPONENT_ORIGIN,
                                     HELP_TEXT_OFFSET,
                                     HELP_TEXT_SCALE)
+
+from arika_menu_navigation import MENU_ITEM_NAMES
 
 LOGICAL_WIDTH = 512
 LOGICAL_HEIGHT = 448
 EXPECTED_PRESENTATION_ASPECT = 4.0 / 3.0
 FONT_SOURCE_HEIGHT = 24
-HELP_TEXT_LINES = 4
+MENU_ITEM_KEYS = tuple(name.lower().replace(' ', '_') for name in MENU_ITEM_NAMES)
 
 
 def validate_capture(image):
@@ -82,11 +84,13 @@ def _text_bounds(image, line_index):
     }
 
 
-def compare_menu_captures(reference, candidate):
+def compare_menu_captures(reference, candidate, selection=0):
+    """Compare only the line count stored in the selected native text record."""
+    text_id, _record_address, line_count = help_record(selection)
     validate_capture(reference)
     validate_capture(candidate)
     lines = []
-    for index in range(HELP_TEXT_LINES):
+    for index in range(line_count):
         ref_bounds = _text_bounds(reference, index)
         candidate_bounds = _text_bounds(candidate, index)
         if ref_bounds is None or candidate_bounds is None:
@@ -104,6 +108,10 @@ def compare_menu_captures(reference, candidate):
         'reference_size': [reference.width, reference.height],
         'candidate_size': [candidate.width, candidate.height],
         'native_canvas': [LOGICAL_WIDTH, LOGICAL_HEIGHT],
+        'selection': selection,
+        'selection_name': MENU_ITEM_NAMES[selection],
+        'native_text_id': text_id,
+        'help_line_count': line_count,
         'measurement': 'near-white text bounds in logical coordinates',
         'help_lines': lines,
         'warning': ('This measures spatial alignment only, not GS UV, '
@@ -115,6 +123,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('reference', type=Path, help='original PCSX2 screenshot')
     parser.add_argument('candidate', type=Path, help='Qt editor screenshot')
+    parser.add_argument('--item', choices=MENU_ITEM_KEYS, default='original',
+                        help='native menu selection whose help lines were captured')
     parser.add_argument('--json', action='store_true',
                         help='print the full measurement as structured JSON')
     parser.add_argument('--pixel-metrics', action='store_true',
@@ -126,7 +136,8 @@ def main():
                         help='resize the Qt capture to PCSX2 output size for pixel comparison')
     args = parser.parse_args()
     with Image.open(args.reference) as original, Image.open(args.candidate) as preview:
-        result = compare_menu_captures(original, preview)
+        result = compare_menu_captures(
+            original, preview, MENU_ITEM_KEYS.index(args.item))
         if args.pixel_metrics or args.diff_image is not None:
             metrics, difference = compare_screenshot_pixels(
                 original, preview, resampling=args.resample)
@@ -140,6 +151,9 @@ def main():
         return
     print(f"Reference {tuple(result['reference_size'])}; "
           f"candidate {tuple(result['candidate_size'])} (native 512x448)")
+    print('Menu selection: %s (%d native help lines, text ID %#x)' %
+          (result['selection_name'], result['help_line_count'],
+           result['native_text_id']))
     for line in result['help_lines']:
         delta = line['delta']
         if delta is None:
