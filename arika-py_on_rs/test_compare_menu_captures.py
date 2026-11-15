@@ -1,4 +1,9 @@
 """Asset-free tests of screenshot capture geometry measurement."""
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 from PIL import Image, ImageDraw
@@ -88,6 +93,28 @@ class CompareMenuCapturesTests(unittest.TestCase):
         for selection in (-1, 7, None, True, 'versus'):
             with self.subTest(selection=selection), self.assertRaises(ValueError):
                 compare_menu_captures(image, image, selection)
+
+    def test_command_line_item_options_and_original_default(self):
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            reference = folder / 'reference.png'
+            candidate = folder / 'candidate.png'
+            synthetic_capture((640, 480), line_count=3).save(reference)
+            synthetic_capture((640, 480), line_count=3).save(candidate)
+            script = Path(__file__).with_name('compare_menu_captures.py')
+            base = [sys.executable, str(script),
+                    str(reference), str(candidate)]
+            options = subprocess.run(
+                base + ['--item', 'options', '--json'],
+                capture_output=True, text=True, check=True)
+            decoded = json.loads(options.stdout)
+            self.assertEqual(decoded['selection'], 6)
+            self.assertEqual(decoded['help_line_count'], 3)
+            self.assertEqual(len(decoded['help_lines']), 3)
+            original = subprocess.run(
+                base + ['--json'],
+                capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads(original.stdout)['help_line_count'], 4)
 
     def test_plain_background_has_no_false_white_text(self):
         image = Image.new('RGB', (640, 480), (160, 65, 144))
