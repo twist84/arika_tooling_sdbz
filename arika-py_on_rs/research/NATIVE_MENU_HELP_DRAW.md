@@ -96,9 +96,9 @@ visible content around X30. **Do not** use the cropped alpha bounds to
 translate the native frame rectangle, and do not infer the display
 mapping from atlas dimensions.
 
-**Still outstanding:** exact state-1/3 entry/exit positions and their
-curve activation, GS compositing, and the renderer's full font/glyph
-metrics. A settled draw is not an end-to-end animation trace.
+**Entry and exit curves are now recovered**; see the state-machine
+section below. GS compositing and the complete FFON glyph metrics
+remain outside this milestone.
 
 ## Implementation boundary
 
@@ -112,3 +112,71 @@ The precise FFON glyph placement/advance *inside* `0x2CDCA0`,
 active GS blending/depth, absolute component origin, and the actual
 PCM/GS capture are still outstanding. No guessed native animation
 timings or copyrighted assets are introduced.
+
+## State machine: entry, visibility, exit (new native-word trace)
+
+The common component dispatcher `0x0035F820` uses help-component `+0x04`
+as phase: **0 hidden**, **1 entry**, **2 settled**, **3 exit**.
+Its class vtable at `0x4F1F30` has:
+
+| Slot | Target | Verified role |
+| --- | --- | --- |
+| `+0x08` | `0x35F7C0` | set phase 1 through `+0x40` |
+| `+0x10` | `0x35F800` | set phase 3 through `+0x40` |
+| `+0x14` | `0x35F820` | update phase and transition on callback return |
+| `+0x1C` | `0x3369F0` | draw panel iff phase != 0 |
+| `+0x20` | `0x336980` | draw FFON text iff phase == 2 |
+| `+0x34` | `0x37C020` | entry age, curve, completion |
+| `+0x38` | `0x35F900` | settled no-op |
+| `+0x3C` | `0x37C0F0` | exit age, curve, completion |
+| `+0x40` | `0x37C160` | phase setter, clear age and initialize pose |
+
+Each phase setter resets `+0x74` float age. On entry start
+(`0x37C194/0x37C198`) it writes Y=**-448** and retains the prior X.
+On state 2, it explicitly writes **(24,272)**.
+Each entry/exit update adds **1.0f** to component age, independent
+of the global preview sample clock.
+
+Entry callback `0x37C020` calls `0x2C2C10` with exactly two
+fixed interpolation keys:
+
+- Times at `0x4FA778`: **(10,15)**.
+- Values at `0x4FA780`: **(224,0)**, added to settled Y=272.
+- Once `age >= 15` it adds a second 13-key curve with times
+  `0x4AA130 = (0,1,...,12)` and values at `0x4AA170`:
+  `(0,3,6,3,0,2,4,2,0,1,2,1,0)`.
+  This curve's input is `age-15`.
+- At age **27** (`15+12`, computed by native `ADD.S`
+  `0x37C058`), the callback returns 1. `0x35F820` then sets
+  phase **2**, resets age and writes (24,272).
+  Text becomes visible at that transition.
+
+Exit callback `0x37C0F0` uses times `0x4FA788=(0,5)` and
+values `0x4FA790=(0,224)`. It increments Y from 272 to 496;
+at age **5** it returns 1, and `0x35F820` sets phase **0**.
+The panel is visible through phase 3, but text is **not**:
+the draw callback first calls `0x3369F0` (phase!=0)
+and gates the text callback with `0x336980` (phase==2).
+
+The generic parent update invokes the embedded component's vtable
+`+0x14` at `0x379A88–0x379A94` **after** shared, pending and
+current item updates; the parent phase transition and input processing
+occur afterward (`0x333920`). The native ready callback
+`0x379970` invokes the main-menu selection callback first, then the
+embedded help `+0x08` entry at `0x379990–0x37999C`.
+On either confirm or cancel, `0x3799B0` converges at
+`0x3799E4–0x3799F0` to call help `+0x10` and start exit.
+This is not tied to individual selection changes; those only replace
+the text record through help `+0x50`.
+
+`arika_menu_help_lifecycle.py` advances these recovered phases,
+ages and float32 interpolation curves once per native parent update;
+the Qt preview reads the resulting snapshot without mutating it.
+`test_arika_menu_help_lifecycle.py` tests the exact state clocks,
+all key values (when the user's ELF is supplied), and entry/exit
+render-text gating; synthetic offscreen tests also ensure the
+diagnostic timeline remains independent.
+
+**Still outstanding:** the actual `0x2CDCA0` FFON glyph-run
+rendering metrics, PS2 GS blend and per-pixel depth state,
+and live original console/PCSX2 framebuffer capture.
