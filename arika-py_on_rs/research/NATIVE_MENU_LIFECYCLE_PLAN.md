@@ -486,3 +486,12 @@ Continue from the exact existing PR head, consult the particle research file
 and CI logs, resolve any oracle discrepancies and keep making reviewable
 commits. Do **not** restart at the historic outer-state-machine research
 milestone or reintroduce sample-23/sample-120 timing assumptions.
+
+
+## Native resource/GS pointer correlation checkpoint (15 November 2026)
+
+The original EU-beta ELF now confirms a previously unresolved pointer indirection: sprite +0x44 is a resource **object**, while the 12-byte opcode-1 command +0x08 is the **return from that object's vtable +0x4C** (`0x2FE990–0x2FE9A4`). The command consumer reads texture ID at returned object +0x38 (`0x19B6B4–0x19B6BC`) before `0x10DA20 → 0x10C3E0`. The command producer at `0x2FE920` elides binding when its BSS-cached resource object pointer (`0x4FD40C`) **and all four** sampler bytes (`0x4FD410..0x4FD413`) match, so a sprite's draw is not guaranteed to emit a fresh opcode-1 command.
+
+New asset-free `arika_menu_gs_correlation.py` and synthetic/optional original-ELF tests support capturing and joining a real command buffer, EE memory, descriptor table, and **explicitly observed** vtable-return-to-sprite associations. It emits conditional GS register replay only after valid texture-slot and descriptor checks. Without a same-frame callback return capture, sprite ownership stays unknown. Documentation and precise PCSX2 capture points are in `NATIVE_MENU_RESOURCE_CORRELATION.md`.
+
+**Still blocked:** live resource callback returns/texture residency, actual GIF and per-draw GS state, FFON glyph command consumer, controller input and external transition oracle. Do not change Qt's inferred per-atlas filter settings, 4:3 presentation, native timing, or authored diagnostic timeline from this offline trace.
