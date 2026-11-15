@@ -974,8 +974,8 @@ class MenuEditorNavigationTests(unittest.TestCase):
                          [1, 2, 2, 2, 3, 8, 100, 101])
         self.assertGreater(commands[1][1], commands[3][1],
                            'banner depth is greater than small depth')
-        self.assertLess(commands[4][1], commands[5][1],
-                        'native draw sequence is not an arbitrary Z sort')
+        self.assertLess(commands[4][1], commands[3][1],
+                        'small sprite draws after higher-Z tile in native order')
 
         # The diagnostic timeline retains the original depth sort.
         editor.m_lifecycle_combo.setCurrentIndex(0)
@@ -987,10 +987,12 @@ class MenuEditorNavigationTests(unittest.TestCase):
             editor.render(painter, C.QRect(0, 0, 512, 448))
         finally:
             painter.end()
-        self.assertEqual(
-            [d for _, d in diagnostic],
-            sorted(d for _, d in diagnostic),
-            'the independent 140-frame diagnostic renderer keeps Z sorting')
+        self.assertEqual(diagnostic[0][0], 1)
+        self.assertEqual(diagnostic[-1][0], 2,
+                         'diagnostic depth sorting places banner last')
+        self.assertNotEqual([e for e, _ in diagnostic],
+                            [e for e, _ in commands],
+                            'native and authored diagnostic draw orders differ')
 
     def test_native_item3_draws_decorations_before_particle_pass(self):
         """0x37A910 draws two literals, then six decorations, then pool."""
