@@ -14,6 +14,10 @@ from pathlib import Path
 
 from PIL import Image
 
+from arika_menu_pixel_comparison import (
+    RESAMPLE_MODES, compare_screenshot_pixels, difference_preview,
+)
+
 from arika_menu_help_native import (HELP_LINE_ADVANCE,
                                     HELP_SETTLED_COMPONENT_ORIGIN,
                                     HELP_TEXT_OFFSET,
@@ -113,9 +117,24 @@ def main():
     parser.add_argument('candidate', type=Path, help='Qt editor screenshot')
     parser.add_argument('--json', action='store_true',
                         help='print the full measurement as structured JSON')
+    parser.add_argument('--pixel-metrics', action='store_true',
+                        help='also compute output-resolution RGB error, edges and flat regions')
+    parser.add_argument('--diff-image', type=Path,
+                        help='save a contrast-enhanced difference PNG (reference resolution)')
+    parser.add_argument('--resample', choices=tuple(RESAMPLE_MODES),
+                        default='bilinear',
+                        help='resize the Qt capture to PCSX2 output size for pixel comparison')
     args = parser.parse_args()
     with Image.open(args.reference) as original, Image.open(args.candidate) as preview:
         result = compare_menu_captures(original, preview)
+        if args.pixel_metrics or args.diff_image is not None:
+            metrics, difference = compare_screenshot_pixels(
+                original, preview, resampling=args.resample)
+            result['pixel_comparison'] = metrics
+            if args.diff_image is not None:
+                # Numerical metrics use the unenhanced RGB difference.
+                # This 3x-contrast visual is only a diagnostic artifact.
+                difference_preview(difference).save(str(args.diff_image), 'PNG')
     if args.json:
         print(json.dumps(result, indent=2))
         return
@@ -129,6 +148,21 @@ def main():
             print(f"Help line {line['line']}: "
                   f"left {delta['left']:+.2f}, right {delta['right']:+.2f}, "
                   f"top {delta['top']:+.2f}, bottom {delta['bottom']:+.2f}")
+    if 'pixel_comparison' in result:
+        metrics = result['pixel_comparison']
+        print('Pixel comparison (%s resize to %s):' % (
+            metrics['candidate_resize_filter'], metrics['reference_output_size']))
+        for name, label in (('all_pixels', 'All pixels'),
+                            ('reference_edges', 'Reference edges'),
+                            ('reference_flat', 'Reference flat areas')):
+            value = metrics[name]
+            if value is not None:
+                print('  %s: MAE %.3f/255, RMSE %.3f/255' % (
+                    label, value['mean_absolute_error'],
+                    value['root_mean_square_error']))
+        print('  Reference edge-mask coverage: %.2f%%' %
+              metrics['edge_pixels_percent'])
+        print(metrics['warning'])
     print(result['warning'])
 
 
