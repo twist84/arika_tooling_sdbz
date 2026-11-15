@@ -44,7 +44,8 @@ def _address(value):
 def _memory_bytes(ram, address, size):
     # Deliberately only supports direct low-address EE RAM images. Do not
     # guess kseg/uncached aliases or silently wrap invalid pointers.
-    _address(address)
+    if type(address) is not int or address < 0 or address > 0xFFFFFFFF:
+        return None
     if address + size > len(ram):
         return None
     return ram[address:address + size]
@@ -66,18 +67,19 @@ def binding_cache_decision(resource_pointer, sampler_bytes,
         raise ValueError('four sprite sampler bytes are required')
     if resource_pointer == 0:
         return False
-    if cached_pointer is None or cached_bytes is None:
-        if cached_pointer is not None:
-            _address(cached_pointer)
+    if cached_pointer is None:
         return None
     _address(cached_pointer)
+    if resource_pointer != cached_pointer:
+        return True
+    if cached_bytes is None:
+        return None
     if (not isinstance(cached_bytes, (tuple, list, bytes)) or
             len(cached_bytes) != 4 or
             any(type(value) is not int or not 0 <= value <= 255
                 for value in cached_bytes)):
         raise ValueError('four cached sampler bytes are required')
-    return (resource_pointer != cached_pointer or
-            tuple(sampler_bytes) != tuple(cached_bytes))
+    return tuple(sampler_bytes) != tuple(cached_bytes)
 
 
 def correlate_capture(packet, ram, sprite_addresses=(),
