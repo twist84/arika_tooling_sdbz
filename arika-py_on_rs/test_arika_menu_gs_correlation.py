@@ -66,7 +66,7 @@ class NativeGsCorrelationTests(unittest.TestCase):
                          0x100)
         self.assertEqual(row['register_fields_if_emitted']['tex1']['mmag'], 1)
         self.assertEqual(row['register_fields_if_emitted']['clamp']['wms'], 1)
-        self.assertIn('not actual GS', report['limitations'][-2].lower())
+        self.assertIn('not actual gs', report['limitations'][-2].lower())
 
     def test_sprite_resource_object_is_not_returned_packet_pointer(self):
         report = correlate_capture(make_packet(), make_ram(),
