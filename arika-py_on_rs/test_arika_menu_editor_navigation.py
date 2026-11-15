@@ -258,6 +258,8 @@ class MenuEditorNavigationTests(unittest.TestCase):
         editor = self.m_editor
         editor.m_native_mode = True
         editor.m_item = 0
+        editor.m_native_runtime.m_help_state.update(
+            phase=2, age=0.0, x=24.0, y=272.0)
         editor.m_help_font = object()  # Synthetic line bitmap below.
         editor.m_help_panel_uv = C.QRectF(100, 100, 1, 1)
         panel = G.QPixmap(512, 512)
@@ -302,6 +304,62 @@ class MenuEditorNavigationTests(unittest.TestCase):
                          G.QColor('#32fa32'))
         self.assertEqual(versus.pixelColor(88, 399),
                          G.QColor('#c83214'))
+
+    def test_native_help_entry_exit_phases_reposition_frame_and_gate_text(self):
+        from unittest.mock import patch
+        from PySide6 import QtCore as C, QtGui as G
+        from arika_menu_help_lifecycle import start_help, exit_help, step_help
+
+        editor = self.m_editor
+        editor.m_native_mode = True
+        editor.m_help_panel = True
+        editor.m_item = 0
+        editor.m_help_font = object()
+        panel = G.QPixmap(512, 512)
+        panel.fill(G.QColor('#c83214'))
+        editor.m_textures[4] = panel
+        glyphs = G.QPixmap(8, 8)
+        glyphs.fill(G.QColor('#32fa32'))
+        state = editor.m_native_runtime.m_help_state
+        start_help(state)
+        self.assertEqual(state['y'], -448.0)
+
+        def render_help():
+            canvas = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            canvas.fill(G.QColor('#10151c'))
+            painter = G.QPainter(canvas)
+            try:
+                with patch.object(editor, 'help_line_pixmap',
+                                  return_value=glyphs):
+                    editor.draw_help_panel(painter)
+            finally:
+                painter.end()
+            return canvas
+
+        # The panel starts well above the visible viewport; its text is
+        # gated until the vtable +0x34 entry callback returns complete.
+        self.assertEqual(render_help().pixelColor(88, 324),
+                         G.QColor('#10151c'))
+        for _ in range(15):
+            step_help(state)
+        entry = render_help()
+        self.assertEqual((state['phase'], state['y']), (1, 272.0))
+        self.assertEqual(entry.pixelColor(88, 324),
+                         G.QColor('#c83214'))
+        for _ in range(12):
+            step_help(state)
+        settled = render_help()
+        self.assertEqual((state['phase'], state['y']), (2, 272.0))
+        self.assertEqual(settled.pixelColor(88, 324),
+                         G.QColor('#32fa32'))
+
+        exit_help(state)
+        self.assertEqual(render_help().pixelColor(88, 324),
+                         G.QColor('#c83214'))
+        step_help(state)
+        self.assertAlmostEqual(state['y'], 316.8, places=3)
+        self.assertEqual(render_help().pixelColor(88, 324),
+                         G.QColor('#10151c'))
 
     def test_4_3_help_frame_matches_reference_top(self):
         from PySide6 import QtCore as C, QtGui as G
