@@ -199,9 +199,15 @@ ownership, precise branch order and validation limitations.
   sprite path, original texture entry 2 and native depths. Keep
   diagnostic frames and paint/RNG state independent. Added native-word
   draw and offscreen Qt pixel regressions.
-- [ ] Replace the remaining authored shared tile/banner/small sprite
-  geometry clocks with native scheduler-owned draw states and validate
-  GS visibility, blending and capture parity.
+- [x] Replace shared tile/banner/seven-small/overlay diagnostic-frame
+  clocks with state owned by 0x377DE0, 0x378480, 0x376080 and
+  0x376AC0; render from 0x378170 draw order. The existing 140-frame
+  diagnostic mode remains independently playable.
+- [x] Add integrated shared entry/exit/clock and offscreen Qt pixel
+  regressions, plus native-word 0x378170 draw-order/overlay-gate oracle.
+  Windows and Ubuntu passed 181 menu/editor tests at 1026084975.
+- [ ] Establish native GS visibility/blending/texture sampling and
+  capture parity; host depth-sort remains a renderer approximation.
 - [ ] Keep PR #14 draft until acceptance criteria are satisfied; do not
   conflate passing stubbed instruction tests with complete ELF parity.
 
@@ -219,6 +225,24 @@ injected native LCG context, and a focused test verifies first-entry
 companion callbacks and competing same-update RNG draws. Other live
 context consumers and the true game seed remain unknown. Research details
 are in [NATIVE_DRAGON_PARTICLES.md](NATIVE_DRAGON_PARTICLES.md).
+
+### Shared visual scheduling checkpoint (15 November 2026)
+
+The remaining banner, tile and seven small-sprite layers now run on
+their existing recovered ELF state machines, connected through
+`step_shared` callback order; the tint overlay uses native shared
+opacity/visibility. Geometry is pure and no logical update or RNG
+draw happens on Qt repaint. A separate 39-word native draw oracle
+tests background → banner → tiles+companions → seven small slots
+→ conditional overlay.
+
+The verified native geometry and callback sources are recorded in
+[NATIVE_SHARED_VISUAL_LIFECYCLE.md](NATIVE_SHARED_VISUAL_LIFECYCLE.md).
+The first full integration passed Ubuntu and Windows in Actions run
+`43688998874` (181 menu/editor tests). The additional compositor
+oracle must be verified separately on the latest head. The next
+scope is compositing/GS state against genuine game output rather
+than guessing image blending or frame duration.
 
 ### Follow-up
 
