@@ -10,7 +10,8 @@ import tempfile
 import unittest
 
 from arika_menu_gs_attachment_elf import (
-    EXTERNAL_CALLER_EVIDENCE, MENU_START, MENU_STOP, ZERO_A2,
+    EXTERNAL_CALLER_EVIDENCE, NEAREST_ROUTINE_SITES,
+    MENU_START, MENU_STOP, ZERO_A2,
     ZERO_A3, ONE_A3, ZERO_A4, ZERO_A5, VERIFIED_NONCANONICAL_DEFS,
     classify_literal_attachment_words, scan_menu_sprite_attachments,
     verify_noncanonical_reaching_defs,
@@ -208,7 +209,10 @@ class NativeAttachmentElfOracleTests(unittest.TestCase):
         self.assertEqual(EXTERNAL_CALLER_EVIDENCE, (
             (0x3707f0, 0x41665c),
             (0x370a00, 0x417ef8),
+            (0x372790, 0x34266c),
+            (0x372790, 0x344864),
             (0x37c470, 0x408338),
+            (0x37c7c0, 0x408b28),
         ))
         for function, caller in EXTERNAL_CALLER_EVIDENCE:
             self.assertEqual(word(caller), 0x0c000000 | (function >> 2))
@@ -220,6 +224,19 @@ class NativeAttachmentElfOracleTests(unittest.TestCase):
             0x370c08, 0x3727b4, 0x37c56c, 0x37c5bc,
             0x37c624, 0x37c67c, 0x37d8d0,
         })
+        self.assertEqual(
+            {address for _function, calls in NEAREST_ROUTINE_SITES
+             for address in calls}, nearest)
+        self.assertEqual(len(NEAREST_ROUTINE_SITES), 5)
+        for function, calls in NEAREST_ROUTINE_SITES:
+            for address in calls:
+                row = next(site for site in scan['sites']
+                           if int(site['callsite'], 16) == address)
+                self.assertEqual(
+                    row['containing_routine_if_verified_nearest'],
+                    hex(function))
+        self.assertEqual(sum(len(calls) for _, calls in NEAREST_ROUTINE_SITES),
+                         11)
         by_site = {int(site['callsite'], 16): site
                    for site in scan['sites']}
         for addr, entry, owner in NATIVE_MENU_ATTACHMENT_SITES:
