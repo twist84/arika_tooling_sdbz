@@ -206,8 +206,13 @@ ownership, precise branch order and validation limitations.
 - [x] Add integrated shared entry/exit/clock and offscreen Qt pixel
   regressions, plus native-word 0x378170 draw-order/overlay-gate oracle.
   Windows and Ubuntu passed 181 menu/editor tests at 1026084975.
-- [ ] Establish native GS visibility/blending/texture sampling and
-  capture parity; host depth-sort remains a renderer approximation.
+- [x] Recover GS TEST/ALPHA/ZBUF and six texture register writers
+  from the EU-beta ELF; test native packet layouts and, for texture
+  registers, 240 controlled ELF-word differential cases.
+- [ ] Capture live GS TEST/ALPHA/ZBUF/TEXA/TEX1/TEX0/CLAMP state,
+  texture uploads and relevant framebuffer/zbuffer values; establish
+  true filtering, blending, alpha/depth writes and screenshot parity.
+  The current host depth-sort is still a renderer approximation.
 - [ ] Keep PR #14 draft until acceptance criteria are satisfied; do not
   conflate passing stubbed instruction tests with complete ELF parity.
 
@@ -348,6 +353,41 @@ via PCSX2 GS dumps or instrumentation (including texture
 `TEX0/TEX1/CLAMP/TEXA`, Z allocation, alpha and depth write
 rules) and then updating Qt compositing. Do not mark pixel
 parity complete from a recovered default alone.
+
+### GS texture-register reconstruction checkpoint
+
+The native texture path now has an end-to-end, asset-independent
+register reconstruction. The resource selector stored at
+`0x4FF470/0x4FF474` passes through `0x10DA20` to
+`0x10C3E0`, which reads a 48-byte runtime texture
+descriptor from `0x4FF8F0 + (id-1)*0x30`. Its
+six-register A+D GIF template at `0x439E70` targets
+**TEXA, TEX1_1, TEX0_1, CLAMP_1, MIPTBP1_1
+and MIPTBP2_1**. A separate native helper
+`0x10C7C0` supplies the mip allocation calculations.
+`0x103E70` submits the fixed six-register packet.
+See [NATIVE_MENU_GS_TEXTURE.md](NATIVE_MENU_GS_TEXTURE.md)
+for verified offsets, formulas, DMA format, inputs and
+the remaining unknowns.
+
+`arika_menu_gs_texture.py` now exposes a read-only
+48-byte descriptor decoder, the six 64-bit register
+values, GIF packet reconstruction and a CLI for a
+future PCSX2 runtime record dump. The optional
+`arika_menu_gs_texture_elf_oracle.py` executes actual
+`0x10C3E0/0x10C7C0` words from the exact
+SHA256-verified, user-owned ELF; **240 seeded
+synthetic cases matched bit-for-bit**.
+The Windows/Ubuntu CI suite uses asset-free tests.
+No game textures, ELF bytes or sampled animation
+times are introduced.
+
+**Still pending:** real 48-byte runtime records and
+BSS renderer selection flags, actual GS packet
+captures and active sampling/blending across a
+frame, and 4:3/output/FFON screenshot parity.
+The Qt software painter is unchanged until those
+runtime values are observed.
 
 ### Follow-up
 
