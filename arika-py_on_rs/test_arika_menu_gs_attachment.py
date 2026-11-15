@@ -81,6 +81,8 @@ class NativeMenuSamplerAttachmentTests(unittest.TestCase):
         self.assertFalse(data['opcode1_possible'])
         self.assertEqual(data['filter_flag'], 1)
         self.assertEqual(data['clamp_flag'], 1)
+        self.assertIsNone(data['tex1_if_texture_writer_succeeds'])
+        self.assertIsNone(data['tex1_fields_if_emitted'])
         # The sampler fields can be decoded, but no native TEX1 is
         # emitted via the null-resource path.
 
