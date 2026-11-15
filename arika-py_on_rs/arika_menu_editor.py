@@ -822,6 +822,32 @@ class c_menu_editor(W.QWidget):
         if self.m_tint and tint_visible:
             enqueue(8, self.m_data['tint'], 10, tint_alpha)
 
+        if self.m_native_mode:
+            # 0x379E60 draws the pending old item before the current item.
+            # First layer, character and label have independent exit ages.
+            pending = self.m_native_runtime.m_pending
+            if pending >= 0:
+                if self.m_first:
+                    for part_index, part in enumerate(self.m_data['items'][pending]['first']):
+                        geometry = self.m_native_runtime.first_geometry(
+                            pending, part['geometry'], component_index=part_index)
+                        enqueue(part['texture_entry'], geometry, 47)
+                    for part in self.m_native_runtime.first_strip_geometry(pending):
+                        enqueue(part['texture_entry'], part['geometry'], 45)
+                    # This pool belongs to DRAGON SUMMONING, not the new
+                    # selected item. Retain it through pending exit.
+                    if pending == 3 and self.m_native_runtime.m_selected != 3:
+                        for part in self.m_native_runtime.particle_geometry(pending):
+                            enqueue(part['texture_entry'], part['geometry'], 45)
+                if self.m_middle and self.m_character_motion:
+                    for part in (self.m_native_runtime.character_geometry(
+                            pending, include_idle=self.m_idle) or []):
+                        enqueue(part['texture_entry'], part['geometry'], 60)
+                if self.m_overlay and self.m_label_motion:
+                    geometry = self.m_native_runtime.label_geometry(pending)
+                    for part in self.m_data['items'][pending]['overlay']:
+                        enqueue(part['texture_entry'], geometry, 70)
+
         active_characters = frame['idle_characters' if self.m_idle else 'characters'][self.m_item]
         if self.m_native_mode and self.m_character_motion:
             native_characters = self.m_native_runtime.character_geometry(
@@ -832,11 +858,6 @@ class c_menu_editor(W.QWidget):
         # Diagnostic emphasis samples are not the native selection clock.
         selection_sample = (emphasis_sample(self.m_data['frames'], self.m_selection_age)
                             if self.m_selection_effect and not self.m_native_mode else None)
-
-        if self.m_middle:
-            group_checked = True
-        else:
-            group_checked = False
 
         for group in (('first', 'middle', 'overlay') if native_item_active else ()):
             checked = {'first': self.m_first, 'middle': self.m_middle, 'overlay': self.m_overlay, 'arrows': self.m_arrows}[group]
@@ -874,6 +895,17 @@ class c_menu_editor(W.QWidget):
                                                     pulse_label[self.m_item])
                 enqueue(p['texture_entry'], geometry, 47 if group == 'first' else 60 if group == 'middle' else 70)
 
+            if group == 'first' and self.m_first:
+                strips = (self.m_native_runtime.first_strip_geometry(self.m_item)
+                          if self.m_native_mode else frame['strips'][self.m_item])
+                for p in strips:
+                    enqueue(p['texture_entry'], p['geometry'], 45)
+                if self.m_native_mode:
+                    # 0x37A910: literal+decoration sprites precede
+                    # the 0x37AEE0 Dragon particle pass.
+                    for p in self.m_native_runtime.particle_geometry(self.m_item):
+                        enqueue(p['texture_entry'], p['geometry'], 45)
+
         if self.m_arrows and native_item_active:
             for part in arrow_parts(self.m_menu_report, self.m_item, self.m_navigation.m_previous):
                 geometry = part['geometry']
@@ -884,43 +916,14 @@ class c_menu_editor(W.QWidget):
                     geometry = bobbed_arrow_geometry(geometry, arrow_age)
                 enqueue(0, geometry, 95)
 
-        if self.m_first and native_item_active:
-            strips = (self.m_native_runtime.first_strip_geometry(self.m_item)
-                      if self.m_native_mode else frame['strips'][self.m_item])
-            for p in strips:
-                enqueue(p['texture_entry'], p['geometry'], 45)
-            if self.m_native_mode:
-                # 0x37A910 -> 0x37AEE0: read the runtime-owned pool.
-                for p in self.m_native_runtime.particle_geometry(self.m_item):
-                    enqueue(p['texture_entry'], p['geometry'], 45)
-
-        if self.m_native_mode:
-            # 0x379E60 draws the pending old item before the current item.
-            # First layer, character and label have independent exit ages.
-            pending = self.m_native_runtime.m_pending
-            if pending >= 0:
-                if self.m_first:
-                    for part_index, part in enumerate(self.m_data['items'][pending]['first']):
-                        geometry = self.m_native_runtime.first_geometry(
-                            pending, part['geometry'], component_index=part_index)
-                        enqueue(part['texture_entry'], geometry, 47)
-                    for part in self.m_native_runtime.first_strip_geometry(pending):
-                        enqueue(part['texture_entry'], part['geometry'], 45)
-                    # This pool belongs to DRAGON SUMMONING, not the new
-                    # selected item. Retain it through pending exit.
-                    if pending == 3 and self.m_native_runtime.m_selected != 3:
-                        for part in self.m_native_runtime.particle_geometry(pending):
-                            enqueue(part['texture_entry'], part['geometry'], 45)
-                if self.m_middle and self.m_character_motion:
-                    for part in (self.m_native_runtime.character_geometry(
-                            pending, include_idle=self.m_idle) or []):
-                        enqueue(part['texture_entry'], part['geometry'], 60)
-                if self.m_overlay and self.m_label_motion:
-                    geometry = self.m_native_runtime.label_geometry(pending)
-                    for part in self.m_data['items'][pending]['overlay']:
-                        enqueue(part['texture_entry'], geometry, 70)
-
-        draw_queue.sort(key=lambda q: q['depth'])
+        # In native mode the EE emits distinct draw commands. Do NOT
+        # infer a depth-test ordering from their Z values: the actual
+        # GS TEST/ZBUF/ALPHA state has not yet been verified.
+        # 0x379E60 calls 0x378170 shared, pending item, current item,
+        # then the arrow draw. The authored timeline retains its
+        # previous depth-sort presentation for comparison.
+        if not self.m_native_mode:
+            draw_queue.sort(key=lambda q: q['depth'])
 
         # 512x448 recovered coordinates never change. Fit deliberately fills
         # the complete widget; the remaining choices preserve their aspect ratio.
