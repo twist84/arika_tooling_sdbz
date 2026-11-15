@@ -334,23 +334,51 @@ these exact mode settings, or that the Qt stable-Z
 fallback correctly simulates semitransparent pixel
 writes in all cases.
 
-### Texture resource chain located, not yet captured
+### Native texture-register construction recovered, runtime values pending
 
-The next texture-related intermediate packet opcode reaches
-`0x104820`, whose 6-instruction body stores two
-resource-selection words at `0x4FF470` and `0x4FF474`.
-`0x10DA20` then loads these words, resolves the current
-resource through `0x10D7C0`, and passes the texture handle
-plus mode/table pointers to `0x10C3E0`.
-The latter checks the resolved texture object and packs
-texture-dependent bit fields from offsets including
-`+0x02/+0x04/+0x06/+0x08/+0x0E/+0x10/+0x14/+0x16/+0x18`.
-Those fields are from **runtime objects**, so their values
-cannot be inferred from the ELF's startup data. A future
-texture capture or more complete `0x10C3E0` trace is needed
-before declaring the menu's `TEX0/TEX1/CLAMP`, sampling
-and alpha expansion state. This is the next hardware
-investigation target.
+`0x104820` caches the resource-selection words at
+`0x4FF470/0x4FF474`. The next callback `0x10DA20`
+resolves the texture via `0x10D7C0`, passes a resource
+ID to `0x10C3E0`, which indexes the **one-based 48-byte
+runtime descriptor array at `0x4FF8F0`**. Its six
+outputs target the fixed A+D template at `0x439E70`:
+
+| Register | GS address | Native source |
+| --- | --- | --- |
+| TEXA | `0x3B` | `0x10C3E0` sets TA1=0x80 and conditional TA0=0x80 |
+| TEX1_1 | `0x14` | filter-selection BSS word `0x4FF470` gives 0 or 0x60 |
+| TEX0_1 | `0x06` | descriptor TBP0/TBW/PSM/TW/TH and CLUT CBP/CPSM/CLD |
+| CLAMP_1 | `0x08` | clamp-selection BSS word `0x4FF474` gives zero or `5 \\| (width<<14) \\| (height<<34)` |
+| MIPTBP1_1 | `0x34` | optional `0x10C7C0` mip allocation |
+| MIPTBP2_1 | `0x36` | optional `0x10C7C0` mip allocation |
+
+`0x103E70` submits the template through the hardware
+DMA queue after changing its copied header to
+`0xF0000007 / 0x13000000 / 0x51000007`; unlike
+the TEST/ALPHA emitter, this is a fixed six-register
+128-byte texture packet.
+
+New **`arika_menu_gs_texture.py`** reconstructs the raw
+TEXA/TEX1/TEX0/CLAMP/mipmap values, has typed field
+decoders, and can output the fixed GIF packet from a
+captured 48-byte record and two BSS selection words.
+`arika_menu_gs_texture_elf_oracle.py` is an optional
+scalar R5900 interpreter over exact SHA256-verified
+user-owned ELF bytes. The optional differential
+test matched **240 deterministic synthetic texture
+descriptors bit-for-bit** across direct, CLUT, mip
+and failure paths. CI runs synthetic fixtures without
+including copyrighted binary bytes.
+
+**Important:** These GS register *formulas* are recovered.
+The specific texture handles, BSS record contents,
+active frame-to-frame selection flags, and later
+sprite overrides remain **uncaptured**. Do not assign
+Qt filtering/blending from a synthetic descriptor or
+claim the actual menu has a known TEX0 without
+runtime evidence. Full offset maps, mipmap corner cases,
+instructions and CLI are in
+[NATIVE_MENU_GS_TEXTURE.md](NATIVE_MENU_GS_TEXTURE.md).
 
 ### Remaining hardware evidence
 
@@ -362,11 +390,11 @@ investigation target.
   texture/resource setup across a complete menu frame
   with PCSX2 GS dump or emulator instrumentation;
   call-site defaults are not a whole-frame trace.
-- Recover texture `TEX0/TEX1/CLAMP/TEXA`,
-  framebuffer/alpha-write state and any other engine
-  overrides before changing Qt's alpha and
-  depth compositing. Do not infer active GS state
-  from the startup selector mapping alone.
+- The native TEXA/TEX1_1/TEX0_1/CLAMP_1/MIPTBP1_1/MIPTBP2_1
+  writer has been recovered and instruction-differential-tested.
+  Capture **actual runtime texture descriptors**, framebuffer
+  and alpha-write state, and any per-sprite overrides before
+  changing Qt sampling or blending.
 
 ## Still unresolved before native GS parity
 
