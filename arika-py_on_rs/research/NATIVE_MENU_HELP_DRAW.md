@@ -81,21 +81,32 @@ rectangle or final GS pixel footprint.
   branch-delay increment. Coordinates advance in float32 arithmetic,
   rather than deriving all lines from a wall-clock timer.
 
-These constants corroborate the editor's *25-unit* line separation,
-but **do not prove** its absolute `(87,324)` text origin or
-`(30,272,450,175)` screenshot-calibrated panel rectangle. To recover
-absolute positions, trace the writes / vtable position setters for
-help-component `+0x08/+0x0C` (menu-relative `+0x48/+0x4C`).
-Do not infer that position from a 4:3 screenshot using a uniform
-512-based scale; see `NATIVE_MENU_PHASE6_OFFLINE.md`.
+The **settled native component position is now independently verified**.
+The help vtable `+0x40 = 0x0037C160` state setter writes state 2's
+coordinates at `0x37C19C–0x37C1A8`:
+X = **24.0f** (`gp-0x4C00 = 0x4FA770`) and
+Y = **272.0f** (`gp-0x4BFC = 0x4FA774`).
+Accordingly the settled frame sprite occupies logical **(24,272)–(488,448)**,
+and the first four text origins are **(88,324)**, **(88,349)**,
+**(88,374)** and **(88,399)**, as computed by the native FFON loop.
+The existing screenshot-calibrated `x=30` was close to the *visible
+opaque artwork*, not the sprite's source coordinate: atlas entry 4's
+alpha begins at source X≈6, so a source-correct sprite at X24 yields
+visible content around X30. **Do not** use the cropped alpha bounds to
+translate the native frame rectangle, and do not infer the display
+mapping from atlas dimensions.
+
+**Still outstanding:** exact state-1/3 entry/exit positions and their
+curve activation, GS compositing, and the renderer's full font/glyph
+metrics. A settled draw is not an end-to-end animation trace.
 
 ## Implementation boundary
 
 `arika_menu_help_native.py` is a pure, float32-aware geometry/record
-description for these proven relative offsets and counts. It does
-**not** replace the Qt help renderer's screenshot-calibrated absolute
-position. The existing diagnostic timeline, actual FFON/PIX asset
-loading and 4:3 presentation remain unchanged.
+description for these proven offsets, counts and **settled** origin.
+The editor can select the native settled layout without modifying the
+existing diagnostic timeline and its screenshot-calibrated comparison.
+The actual FFON/PIX asset loading and 4:3 presentation remain unchanged.
 
 The precise FFON glyph placement/advance *inside* `0x2CDCA0`,
 active GS blending/depth, absolute component origin, and the actual
