@@ -793,20 +793,34 @@ class c_menu_editor(W.QWidget):
         if self.m_background:
             enqueue(1, self.m_data['background'], 0)
         if self.m_motion:
-            enqueue(2, frame['banner'], 99)
-            for tile in frame['tiles']:
-                enqueue(2, tile, 85)
             if self.m_native_mode:
-                # 0x378170 -> 0x376290 -> 0x376600: shared ten-slot
-                # companion draw, after the tile pass and before the
-                # seven small components. These slots and their RNG are
-                # runtime-owned; the diagnostic timeline stays untouched.
+                # 0x378170: shared draw ordering is banner -> two
+                # tile quads -> ten companions -> seven small sprites.
+                # These all read recovered child clocks, not sample t.
+                banner = self.m_native_runtime.shared_banner_geometry()
+                if banner is not None:
+                    enqueue(banner['texture_entry'], banner, 99)
+                for part in self.m_native_runtime.shared_tile_geometry():
+                    enqueue(part['texture_entry'], part['geometry'], 85)
                 for part in self.m_native_runtime.companion_geometry():
                     enqueue(part['texture_entry'], part['geometry'], 86)
-            for s in frame['small']:
-                enqueue(3, s, 5)
-        if self.m_tint and not frame['hidden']:
-            enqueue(8, self.m_data['tint'], 10, frame['alpha'])
+                for sprite in self.m_native_runtime.shared_small_geometry():
+                    enqueue(sprite['texture_entry'], sprite, 5)
+            else:
+                enqueue(2, frame['banner'], 99)
+                for tile in frame['tiles']:
+                    enqueue(2, tile, 85)
+                for sprite in frame['small']:
+                    enqueue(3, sprite, 5)
+        # The overlay's visibility/opacity are owned by shared +0xE0
+        # and +0xAC, not the diagnostic timeline on native mode.
+        shared = self.m_native_runtime.m_shared if self.m_native_mode else None
+        tint_visible = (not shared['overlay_hidden']
+                        if shared is not None else not frame['hidden'])
+        tint_alpha = (shared['overlay_alpha']
+                      if shared is not None else frame['alpha'])
+        if self.m_tint and tint_visible:
+            enqueue(8, self.m_data['tint'], 10, tint_alpha)
 
         active_characters = frame['idle_characters' if self.m_idle else 'characters'][self.m_item]
         if self.m_native_mode and self.m_character_motion:
