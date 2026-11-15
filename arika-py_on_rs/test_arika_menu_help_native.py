@@ -7,6 +7,7 @@ from pathlib import Path
 
 from arika_menu_help_native import (
     HELP_FRAME_DEPTH, HELP_FRAME_SOURCE_BOUNDS, HELP_FRAME_TEXTURE_INDEX,
+    HELP_SETTLED_COMPONENT_ORIGIN,
     HELP_LINE_ADVANCE, HELP_TEXT_OFFSET, HELP_TEXT_SCALE,
     NATIVE_HELP_RECORDS, help_record, native_help_layout,
 )
@@ -34,6 +35,9 @@ class NativeHelpLayoutTests(unittest.TestCase):
         self.assertEqual(HELP_TEXT_OFFSET, (64.0, 52.0))
         self.assertEqual(HELP_TEXT_SCALE, 0.75)
         self.assertEqual(HELP_LINE_ADVANCE, 25.0)
+        self.assertEqual(HELP_SETTLED_COMPONENT_ORIGIN, (24.0, 272.0))
+        self.assertEqual(native_help_layout(0, *HELP_SETTLED_COMPONENT_ORIGIN)['line_origins'][0],
+                         (88.0, 324.0))
 
         # These input coordinates are synthetic, not a claim that the
         # native owner uses the Qt editor's calibrated screen origin.
@@ -113,6 +117,8 @@ class NativeHelpElfOracleTests(unittest.TestCase):
         self.assertEqual(word(0x37C240), 0x0C000000 | (0x2CDCA0 >> 2))
 
         # Native GP float constants used by the per-line loop.
+        self.assertEqual(real(0x4FA770), HELP_SETTLED_COMPONENT_ORIGIN[0])
+        self.assertEqual(real(0x4FA774), HELP_SETTLED_COMPONENT_ORIGIN[1])
         self.assertEqual(real(0x4FA798), HELP_TEXT_SCALE)
         self.assertEqual(real(0x4FA79C), HELP_TEXT_OFFSET[0])
         self.assertEqual(real(0x4FA7A0), HELP_TEXT_OFFSET[1])
