@@ -176,7 +176,13 @@ Further native sprite research in `NATIVE_MENU_GS_SAMPLING.md`
 has now recovered four **specific** texture-attachment initializer
 sites, including the banner and help panel. All four initialize
 filter selector 1 (linear), clamp selector 0 (enabled).
-An original-ELF bounded code scan classifies 59 literal-linear,
-7 literal-nearest and 11 unknown direct attachment callsites.
+The original-ELF bounded **menu-adjacent** code scan now resolves
+**66 initial-linear and 11 initial-nearest** setter callsites.
+Fifty-nine linear and seven nearest sites follow an adjacent
+literal-argument pattern; eleven further sites were audited
+instruction-by-instruction (seven linear, four nearest).
+All eleven nearest callsites have containing-routine and
+external-caller provenance, but these are **not** 77 proven
+main-menu-owned draw sprites.
 This does **not** establish active draw-time GS state, so Qt's
 comparison preset has **not** been silently changed.
