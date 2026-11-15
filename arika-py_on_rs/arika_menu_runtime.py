@@ -43,6 +43,9 @@ class c_menu_runtime:
             report = read_menu_report()
         self.m_report = report
         self.m_shared_kernel = report['shared_scheduler']
+        self.m_banner_kernel = report.get('shared_banner')
+        self.m_small_kernel = report.get('shared_small_animation')
+        self.m_tile_kernel = report.get('tile_scroll_kernel')
         self.m_label_kernel = report.get('item_label_animation')
         self.m_label_emphasis = (
             report.get('item_emphasis', {}).get('kernels', {}).get('labels'))
@@ -83,6 +86,14 @@ class c_menu_runtime:
         self.m_navigation.m_previous = -1
         self.m_outer_phase = 0
         self.m_shared = initialize_shared()
+        # 0x377A10 constructor owns the 0x3783C0 banner state, the
+        # 0x375F90 tile/companion owner and seven small state objects.
+        from arika_menu_banner import initialize_banner
+        from arika_menu_small import initialize_small
+        self.m_banner_state = (initialize_banner(self.m_banner_kernel)
+                               if self.m_banner_kernel is not None else None)
+        self.m_small_states = ([initialize_small() for _ in range(7)]
+                               if self.m_small_kernel is not None else None)
         self.m_selected = -1
         self.m_pending = -1
         self.m_exit_phase = 0
@@ -231,6 +242,30 @@ class c_menu_runtime:
 
         def child(role, index):
             self._emit('shared_' + role, index=index)
+            if self.m_banner_state is not None:
+                from arika_menu_banner import (
+                    step_banner, start_banner, exit_banner)
+                if role == 'update_banner':
+                    step_banner(self.m_banner_state, self.m_banner_kernel)
+                elif role == 'start_banner':
+                    start_banner(self.m_banner_state)
+                elif role == 'exit_banner':
+                    exit_banner(self.m_banner_state)
+            if self.m_small_states is not None:
+                from arika_menu_small import start_small, step_small
+                if role == 'update_small':
+                    state = self.m_small_states[index]
+                    step_small(
+                        state, self.m_small_kernel['components'][index],
+                        self.m_small_kernel)
+                    # 0x377DE0 checks the actual child phase after
+                    # 0x376AC0; no separate scheduler-only copy.
+                    self.m_shared['small_phases'][index] = state['phase']
+                elif role == 'start_small':
+                    start_small(
+                        self.m_small_states[index],
+                        self.m_small_kernel['components'][index],
+                        self.m_small_kernel)
             if self.m_companion_state is not None:
                 if role == 'update_owner':
                     from arika_menu_owner import step_owner
@@ -470,6 +505,48 @@ class c_menu_runtime:
         return draw_character(self.m_character_states[item], item,
                               self.m_report, include_idle=include_idle)
 
+    def shared_banner_geometry(self):
+        """0x378170 -> 0x3786A0: present banner's current local offset.
+
+        The actual shared draw invokes the banner sprite regardless of
+        entry/idle/exit state; the initial offset is native -512.
+        """
+        if self.m_banner_state is None:
+            return None
+        from arika_menu_banner import draw_banner
+        return draw_banner(self.m_banner_state, self.m_banner_kernel)
+
+    def shared_tile_geometry(self):
+        """0x378170 -> 0x376290: both scrolling tile quads.
+
+        The owner at shared +0x180 carries +0x78 phase and +0x7C/0x80
+        offsets. This draw reads those, not an authored timeline tick.
+        """
+        if self.m_companion_state is None or self.m_tile_kernel is None:
+            return []
+        from arika_menu_tiles import tile_draw
+        owner = self.m_companion_state
+        kernel = self.m_tile_kernel
+        result = tile_draw(
+            owner['phase'], kernel['base_position'],
+            owner['offset'], kernel['uv_xywh'],
+            kernel['initial_depth'])
+        return [dict(piece=i, texture_entry=kernel['texture_entry'],
+                     geometry=quad)
+                for i, quad in enumerate(result['quads'])]
+
+    def shared_small_geometry(self):
+        """0x378170 -> 0x376C20: active small sprites in slot order."""
+        if self.m_small_states is None:
+            return []
+        from arika_menu_small import draw_small
+        return [
+            geometry for i, state in enumerate(self.m_small_states)
+            for geometry in (
+                draw_small(state, self.m_small_kernel['components'][i]),)
+            if geometry is not None
+        ]
+
     def companion_geometry(self):
         """Read-only 0x378170 -> 0x376290 -> 0x376600 -> 0x376950.
 
@@ -564,10 +641,22 @@ class c_menu_runtime:
                                 for state in self.m_label_states),
             'label_offsets': tuple(tuple(state['offset'])
                                    for state in self.m_label_states),
+            'banner': (
+                dict(phase=self.m_banner_state['phase'],
+                     age=self.m_banner_state['age'],
+                     offset=tuple(self.m_banner_state['offset']))
+                if self.m_banner_state is not None else None),
+            'small': (
+                tuple(dict(phase=state['phase'], age=state['age'],
+                           offset=tuple(state['offset']))
+                      for state in self.m_small_states)
+                if self.m_small_states is not None else None),
             'shared_phase': self.m_shared['phase'],
             'shared_subphase': self.m_shared['subphase'],
             'shared_age': self.m_shared['age'],
             'shared_started_count': self.m_shared['started_count'],
+            'shared_overlay_hidden': self.m_shared['overlay_hidden'],
+            'shared_overlay_alpha': self.m_shared['overlay_alpha'],
             'completion': self.m_completion,
             'calls': list(self.m_last_calls),
         }
