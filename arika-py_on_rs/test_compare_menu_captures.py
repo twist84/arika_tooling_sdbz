@@ -3,13 +3,17 @@ import unittest
 
 from PIL import Image, ImageDraw
 
-from compare_menu_captures import compare_menu_captures, validate_capture
+from compare_menu_captures import (
+    MENU_ITEM_KEYS, compare_menu_captures, validate_capture,
+)
+from arika_menu_help_native import NATIVE_HELP_RECORDS
+from arika_menu_navigation import MENU_ITEM_NAMES, read_menu_report
 
 
-def synthetic_capture(size, shift=0, first_line_only=False):
+def synthetic_capture(size, shift=0, first_line_only=False, line_count=4):
     image = Image.new('RGB', size, (150, 45, 120))
     draw = ImageDraw.Draw(image)
-    for index in range(1 if first_line_only else 4):
+    for index in range(1 if first_line_only else line_count):
         x = int((105 + shift) * size[0] / 512)
         y = int((327 + 25 * index) * size[1] / 448)
         width = max(1, int(80 * size[0] / 512))
@@ -45,6 +49,45 @@ class CompareMenuCapturesTests(unittest.TestCase):
         self.assertAlmostEqual(delta['right'], 4, delta=1)
         for row in result['help_lines'][1:]:
             self.assertIsNone(row['delta'])
+
+    def test_all_seven_selections_follow_elf_record_counts(self):
+        report = read_menu_report()
+        self.assertEqual(len(NATIVE_HELP_RECORDS), len(MENU_ITEM_NAMES))
+        self.assertEqual(MENU_ITEM_KEYS, (
+            'original', 'z_survivor', 'versus', 'dragon_summoning',
+            'training', 'customize', 'options'))
+        for selection, (_text_id, _address, count) in enumerate(
+                NATIVE_HELP_RECORDS):
+            with self.subTest(selection=selection):
+                self.assertEqual(count, len(
+                    report['menu']['items'][selection]['help_text']['lines']))
+                image = synthetic_capture((640, 480), line_count=count)
+                result = compare_menu_captures(image, image, selection)
+                self.assertEqual(result['selection'], selection)
+                self.assertEqual(result['native_text_id'],
+                                 NATIVE_HELP_RECORDS[selection][0])
+                self.assertEqual(result['help_line_count'], count)
+                self.assertEqual(len(result['help_lines']), count)
+                self.assertTrue(all(row['delta'] is not None
+                                    for row in result['help_lines']))
+
+    def test_versus_and_options_skip_unowned_fourth_help_row(self):
+        reference = synthetic_capture((640, 480), line_count=3)
+        # A white fourth row in the candidate is an unrelated UI artifact.
+        candidate = synthetic_capture((640, 480), line_count=4)
+        for item in (2, 6):
+            with self.subTest(selection=item):
+                result = compare_menu_captures(reference, candidate, item)
+                self.assertEqual(len(result['help_lines']), 3)
+                self.assertEqual(result['help_line_count'], 3)
+                self.assertTrue(all(row['delta']['left'] == 0
+                                    for row in result['help_lines']))
+
+    def test_invalid_menu_selection_is_rejected(self):
+        image = synthetic_capture((640, 480))
+        for selection in (-1, 7, None, True, 'versus'):
+            with self.subTest(selection=selection), self.assertRaises(ValueError):
+                compare_menu_captures(image, image, selection)
 
     def test_plain_background_has_no_false_white_text(self):
         image = Image.new('RGB', (640, 480), (160, 65, 144))
