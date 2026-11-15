@@ -21,6 +21,8 @@ from arika_menu_help_native import (
     HELP_FRAME_SOURCE_BOUNDS, native_help_layout,
 )
 from arika_menu_ffon_native import render_native_help_line
+from arika_menu_pcsx2_comparison import s_pcsx2_comparison_settings
+from arika_menu_pcsx2_dialog import c_pcsx2_comparison_dialog
 import arika_ffon
 from arika_menu_frame_match import normalize_reference, rank_samples
 from PIL import Image
@@ -67,7 +69,7 @@ class c_menu_canvas(W.QWidget):
 
     def paintEvent(self, event):
         painter = G.QPainter(self)
-        self.m_editor.render(painter, self.rect())
+        self.m_editor.render_canvas(painter, self.rect())
         painter.end()
 
     def mousePressEvent(self, event):
@@ -145,6 +147,9 @@ class c_menu_editor(W.QWidget):
         self.m_help_panel = True
         self.m_bounds = False
         self.m_smooth = True
+        # Opt-in: preserve original diagnostic/renderer output by default.
+        self.m_pcsx2_settings = s_pcsx2_comparison_settings()
+        self.m_pcsx2_enabled = False
 
         layout = W.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -254,6 +259,22 @@ class c_menu_editor(W.QWidget):
         native.addWidget(self.m_native_status, 1)
         layout.addLayout(native)
 
+        comparison = W.QHBoxLayout()
+        self.m_pcsx2_button = W.QPushButton('PCSX2 graphics...')
+        self.m_pcsx2_button.clicked.connect(self.configure_pcsx2_comparison)
+        comparison.addWidget(self.m_pcsx2_button)
+        self.m_pcsx2_capture_button = W.QPushButton('Capture comparison PNG...')
+        self.m_pcsx2_capture_button.clicked.connect(self.capture_pcsx2_comparison)
+        self.m_pcsx2_capture_button.setEnabled(False)
+        comparison.addWidget(self.m_pcsx2_capture_button)
+        self.m_pcsx2_status = W.QLabel(
+            'Qt renderer (PCSX2 comparison disabled)')
+        self.m_pcsx2_status.setToolTip(
+            'PCSX2 settings can be recorded here, but this Qt preview is '
+            'not a GS hardware renderer.')
+        comparison.addWidget(self.m_pcsx2_status, 1)
+        layout.addLayout(comparison)
+
         navigation = W.QHBoxLayout()
         navigation.addWidget(W.QLabel('Native graph'))
         for label, direction in (('←', 1), ('↑', 2), ('↓', 3), ('→', 0)):
@@ -303,6 +324,116 @@ class c_menu_editor(W.QWidget):
 
         self.load_data()
         self.update_navigation_status()
+
+    def configure_pcsx2_comparison(self):
+        """Offer screenshot-grounded PCSX2 settings without faking GS support."""
+        dialog = c_pcsx2_comparison_dialog(
+            self.m_pcsx2_settings, self.m_pcsx2_enabled, self)
+        if dialog.exec() == W.QDialog.DialogCode.Accepted:
+            self.apply_pcsx2_comparison(
+                dialog.selected_settings(), dialog.m_enabled.isChecked())
+
+    def apply_pcsx2_comparison(self, settings, enabled=True):
+        """Apply only supported Qt preview approximations; retain all metadata."""
+        self.m_pcsx2_settings = settings.validate()
+        self.m_pcsx2_enabled = bool(enabled)
+        self.m_pcsx2_capture_button.setEnabled(self.m_pcsx2_enabled)
+        if self.m_pcsx2_enabled:
+            w, h = settings.internal_canvas_size(self.presentation_height())
+            self.m_pcsx2_status.setText(
+                'PCSX2 reference: %dx | Qt raster %dx%d | %s (approx.)'
+                % (settings.internal_resolution, w, h,
+                   'linear' if settings.approximate_linear_filter()
+                   else 'nearest'))
+            self.m_pcsx2_status.setToolTip(
+                'Only raster supersampling and nearest/linear texture '
+                'sampling affect this Qt preview. Dithering, GS blending, '
+                'trilinear/anisotropic, AA1, mipmapping, alpha tests and '
+                'hardware fixes are recorded, not emulated.')
+        else:
+            self.m_pcsx2_status.setText(
+                'Qt renderer (PCSX2 comparison disabled)')
+        self.m_canvas.update()
+
+    def render_comparison_image(self):
+        """Render one frame at the selected logical supersampling factor.
+
+        A Qt QImage is *not* a PCSX2 Direct3D 12 render target: 4x
+        operates on the 512-wide source layout, while PCSX2's internal
+        resolution depends on its emulated GS framebuffer dimensions.
+        No native state or animation age is advanced by this call.
+        """
+        width, height = self.m_pcsx2_settings.internal_canvas_size(
+            self.presentation_height())
+        image = G.QImage(
+            width, height, G.QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(G.QColor('#10151c'))
+        painter = G.QPainter(image)
+        try:
+            self.render(painter, C.QRect(0, 0, width, height))
+        finally:
+            painter.end()
+        return image
+
+    def render_canvas(self, painter, rect):
+        """Preserve the original direct Qt renderer unless comparison is on."""
+        if not self.m_pcsx2_enabled:
+            self.render(painter, rect)
+            return
+        frame = self.render_comparison_image()
+        painter.fillRect(rect, G.QColor('#10151c'))
+        if self.m_presentation == 'fit':
+            target = C.QRectF(rect)
+        else:
+            aspect_height = self.presentation_height()
+            scale = min(rect.width() / 512.0,
+                        rect.height() / aspect_height)
+            target = C.QRectF(
+                rect.x() + (rect.width() - 512.0 * scale) / 2.0,
+                rect.y() + (rect.height() - aspect_height * scale) / 2.0,
+                512.0 * scale, aspect_height * scale)
+        painter.save()
+        try:
+            painter.setRenderHint(
+                G.QPainter.RenderHint.SmoothPixmapTransform,
+                self.m_pcsx2_settings.approximate_linear_filter())
+            painter.drawImage(target, frame)
+        finally:
+            painter.restore()
+
+    def capture_pcsx2_comparison(self):
+        """Export a lossless Qt frame plus the PCSX2 reference settings.
+
+        Do not modify the PCSX2 INI or pretend this is an emulator capture.
+        """
+        if not self.m_pcsx2_enabled:
+            return
+        filename, _ = W.QFileDialog.getSaveFileName(
+            self, 'Save Qt comparison capture', 'menu_comparison.png',
+            'PNG images (*.png)')
+        if not filename:
+            return
+        destination = Path(filename)
+        if destination.suffix.lower() != '.png':
+            destination = destination.with_suffix('.png')
+        try:
+            image = self.render_comparison_image()
+            if not image.save(str(destination), 'PNG'):
+                raise OSError('Qt could not write PNG')
+            metadata = self.m_pcsx2_settings.to_metadata()
+            metadata['source'] = 'Qt native menu preview (NOT a PCSX2/GS capture)'
+            metadata['image_size'] = [image.width(), image.height()]
+            metadata['presentation'] = self.m_presentation
+            metadata['native_lifecycle'] = self.m_native_mode
+            metadata['selection'] = self.m_item
+            metadata['native_tick'] = (
+                self.m_native_runtime.m_update
+                if self.m_native_mode else None)
+            destination.with_suffix('.pcsx2-settings.json').write_text(
+                json.dumps(metadata, indent=2) + '\\n', encoding='utf-8')
+        except (OSError, ValueError, RuntimeError) as error:
+            W.QMessageBox.warning(
+                self, 'PCSX2 comparison capture', str(error))
 
     def load_data(self):
         """Load recovered animation and geometry, not copyrighted texture data."""
@@ -962,7 +1093,9 @@ class c_menu_editor(W.QWidget):
             offset_y = rect.y() + (rect.height() - display_height * scale) / 2.0
 
         painter.save()
-        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth)
+        smooth = (self.m_pcsx2_settings.approximate_linear_filter()
+                  if self.m_pcsx2_enabled else self.m_smooth)
+        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, smooth)
         painter.translate(offset_x, offset_y)
         painter.scale(scale_x, scale_y)
         painter.setClipRect(C.QRectF(0, 0, 512, 448))
@@ -987,7 +1120,9 @@ class c_menu_editor(W.QWidget):
         retains its earlier screenshot-calibrated placement for comparison.
         """
         painter.save()
-        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, False)
+        smooth = (self.m_pcsx2_settings.approximate_linear_filter()
+                  if self.m_pcsx2_enabled else False)
+        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, smooth)
 
         native_layout = None
         if self.m_native_mode:
@@ -1079,7 +1214,12 @@ class c_menu_editor(W.QWidget):
         path.closeSubpath()
 
         painter.save()
-        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth or ((abs(du) == 1 and abs(dv) > 4) or (abs(dv) == 1 and abs(du) > 4)))
+        smooth = (self.m_pcsx2_settings.approximate_linear_filter()
+                  if self.m_pcsx2_enabled else
+                  self.m_smooth or
+                  ((abs(du) == 1 and abs(dv) > 4) or
+                   (abs(dv) == 1 and abs(du) > 4)))
+        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, smooth)
         painter.setOpacity(alpha)
         painter.setClipPath(path, C.Qt.ClipOperation.IntersectClip)
         transform = G.QTransform(a, b, c, d, tx, ty)
