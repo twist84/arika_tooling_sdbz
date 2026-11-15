@@ -21,6 +21,20 @@ def synthetic_ffon():
     return bytes(data)
 
 
+def synthetic_native_ffon():
+    """Two genuine-size 24x24 glyph cells; entirely synthetic data."""
+    glyph_offset = 0xA0 + 96 * 2
+    data = bytearray(glyph_offset + 2 * 24 * 12)
+    data[:4] = b'FFON'
+    struct.pack_into('<III', data, 0x10, 1, 95, 2)
+    data[0x1C:0x20] = bytes((24, 24, 4, 12))
+    struct.pack_into('<H', data, 0xA0 + (ord('A') - 0x20) * 2, 1)
+    struct.pack_into('<H', data, 0xA0 + (ord('B') - 0x20) * 2, 2)
+    data[glyph_offset] = 0x0F
+    data[glyph_offset + 288] = 0x0F
+    return bytes(data)
+
+
 def synthetic_menu_pix(count=13):
     """Create tiny unlicensed 2x2 XPIX/TIM2 images for renderer tests."""
     chunks = []
@@ -102,6 +116,29 @@ class MenuEditorNavigationTests(unittest.TestCase):
         self.assertIn('failed', editor.m_texture_status.text())
         self.assertFalse(editor.load_textures(synthetic_menu_pix(count=12)))
         self.assertFalse(editor.m_textures)
+
+    def test_native_ffon_fixed_advance_cache_does_not_replace_diagnostic(self):
+        editor = self.m_editor
+        self.assertTrue(editor.load_help_font(synthetic_native_ffon()))
+        editor.m_native_mode = False
+        diagnostic = editor.help_line_pixmap('A B')
+        self.assertIsNotNone(diagnostic)
+        self.assertFalse(diagnostic.isNull())
+        editor.m_native_mode = True
+        native = editor.help_line_pixmap('A B')
+        self.assertEqual((native.width(), native.height()), (36, 24))
+        self.assertNotEqual(native.width(), diagnostic.width(),
+                            'native must not inherit authored bbox +3px spacing')
+        self.assertEqual(native.toImage().pixelColor(0, 0).alpha(), 255)
+        self.assertEqual(native.toImage().pixelColor(24, 0).alpha(), 255)
+        self.assertEqual(native.toImage().pixelColor(12, 0).alpha(), 0)
+        self.assertEqual(set(editor.m_help_lines_pixmaps), {
+            ('native', 'A B'), ('diagnostic', 'A B')})
+        editor.m_native_mode = False
+        self.assertEqual(editor.help_line_pixmap('A B').width(),
+                         diagnostic.width())
+        self.assertFalse(editor.load_help_font(None))
+        self.assertEqual(editor.m_help_lines_pixmaps, {})
 
     def test_help_panel_atlas_uses_alpha_bounds_and_resets(self):
         from PySide6 import QtCore as C
