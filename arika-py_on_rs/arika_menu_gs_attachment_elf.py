@@ -14,7 +14,6 @@ import hashlib
 import json
 from pathlib import Path
 import struct
-import sys
 
 from arika_menu_gs_attachment import (
     NATIVE_MENU_ATTACHMENT_SITES, SAMPLER_SETTER_ADDRESS,
@@ -128,7 +127,7 @@ def verify_noncanonical_reaching_defs(elf, callsite):
 
 
 def scan_menu_sprite_attachments(elf):
-    """Return literal argument counts for the exact user-owned EU-beta ELF."""
+    """Return audited direct setter callsites in the exact EU-beta ELF."""
     if not isinstance(elf, bytes) or hashlib.sha256(elf).hexdigest() != EU_BETA_SHA256:
         raise ValueError('requires exact EU-beta SLES_541.61 SHA-256')
     known_sites = {entry[0]: (entry[1], entry[2])
@@ -209,7 +208,7 @@ def scan_menu_sprite_attachments(elf):
                 hex(a) for a in addresses]}
             for entry, addresses in NEAREST_ROUTINE_SITES
         ],
-        'external_callers_in_scanned_range': [
+        'external_callers_of_containing_routines': [
             {'function': hex(function), 'caller': hex(caller)}
             for function, caller in EXTERNAL_CALLER_EVIDENCE
         ],
@@ -233,7 +232,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('elf', type=Path, help='user-owned EU-beta ELF')
     parser.add_argument('--only-nearest', action='store_true',
-                        help='print just the verified literal nearest sites')
+                        help='print the verified nearest sites (literal and audited)')
     args = parser.parse_args()
     try:
         result = scan_menu_sprite_attachments(args.elf.read_bytes())
