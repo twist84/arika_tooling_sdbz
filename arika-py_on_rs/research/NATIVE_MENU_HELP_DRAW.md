@@ -279,3 +279,54 @@ differences.
 `0x199EE0 → 0x112780` and the resource-specific FFON raster
 path; compare the positions of several glyph edges with a
 runtime GS capture to prove original UV bounds.
+
+## PCSX2 versus Qt visual capture comparison (user-supplied references)
+
+Two user-provided screenshots of the **ORIGINAL** selection were measured
+with the asset-free `compare_menu_captures.py` tool:
+
+- PCSX2 capture: **958×719**, near 4:3.
+- Python/Qt capture: **706×529**, near 4:3.
+- Both show a settled help panel and matching four-line ORIGINAL text.
+- Different screenshot dimensions mean their raw pixels are **not**
+  directly comparable for texture filtering or GS blending.
+
+The comparison projects each screenshot's visible near-white text bounds
+back to the established 512×448 native canvas. For each row, the table
+shows **Qt minus PCSX2**, in native logical units:
+
+| Help row | Left | Right | Top | Bottom |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | +0.29 | +0.29 | +0.40 | +1.09 |
+| 2 | +0.29 | +0.97 | −0.64 | +0.10 |
+| 3 | +0.48 | +0.78 | +0.52 | +0.58 |
+| 4 | +1.02 | +0.64 | +0.15 | +0.22 |
+
+The help text **horizontal extent already agrees within roughly one
+native unit**. This supports the recovered fixed 12-unit ASCII advance
+scaled by 0.75. Do not change native glyph advance, first-line origin,
+25-unit Y stride or panel rectangle to compensate for differences in
+JPEG resampling. These bounding boxes measure only bright text pixels:
+they are not direct traces of the underlying font draw commands and
+they are subject to capture quality, image sizes and threshold choice.
+
+### Further ELF trace: what `0x112780` really does
+
+At `0x199FE0–0x19A000`, the FFON text draw owner converts text
+placement arguments to integers and issues `JAL 0x112780` with a
+font string handle and draw parameters. `0x112780` is **not**
+the final glyph UV submitter. At `0x112964–0x112988` it builds
+a **28-byte queued text record** containing the text argument,
+scalar and current command context values; it then copies the string
+through `0x1914E0` (`JAL 0x1914E0` at `0x1129D4`).
+The `0x1914E0` body is an optimized zero-terminated byte copy,
+not a 4-bpp glyph rasterizer. The consumer of the stored text
+command and its subsequent GS texture state must be traced separately.
+This corrects the earlier temptation to treat `0x112780` as the
+last-stage render function.
+
+**Next parity capture:** obtain equal-size **PNG** captures at a
+known settled lifecycle tick, disabling or recording per-application
+scaling/filtering differences. Inspect native GS state and the queued
+text-command consumer before altering glyph coverage, UVs or blend
+equations. Neither supplied JPEG is stored in the repository.
