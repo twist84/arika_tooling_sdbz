@@ -150,9 +150,15 @@ completed in subsequent PR #14 checkpoints. The current status is:
   FFON line positions is now tested using separate axes for the
   512×448 logical raster displayed at 4:3. The previous apparent
   40-unit Y offset was mostly a pixel-aspect comparison error.
-- [ ] Trace the **actual external native help-panel/text draw owner**
-  and native FFON glyph metrics/UV. The present Qt rectangles remain
-  screenshot-calibrated, not ELF-proven.
+- [x] Trace the **actual native help-panel/text owner**, its 27/5-update
+  entry/exit phases, sprite bounds, native X/Y and text-row placement.
+  `NATIVE_MENU_HELP_DRAW.md` documents the verified `0x37BF60` and
+  `0x37C1C0` paths; native Qt preview uses these with diagnostic
+  screenshot-calibrated mode still available.
+- [ ] Trace internal FFON glyph metrics/UV and compare original
+  `0x2CDCA0` output with a runtime capture. Source native font/records
+  and fixed line positions are confirmed; individual glyph advances
+  and final GS compositing remain unresolved.
 - [x] Reconstruct file-backed PS2 GS TEST/ALPHA/ZBUF and texture
   register writers, including the six-register TEX0/TEX1/TEXA/CLAMP
   GIF path and 240 synthetic ELF differential cases.
