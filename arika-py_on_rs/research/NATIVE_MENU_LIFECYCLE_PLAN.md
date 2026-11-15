@@ -251,9 +251,13 @@ globally sort the native draw queue by depth. The actual `0x379E60`
 draw callback issues **shared → pending → selected → arrow** in that
 order; `0x378170` issues **background → banner → tiles/companions
 → seven small sprites → conditional overlay**. The Qt native renderer
-now preserves this instruction-verified order, including the item-3
-`0x37A910` literal/decorations-before-particles order. The diagnostic
-140-frame renderer retains its previous depth sort for comparison.
+now constructs a command queue in this instruction-verified order,
+including the item-3 `0x37A910`
+literal/decorations-before-particles order. The rasterizer applies
+a stable, depth-ordered **software compositing fallback** (see the
+screenshot checkpoint below); native command submission itself is
+not a GS Z-buffer implementation. The diagnostic 140-frame renderer
+retains its previous depth sort for comparison.
 
 `test_arika_menu_gs_state.py` interprets the native `0x2FDA00`
 sprite reset, `0x2FD8F0` texture binding and `0x2FD8A0`
