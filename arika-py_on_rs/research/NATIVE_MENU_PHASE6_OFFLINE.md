@@ -110,6 +110,34 @@ glyph positioning and invalid inputs. The
 regression uses **only numeric pixel picks**, not
 copyrighted image assets.
 
+### Actual font resource startup call recovered
+
+Additional disassembly of the exact EU-beta ELF confirms that the
+font already being loaded by the editor is the right *asset path*:
+
+- The file-backed NUL-terminated string at EE VA
+  `0x004CAFA0` is **`font/5-24-2.fon`**.
+- The shared initializer `0x00326370` constructs
+  that string address with `lui a0,0x4D` at
+  `0x3263C4` and `addiu a0,a0,-0x5060` at
+  `0x3263CC`, then calls the resource loader
+  `0x001C6930` at `0x3263D8`.
+- Its direct startup caller is at `0x3268F4`.
+  This is a **shared program initialization path**,
+  not a help-panel-local draw callback.
+- `arika_editor.py` already loads precisely
+  `font/5-24-2.fon` from the user's archive
+  into the menu FFON decoder; no filename/path
+  change is required.
+
+This verifies the *resource source*, not the native
+glyph-advance formula, layout rectangle or text
+compositor. The initializer's file-read state
+machine must not be mistaken for a glyph draw
+callback. Next, trace consumers of the successfully
+created font resource and the separate menu help
+overlay owner.
+
 ### Native help-panel implementation is still unknown
 
 `0x00379E60`, the original menu object's draw
