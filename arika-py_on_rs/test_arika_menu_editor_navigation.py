@@ -251,6 +251,58 @@ class MenuEditorNavigationTests(unittest.TestCase):
         painter.end()
         self.assertNotEqual(image.pixelColor(100, 480), G.QColor('#10151c'))
 
+    def test_native_help_panel_draws_uncropped_elf_sprite_and_ffon_rows(self):
+        from unittest.mock import patch
+        from PySide6 import QtCore as C, QtGui as G
+
+        editor = self.m_editor
+        editor.m_native_mode = True
+        editor.m_item = 0
+        editor.m_help_font = object()  # Synthetic line bitmap below.
+        editor.m_help_panel_uv = C.QRectF(100, 100, 1, 1)
+        panel = G.QPixmap(512, 512)
+        panel.fill(G.QColor('#c83214'))
+        editor.m_textures[4] = panel
+        glyphs = G.QPixmap(8, 8)
+        glyphs.fill(G.QColor('#32fa32'))
+
+        def draw_help():
+            canvas = G.QImage(512, 448, G.QImage.Format.Format_ARGB32)
+            canvas.fill(G.QColor('#10151c'))
+            painter = G.QPainter(canvas)
+            try:
+                with patch.object(editor, 'help_line_pixmap',
+                                  return_value=glyphs):
+                    editor.draw_help_panel(painter)
+            finally:
+                painter.end()
+            return canvas
+
+        image = draw_help()
+        # State 2 uses native component (24,272) and full 464x176 UV,
+        # NOT the visible alpha-bounds crop at (30,272).
+        self.assertEqual(image.pixelColor(23, 280),
+                         G.QColor('#10151c'))
+        self.assertEqual(image.pixelColor(24, 280),
+                         G.QColor('#c83214'))
+        self.assertEqual(image.pixelColor(487, 440),
+                         G.QColor('#c83214'))
+        # Text starts at (24+64,272+52) and scales an 8x8 source
+        # by the native 0.75, making each synthetic row 6x6.
+        for y in (324, 349, 374, 399):
+            self.assertEqual(image.pixelColor(88, y),
+                             G.QColor('#32fa32'))
+            self.assertEqual(image.pixelColor(94, y),
+                             G.QColor('#c83214'))
+
+        editor.m_item = 2
+        editor.m_navigation.select(2)
+        versus = draw_help()
+        self.assertEqual(versus.pixelColor(88, 374),
+                         G.QColor('#32fa32'))
+        self.assertEqual(versus.pixelColor(88, 399),
+                         G.QColor('#c83214'))
+
     def test_4_3_help_frame_matches_reference_top(self):
         from PySide6 import QtCore as C, QtGui as G
         editor = self.m_editor
