@@ -7,6 +7,26 @@ from pathlib import Path
 
 from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
 
+from arika_menu_navigation import c_menu_navigation, MENU_ITEM_NAMES, DIRECTION_NAMES, DIRECTION_MASKS
+from arika_menu_selection_effect import EMPHASIS_DURATION, emphasis_geometry, emphasis_sample
+from arika_menu_arrow_preview import arrow_parts, bobbed_arrow_geometry
+from arika_menu_navigation import read_menu_report
+from arika_menu_runtime import c_menu_runtime
+from arika_menu_compositor import software_painter_order
+from arika_menu_help_geometry import (
+    HELP_PANEL_RECT, HELP_TEXT_CLIP, HELP_TEXT_MAX_WIDTH,
+    help_text_row_rect,
+)
+from arika_menu_help_native import (
+    HELP_FRAME_SOURCE_BOUNDS, native_help_layout,
+)
+from arika_menu_ffon_native import render_native_help_line
+from arika_menu_pcsx2_comparison import s_pcsx2_comparison_settings
+from arika_menu_pcsx2_dialog import c_pcsx2_comparison_dialog
+import arika_ffon
+from arika_menu_frame_match import normalize_reference, rank_samples
+from PIL import Image
+
 
 def lerp_values(a, b, t):
     if isinstance(a, bool) or isinstance(b, bool):
@@ -43,13 +63,40 @@ class c_menu_canvas(W.QWidget):
     def __init__(self, editor):
         super().__init__()
         self.m_editor = editor
+        self.setFocusPolicy(C.Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(0, 0)
         self.setSizePolicy(W.QSizePolicy.Policy.Expanding, W.QSizePolicy.Policy.Expanding)
 
     def paintEvent(self, event):
         painter = G.QPainter(self)
-        self.m_editor.render(painter, self.rect())
+        self.m_editor.render_canvas(painter, self.rect())
         painter.end()
+
+    def mousePressEvent(self, event):
+        self.setFocus(C.Qt.FocusReason.MouseFocusReason)
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        # Key mapping is a preview convenience, not a controller trace.
+        directions = {
+            C.Qt.Key.Key_Right: 0, C.Qt.Key.Key_Left: 1,
+            C.Qt.Key.Key_Up: 2, C.Qt.Key.Key_Down: 3,
+        }
+        direction = directions.get(event.key())
+        if self.m_editor.m_native_mode and event.isAutoRepeat():
+            # Native menu reads pad press edges, not Qt key-repeat events.
+            event.accept()
+            return
+        if direction is not None:
+            self.m_editor.navigate(direction)
+        elif event.key() in (C.Qt.Key.Key_Return, C.Qt.Key.Key_Enter):
+            self.m_editor.inspect_route(False)
+        elif event.key() == C.Qt.Key.Key_Escape:
+            self.m_editor.inspect_route(True)
+        else:
+            super().keyPressEvent(event)
+            return
+        event.accept()
 
 
 class c_menu_editor(W.QWidget):
@@ -57,8 +104,30 @@ class c_menu_editor(W.QWidget):
         super().__init__(parent)
         self.m_data = None
         self.m_textures = {}
+        self.m_help_panel_uv = None
+        self.m_presentation = 'tv_4_3'
+        self.m_scan_mode = 'interlaced'
         self.m_time = 70.0
+        self.m_diagnostic_time = self.m_time
         self.m_item = 0
+        self.m_navigation = c_menu_navigation()
+        self.m_diagnostic_item = self.m_item
+        self.m_diagnostic_previous = self.m_navigation.m_previous
+        self.m_diagnostic_selection_age = None
+        self.m_menu_report = read_menu_report()
+        self.m_native_mode = False
+        # The native-particle preview uses an explicit diagnostic RNG seed.
+        # It is NOT a captured game-wide context seed.
+        self.m_native_runtime = c_menu_runtime(
+            self.m_menu_report, particle_seed=1)
+        self.m_native_input_queue = []
+        self.m_help_font = None
+        self.m_help_font_data = None
+        self.m_help_lines_pixmaps = {}
+        self.m_reference_matches = []
+        self.m_reference_match_index = 0
+        self.m_selection_age = None
+        self.m_selection_effect = True
         self.m_playing = False
         self.m_timer = C.QTimer(self)
         self.m_timer.timeout.connect(self.advance)
@@ -74,15 +143,20 @@ class c_menu_editor(W.QWidget):
         self.m_character_motion = True
         self.m_label_motion = True
         self.m_arrows = True
+        self.m_arrow_bob = True
+        self.m_help_panel = True
         self.m_bounds = False
-        self.m_smooth = False
+        self.m_smooth = True
+        # Opt-in: preserve original diagnostic/renderer output by default.
+        self.m_pcsx2_settings = s_pcsx2_comparison_settings()
+        self.m_pcsx2_enabled = False
 
         layout = W.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         controls = W.QHBoxLayout()
         self.m_item_combo = W.QComboBox()
-        for i in range(7):
-            self.m_item_combo.addItem('%d' % i)
+        for i, name in enumerate(MENU_ITEM_NAMES):
+            self.m_item_combo.addItem('%d %s' % (i, name))
         self.m_item_combo.currentIndexChanged.connect(self.set_item)
         controls.addWidget(W.QLabel('Item'))
         controls.addWidget(self.m_item_combo)
@@ -99,6 +173,52 @@ class c_menu_editor(W.QWidget):
         controls.addWidget(W.QLabel('Rate'))
         controls.addWidget(self.m_rate_combo)
 
+        # PCSX2-style display choices are presentation only. The active GS
+        # video mode has not yet been observed in a running main menu.
+        self.m_presentation_combo = W.QComboBox()
+        for title, mode in (
+            ('Fit to Window / Fullscreen', 'fit'),
+            ('Auto Standard (4:3 Interlaced / 3:2 Progressive)', 'auto'),
+            ('Standard (4:3)', 'tv_4_3'),
+            ('Widescreen (16:9)', 'wide_16_9'),
+            ('Native/Full (10:7)', 'native_10_7'),
+            ('Square capture (debug)', 'square'),
+            ('Raw 512×448 (debug)', 'raw'),
+        ):
+            self.m_presentation_combo.addItem(title, mode)
+        self.m_presentation_combo.setCurrentIndex(
+            self.m_presentation_combo.findData(self.m_presentation))
+        self.m_presentation_combo.currentIndexChanged.connect(
+            self.set_presentation)
+        self.m_scan_combo = W.QComboBox()
+        self.m_scan_combo.addItem('Interlaced (4:3)', 'interlaced')
+        self.m_scan_combo.addItem('Progressive (3:2)', 'progressive')
+        self.m_scan_combo.setToolTip(
+            'Manual scan-mode assumption for Auto Standard; '
+            'the game\'s active GS scan mode is not yet detected.')
+        self.m_scan_combo.currentIndexChanged.connect(self.set_scan_mode)
+        self.m_scan_combo.setVisible(False)
+        controls.addWidget(W.QLabel('Display'))
+        controls.addWidget(self.m_presentation_combo)
+        controls.addWidget(self.m_scan_combo)
+
+        self.m_match_button = W.QPushButton('Match pose...')
+        self.m_match_button.setToolTip(
+            'Compare the character region against a cropped 4:3 game screenshot. '
+            'This finds the nearest preview sample, not the native animation time.')
+        self.m_match_button.clicked.connect(self.match_reference_pose)
+        controls.addWidget(self.m_match_button)
+        self.m_next_match_button = W.QPushButton('Next match')
+        self.m_next_match_button.setToolTip(
+            'Inspect the next-best diagnostic animation sample')
+        self.m_next_match_button.clicked.connect(self.next_reference_match)
+        controls.addWidget(self.m_next_match_button)
+        self.m_match_status = W.QLabel('')
+        self.m_match_status.setToolTip(
+            'Lower score means a closer visual match; the screenshot may have '
+            'different filtering, blending, or runtime animation phases.')
+        controls.addWidget(self.m_match_status)
+
         self.m_time_slider = W.QSlider(C.Qt.Orientation.Horizontal)
         self.m_time_slider.setMinimum(0)
         self.m_time_slider.setMaximum(139)
@@ -108,52 +228,542 @@ class c_menu_editor(W.QWidget):
         controls.addWidget(self.m_status)
         layout.addLayout(controls)
 
+        native = W.QHBoxLayout()
+        native.addWidget(W.QLabel('Lifecycle'))
+        self.m_lifecycle_combo = W.QComboBox()
+        self.m_lifecycle_combo.addItem('Diagnostic timeline', False)
+        self.m_lifecycle_combo.addItem('Native logical state (experimental)', True)
+        self.m_lifecycle_combo.setToolTip(
+            'Native state/input ordering from the EU-beta ELF. The displayed '
+            'character pose remains diagnostic until component lifecycles '
+            'are independently validated.')
+        self.m_lifecycle_combo.currentIndexChanged.connect(
+            self.set_lifecycle_mode)
+        native.addWidget(self.m_lifecycle_combo)
+        self.m_native_step_button = W.QPushButton('Step update')
+        self.m_native_step_button.clicked.connect(self.step_native)
+        self.m_native_step_button.setEnabled(False)
+        native.addWidget(self.m_native_step_button)
+        self.m_native_reset_button = W.QPushButton('Reset native')
+        self.m_native_reset_button.clicked.connect(self.reset_native)
+        self.m_native_reset_button.setEnabled(False)
+        native.addWidget(self.m_native_reset_button)
+        self.m_native_status = W.QLabel('Diagnostic 140-sample timeline')
+        self.m_native_status.setSizePolicy(
+            W.QSizePolicy.Policy.Ignored, W.QSizePolicy.Policy.Preferred)
+        self.m_native_status.setMinimumWidth(100)
+        self.m_native_status.setToolTip(
+            'Actual native item ages and parent/exit states. The source '
+            'layout at sample 70 is a static diagnostic pose, not a '
+            'claimed recovered native timestamp.')
+        native.addWidget(self.m_native_status, 1)
+        layout.addLayout(native)
+
+        comparison = W.QHBoxLayout()
+        self.m_pcsx2_button = W.QPushButton('PCSX2 graphics...')
+        self.m_pcsx2_button.clicked.connect(self.configure_pcsx2_comparison)
+        comparison.addWidget(self.m_pcsx2_button)
+        self.m_pcsx2_capture_button = W.QPushButton('Capture comparison PNG...')
+        self.m_pcsx2_capture_button.clicked.connect(self.capture_pcsx2_comparison)
+        self.m_pcsx2_capture_button.setEnabled(False)
+        comparison.addWidget(self.m_pcsx2_capture_button)
+        self.m_pcsx2_status = W.QLabel(
+            'Qt renderer (PCSX2 comparison disabled)')
+        self.m_pcsx2_status.setToolTip(
+            'PCSX2 settings can be recorded here, but this Qt preview is '
+            'not a GS hardware renderer.')
+        comparison.addWidget(self.m_pcsx2_status, 1)
+        layout.addLayout(comparison)
+
+        navigation = W.QHBoxLayout()
+        navigation.addWidget(W.QLabel('Native graph'))
+        for label, direction in (('←', 1), ('↑', 2), ('↓', 3), ('→', 0)):
+            button = W.QPushButton(label)
+            button.setFixedWidth(32)
+            button.setToolTip('%s: ELF direction %d, input mask 0x%X' %
+                              (DIRECTION_NAMES[direction], direction, DIRECTION_MASKS[direction]))
+            button.clicked.connect(lambda _checked=False, d=direction: self.navigate(d))
+            navigation.addWidget(button)
+        confirm = W.QPushButton('Confirm route')
+        confirm.setToolTip('Inspect the original destination; does not launch an app')
+        confirm.clicked.connect(lambda _checked=False: self.inspect_route(False))
+        navigation.addWidget(confirm)
+        cancel = W.QPushButton('Cancel route')
+        cancel.setToolTip('Inspect the native cancel destination (app 3)')
+        cancel.clicked.connect(lambda _checked=False: self.inspect_route(True))
+        navigation.addWidget(cancel)
+        self.m_navigation_status = W.QLabel('')
+        self.m_navigation_status.setMinimumWidth(160)
+        navigation.addWidget(self.m_navigation_status, 1)
+        layout.addLayout(navigation)
+
         layers = W.QHBoxLayout()
         for name, attr in (('Background', 'm_background'), ('Motion', 'm_motion'), ('Tint', 'm_tint'),
                            ('Scenery', 'm_first'), ('Characters', 'm_middle'), ('Label', 'm_overlay'),
                            ('Idle', 'm_idle'), ('Char motion', 'm_character_motion'),
                            ('Label motion', 'm_label_motion'), ('Arrows', 'm_arrows'), ('Bounds', 'm_bounds'),
-                           ('Smooth', 'm_smooth')):
+                           ('Smooth', 'm_smooth'), ('Selection pulse (preview)', 'm_selection_effect'),
+                           ('Arrow motion (native curve)', 'm_arrow_bob'), ('Help panel', 'm_help_panel')):
             box = W.QCheckBox(name)
             box.setChecked(getattr(self, attr))
             box.toggled.connect(lambda value, a=attr: setattr(self, a, value))
-            box.toggled.connect(lambda _value: self.update())
+            box.toggled.connect(lambda _value: self.m_canvas.update())
             layers.addWidget(box)
         layout.addLayout(layers)
 
         self.m_canvas = c_menu_canvas(self)
         layout.addWidget(self.m_canvas, 1)
+        self.m_texture_status = W.QLabel('Menu textures: open INFO.DAT + GAME.DAT')
+        self.m_texture_status.setToolTip('Textures are decoded from your own dis/main_menu.pix; no game artwork is bundled')
+        layout.addWidget(self.m_texture_status)
+        self.m_help_text = W.QLabel('')
+        self.m_help_text.setWordWrap(True)
+        self.m_help_text.setMaximumHeight(42)
+        self.m_help_text.setToolTip('Original ELF text description for the selected item')
+        layout.addWidget(self.m_help_text)
 
         self.load_data()
+        self.update_navigation_status()
+
+    def configure_pcsx2_comparison(self):
+        """Offer screenshot-grounded PCSX2 settings without faking GS support."""
+        dialog = c_pcsx2_comparison_dialog(
+            self.m_pcsx2_settings, self.m_pcsx2_enabled, self)
+        if dialog.exec() == W.QDialog.DialogCode.Accepted:
+            self.apply_pcsx2_comparison(
+                dialog.selected_settings(), dialog.m_enabled.isChecked())
+
+    def apply_pcsx2_comparison(self, settings, enabled=True):
+        """Apply only supported Qt preview approximations; retain all metadata."""
+        self.m_pcsx2_settings = settings.validate()
+        self.m_pcsx2_enabled = bool(enabled)
+        self.m_pcsx2_capture_button.setEnabled(self.m_pcsx2_enabled)
+        if self.m_pcsx2_enabled:
+            w, h = settings.internal_canvas_size(self.presentation_height())
+            self.m_pcsx2_status.setText(
+                'PCSX2 reference: %dx | Qt raster %dx%d | %s (approx.)'
+                % (settings.internal_resolution, w, h,
+                   'linear' if settings.approximate_linear_filter()
+                   else 'nearest'))
+            self.m_pcsx2_status.setToolTip(
+                'Only raster supersampling and nearest/linear texture '
+                'sampling affect this Qt preview. Dithering, GS blending, '
+                'trilinear/anisotropic, AA1, mipmapping, alpha tests and '
+                'hardware fixes are recorded, not emulated.')
+        else:
+            self.m_pcsx2_status.setText(
+                'Qt renderer (PCSX2 comparison disabled)')
+        self.m_canvas.update()
+
+    def render_comparison_image(self):
+        """Render one frame at the selected logical supersampling factor.
+
+        A Qt QImage is *not* a PCSX2 Direct3D 12 render target: 4x
+        operates on the 512-wide source layout, while PCSX2's internal
+        resolution depends on its emulated GS framebuffer dimensions.
+        No native state or animation age is advanced by this call.
+        """
+        width, height = self.m_pcsx2_settings.internal_canvas_size(
+            self.presentation_height())
+        image = G.QImage(
+            width, height, G.QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(G.QColor('#10151c'))
+        painter = G.QPainter(image)
+        try:
+            self.render(painter, C.QRect(0, 0, width, height))
+        finally:
+            painter.end()
+        return image
+
+    def render_canvas(self, painter, rect):
+        """Preserve the original direct Qt renderer unless comparison is on."""
+        if not self.m_pcsx2_enabled:
+            self.render(painter, rect)
+            return
+        frame = self.render_comparison_image()
+        painter.fillRect(rect, G.QColor('#10151c'))
+        if self.m_presentation == 'fit':
+            target = C.QRectF(rect)
+        else:
+            aspect_height = self.presentation_height()
+            scale = min(rect.width() / 512.0,
+                        rect.height() / aspect_height)
+            target = C.QRectF(
+                rect.x() + (rect.width() - 512.0 * scale) / 2.0,
+                rect.y() + (rect.height() - aspect_height * scale) / 2.0,
+                512.0 * scale, aspect_height * scale)
+        painter.save()
+        try:
+            painter.setRenderHint(
+                G.QPainter.RenderHint.SmoothPixmapTransform,
+                self.m_pcsx2_settings.approximate_linear_filter())
+            painter.drawImage(target, frame)
+        finally:
+            painter.restore()
+
+    def capture_pcsx2_comparison(self):
+        """Export a lossless Qt frame plus the PCSX2 reference settings.
+
+        Do not modify the PCSX2 INI or pretend this is an emulator capture.
+        """
+        if not self.m_pcsx2_enabled:
+            return
+        filename, _ = W.QFileDialog.getSaveFileName(
+            self, 'Save Qt comparison capture', 'menu_comparison.png',
+            'PNG images (*.png)')
+        if not filename:
+            return
+        destination = Path(filename)
+        if destination.suffix.lower() != '.png':
+            destination = destination.with_suffix('.png')
+        try:
+            image = self.render_comparison_image()
+            if not image.save(str(destination), 'PNG'):
+                raise OSError('Qt could not write PNG')
+            metadata = self.m_pcsx2_settings.to_metadata()
+            metadata['source'] = 'Qt native menu preview (NOT a PCSX2/GS capture)'
+            metadata['image_size'] = [image.width(), image.height()]
+            metadata['presentation'] = self.m_presentation
+            metadata['native_lifecycle'] = self.m_native_mode
+            metadata['selection'] = self.m_item
+            metadata['native_tick'] = (
+                self.m_native_runtime.m_updates
+                if self.m_native_mode else None)
+            destination.with_suffix('.pcsx2-settings.json').write_text(
+                json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
+        except (OSError, ValueError, RuntimeError) as error:
+            W.QMessageBox.warning(
+                self, 'PCSX2 comparison capture', str(error))
 
     def load_data(self):
-        path = Path(__file__).with_name('previews') / 'menu_textured.html'
-        if not path.exists():
-            path = Path.cwd() / 'previews' / 'menu_textured.html'
-        if not path.exists():
+        """Load recovered animation and geometry, not copyrighted texture data."""
+        root = Path(__file__).resolve().parent.parent / 'previews'
+        manifest = root / 'menu_layout.json'
+        if not manifest.is_file():
+            self.m_texture_status.setText('Menu layout data missing: ' + str(manifest))
             return
-        html = path.read_text(encoding='utf-8')
-        match = re.search(r'const DATA=(.*?);\nconst \$', html, re.S)
-        if not match:
-            return
-        self.m_data = json.loads(match.group(1))
-        self.m_time_slider.setMaximum(len(self.m_data['frames']) - 1)
-        for t in self.m_data['textures']:
-            pixmap = G.QPixmap()
-            pixmap.loadFromData(base64.b64decode(t['png'].split(',', 1)[1]))
-            self.m_textures[t['index']] = pixmap
-        self.m_time = min(self.m_time, len(self.m_data['frames']) - 1)
-        self.m_time_slider.setValue(self.m_time)
-        self.update()
+        data = json.loads(manifest.read_text(encoding='utf-8'))
+        if data.get('format') != 'arika-menu-layout' or data.get('version') != 1:
+            raise ValueError('unsupported menu layout manifest')
+        frames = []
+        for name in data.pop('frame_files'):
+            # The fixed-name manifest is checked into the repo; refuse paths
+            # outside the layout directory if a local copy is edited.
+            if not re.fullmatch(r'menu_frames_[0-9]{3}\.json', name):
+                raise ValueError('invalid menu frame filename: ' + name)
+            frames.extend(json.loads((root / name).read_text(encoding='utf-8')))
+        if len(frames) != data['frame_count']:
+            raise ValueError('menu layout frame-count mismatch')
+        data['frames'] = frames
+        self.m_data = data
+        self.m_time_slider.setMaximum(len(frames) - 1)
+        self.m_time = min(self.m_time, len(frames) - 1)
+        self.m_time_slider.setValue(int(self.m_time))
+        self.m_canvas.update()
+
+    def load_help_font(self, font_data=None):
+        """Use the same native FFON decoder as the existing Fonts panel."""
+        self.m_help_font = None
+        self.m_help_font_data = None
+        self.m_help_lines_pixmaps.clear()
+        if font_data:
+            self.m_help_font = arika_ffon.parse_ffon(font_data)
+            self.m_help_font_data = font_data
+        self.m_canvas.update()
+        return self.m_help_font is not None
+
+    def help_line_pixmap(self, text):
+        if self.m_help_font is None or self.m_help_font_data is None:
+            return None
+        # Separate cached bitmaps: native uses the ELF's fixed 12-unit
+        # ASCII cell advance, diagnostic retains its older bbox-trim
+        # plus 3px authored spacing for screenshot comparison.
+        mode = 'native' if self.m_native_mode else 'diagnostic'
+        key = (mode, text)
+        if key not in self.m_help_lines_pixmaps:
+            font = self.m_help_font
+            if self.m_native_mode and font.width == 24 and font.height == 24:
+                image = render_native_help_line(font, self.m_help_font_data, text)
+            else:
+                # Non-game-size synthetic fonts remain usable in the Qt
+                # test harness; actual 5-24-2.fon always takes native path.
+                image = arika_ffon.render_text(font, self.m_help_font_data,
+                                              text, spacing=3)
+            self.m_help_lines_pixmaps[key] = arika_ffon.image_to_qpixmap(image)
+        return self.m_help_lines_pixmaps[key]
+
+    def load_textures(self, pix_data=None):
+        """Decode dis/main_menu.pix from an opened game archive, entirely in memory.
+
+        Clears old textures first to avoid displaying copyrighted assets from
+        a previously opened archive when the new one has no menu PIX.
+        """
+        self.m_textures.clear()
+        self.m_help_panel_uv = None
+        # Discard dimensions from a previously opened game archive.
+        # Unknown texture dimensions must never silently become 512x512.
+        self.m_native_runtime.set_particle_texture_dimensions(None)
+        if not pix_data:
+            self.m_texture_status.setText('Menu textures: open INFO.DAT + GAME.DAT')
+            self.m_canvas.update()
+            return False
+        try:
+            from arika_dat import container, tim2_rgba
+            metadata = container(pix_data)
+            if metadata['magic'] != 'FPIX':
+                raise ValueError('menu asset is not FPIX')
+            chunks = metadata['chunks']
+            expected = self.m_data['expected_texture_count']
+            if len(chunks) != expected:
+                raise ValueError('expected %d menu atlases, got %d' % (expected, len(chunks)))
+            decoded = {}
+            help_panel_uv = None
+            for chunk in chunks:
+                start = chunk['offset']
+                body = pix_data[start:start + chunk['size']]
+                if chunk['magic'] != 'XPIX' or body[32:36] != b'TIM2':
+                    raise ValueError('invalid XPIX/TIM2 chunk %d' % chunk['index'])
+                width, height, rgba = tim2_rgba(body[32:])
+                if len(rgba) != width * height * 4:
+                    raise ValueError('invalid RGBA buffer size')
+                image = G.QImage(rgba, width, height, width * 4,
+                                 G.QImage.Format.Format_RGBA8888).copy()
+                if image.isNull():
+                    raise ValueError('unable to create texture image')
+                decoded[chunk['index']] = G.QPixmap.fromImage(image)
+                if chunk['index'] == 4:
+                    # Atlas 4 contains the actual help frame with transparent
+                    # padding. Its nonempty rectangle is much smaller than
+                    # the 512x512 atlas, so drawing the whole atlas crushes
+                    # the frame vertically.
+                    from PIL import Image
+                    bounds = Image.frombytes('RGBA', (width, height), rgba).getchannel('A').getbbox()
+                    if bounds is not None:
+                        left, top, right, bottom = bounds
+                        help_panel_uv = C.QRectF(left, top, right - left, bottom - top)
+            self.m_textures = decoded
+            self.m_help_panel_uv = help_panel_uv
+            # 0x2FCE20 normalizes UVs against the resource handle's
+            # actual texture width/height. Use decoded TIM2 dimensions,
+            # not the 512x448 presentation or an inferred atlas size.
+            particle_entry = self.m_menu_report['first_components'][
+                'particles']['texture_entry']
+            particle_texture = decoded.get(particle_entry)
+            if particle_texture is not None:
+                self.m_native_runtime.set_particle_texture_dimensions(
+                    (particle_texture.width(), particle_texture.height()))
+            self.m_texture_status.setText('Menu textures: %d atlases from opened GAME.DAT' % len(decoded))
+            self.m_canvas.update()
+            return True
+        except (ValueError, RuntimeError, KeyError, TypeError) as error:
+            self.m_texture_status.setText('Menu texture decoding failed: %s' % error)
+            self.m_canvas.update()
+            return False
+
+    def update_navigation_status(self, action=None):
+        selected = self.m_navigation.m_selected
+        previous = self.m_navigation.m_previous
+        route = self.m_navigation.route()
+        title = '%d %s' % (selected, MENU_ITEM_NAMES[selected])
+        source = 'from %d' % previous if previous >= 0 else 'initial'
+        if action:
+            text = '%s | %s' % (action, title)
+        else:
+            text = '%s (%s) | app %d, mode %d' % (
+                title, source, route['next_app_id'], route['mode_selector'])
+        self.m_navigation_status.setText(text)
+        lines = self.m_navigation.help_lines()
+        self.m_help_text.setText('ELF help: ' + ' '.join(lines))
+        self.m_help_text.setToolTip('\n'.join(lines))
+        directions = self.m_navigation.available_directions()
+        self.m_navigation_status.setToolTip(
+            '%s\nELF help ID %d:\n%s\n\nNeighbours: %s\n'
+            'Confirm: app %d, mode %d; cancel: app 3' %
+            (title, self.m_navigation.text_lookup_id(), '\n'.join(lines),
+             ', '.join('%s=%d' % item for item in directions.items()),
+             route['next_app_id'], route['mode_selector']))
+
+    def trigger_selection_effect(self):
+        # Event timing is authored; displacement samples come from the ELF curves.
+        if self.m_data is not None:
+            self.m_selection_age = 0.0
+            if not self.m_timer.isActive():
+                self.m_timer.start()
 
     def set_item(self, index):
-        self.m_item = index
-        self.update()
+        if self.m_native_mode:
+            # The dropdown is an immediate preview tool, not a native input.
+            return
+        if not self.m_navigation.select(index):
+            return
+        self.m_item = self.m_navigation.m_selected
+        self.trigger_selection_effect()
+        self.update_navigation_status()
+        self.m_canvas.update()
+
+    def navigate(self, direction):
+        if self.m_native_mode:
+            if direction not in range(4):
+                return False
+            self.m_native_input_queue.append(
+                {'input_mask': DIRECTION_MASKS[direction]})
+            self.update_native_status('Queued %s (edge)' % DIRECTION_NAMES[direction])
+            self.m_canvas.setFocus()
+            return True
+        old = self.m_navigation.m_selected
+        if not self.m_navigation.move(direction):
+            action = '%s: no neighbour' % DIRECTION_NAMES[direction] if 0 <= direction < 4 else 'Invalid direction'
+            self.update_navigation_status(action)
+            self.m_canvas.setFocus()
+            return False
+        self.m_item = self.m_navigation.m_selected
+        blocked = self.m_item_combo.blockSignals(True)
+        try:
+            self.m_item_combo.setCurrentIndex(self.m_item)
+        finally:
+            self.m_item_combo.blockSignals(blocked)
+        self.trigger_selection_effect()
+        self.update_navigation_status('%s: %d → %d' %
+                                      (DIRECTION_NAMES[direction], old, self.m_item))
+        self.m_canvas.setFocus()
+        self.m_canvas.update()
+        return True
+
+    def inspect_route(self, cancelled=False):
+        if self.m_native_mode:
+            # 0x379C80 calls cancel when no controller passes its native
+            # +0x80 gate. This is a diagnostic injection, not an asserted
+            # physical 'Cancel' button mapping.
+            self.m_native_input_queue.append(
+                {'controller_qualified': False} if cancelled else
+                {'confirm_mask': 0x40})
+            self.update_native_status(
+                'Queued %s' % ('cancel gate' if cancelled else 'confirm edge'))
+            self.m_canvas.setFocus()
+            return None
+        route = self.m_navigation.route(cancelled)
+        if cancelled:
+            action = 'Cancel → app %d (selector unchanged)' % route['next_app_id']
+        else:
+            action = 'Confirm → app %d, mode %d' % (
+                route['next_app_id'], route['mode_selector'])
+        self.update_navigation_status(action)
+        self.m_canvas.setFocus()
+        return route
 
     def set_time(self, value):
+        if self.m_native_mode:
+            return
         self.m_time = float(value)
         self.m_status.setText('Sample %s' % (int(self.m_time) if self.m_time == int(self.m_time) else round(self.m_time, 2)))
-        self.update()
+        self.m_canvas.update()
+
+    def set_lifecycle_mode(self, index):
+        native = bool(self.m_lifecycle_combo.itemData(index))
+        if self.m_playing:
+            self.m_playing = False
+            self.m_play_button.setText('Play')
+        self.m_timer.stop()
+        if native:
+            self.m_diagnostic_time = self.m_time
+            self.m_diagnostic_item = self.m_item
+            self.m_diagnostic_previous = self.m_navigation.m_previous
+            self.m_diagnostic_selection_age = self.m_selection_age
+        self.m_selection_age = None
+        self.m_native_mode = native
+        self.m_time_slider.setEnabled(not native)
+        self.m_item_combo.setEnabled(not native)
+        self.m_rate_combo.setEnabled(not native)
+        self.m_native_step_button.setEnabled(native)
+        self.m_native_reset_button.setEnabled(native)
+        # Screenshot matching uses the authored 140-frame diagnostic clock
+        # and must never mix it with the stateful native component poses.
+        self.m_match_button.setEnabled(not native)
+        self.m_next_match_button.setEnabled(not native)
+        if native:
+            self.reset_native()
+            # The neutral pose is diagnostic geometry only, not a native
+            # clock or a frame from which native timing is inferred.
+            self.m_time = 70.0
+            self.m_status.setText('Native state: static diagnostic pose 70')
+        else:
+            self.m_native_input_queue.clear()
+            self.m_native_status.setText('Diagnostic 140-sample timeline')
+            self.m_item = self.m_diagnostic_item
+            self.m_navigation.m_selected = self.m_diagnostic_item
+            self.m_navigation.m_previous = self.m_diagnostic_previous
+            blocked = self.m_item_combo.blockSignals(True)
+            try:
+                self.m_item_combo.setCurrentIndex(self.m_item)
+            finally:
+                self.m_item_combo.blockSignals(blocked)
+            self.m_selection_age = self.m_diagnostic_selection_age
+            self.set_time(self.m_diagnostic_time)
+            self.update_navigation_status()
+            if self.m_selection_age is not None:
+                self.m_timer.start()
+        self.m_canvas.update()
+
+    def reset_native(self):
+        self.m_native_runtime.reset()
+        self.m_native_input_queue.clear()
+        self.update_native_status('Reset')
+        self.m_canvas.update()
+
+    def update_native_status(self, action=None):
+        if not self.m_native_mode:
+            return
+        state = self.m_native_runtime.snapshot()
+        gate = 'accepting' if state['outer_phase'] == 2 else 'blocked'
+        selected = state['selected']
+        age = state['item_ages'][selected] if selected >= 0 else 0.0
+        label = (
+            'tick=%d parent=%d exit=%d shared=%d.%d '
+            'item=%d previous=%d pending=%d input=%s '
+            'arrow_age=%.0f queue=%d'
+            % (state['update'], state['outer_phase'], state['exit_phase'],
+               state['shared_phase'], state['shared_subphase'],
+               selected, state['previous'], state['pending'], gate,
+               age, len(self.m_native_input_queue)))
+        self.m_native_status.setText(label)
+        self.m_native_status.setToolTip(
+            label +
+            '\\nPer-item phases: %s\\nPer-item arrow ages: %s'
+            '\\nFirst phases: %s\\nCharacter phases: %s'
+            '\\nCharacter ages: %s'
+            '\\nLabel phases: %s\\nLabel ages: %s'
+            % (state['item_phases'], state['item_ages'],
+               state['first_phases'], state['character_phases'],
+               state['character_ages'],
+               state['label_phases'], state['label_ages']))
+        if action:
+            self.m_navigation_status.setText('Native: ' + action)
+
+    def step_native(self):
+        if not self.m_native_mode:
+            return None
+        inputs = (self.m_native_input_queue.pop(0)
+                  if self.m_native_input_queue else {})
+        state = self.m_native_runtime.step(**inputs)
+        if state['selected'] >= 0:
+            # Synchronize help text/atlas selection from native state; never
+            # call c_menu_navigation.select, which would mutate history.
+            self.m_navigation.m_selected = state['selected']
+            self.m_navigation.m_previous = state['previous']
+            self.m_item = state['selected']
+            blocked = self.m_item_combo.blockSignals(True)
+            try:
+                self.m_item_combo.setCurrentIndex(self.m_item)
+            finally:
+                self.m_item_combo.blockSignals(blocked)
+            if state['outer_phase'] == 4:
+                self.update_navigation_status('Native route: %s' %
+                                              state['completion'])
+            else:
+                self.update_navigation_status()
+        self.update_native_status()
+        self.m_canvas.update()
+        return state
 
     def toggle_play(self):
         self.m_playing = not self.m_playing
@@ -161,7 +771,7 @@ class c_menu_editor(W.QWidget):
         if self.m_playing:
             self.update_timer()
             self.m_timer.start()
-        else:
+        elif self.m_selection_age is None:
             self.m_timer.stop()
 
     def update_timer(self):
@@ -169,22 +779,158 @@ class c_menu_editor(W.QWidget):
 
     def advance(self):
         if not self.m_data:
+            self.m_timer.stop()
+            return
+        if self.m_native_mode:
+            if self.m_playing:
+                self.step_native()
             return
         rate = self.m_rate_combo.currentData() or 1.0
-        n = len(self.m_data['frames'])
-        self.m_time = (self.m_time + rate) % n
-        self.m_time_slider.blockSignals(True)
-        self.m_time_slider.setValue(int(round(self.m_time)))
-        self.m_time_slider.blockSignals(False)
-        self.m_status.setText('Sample %s' % (int(self.m_time) if self.m_time == int(self.m_time) else round(self.m_time, 2)))
-        self.update()
+        if self.m_playing:
+            n = len(self.m_data['frames'])
+            self.m_time = (self.m_time + rate) % n
+            self.m_time_slider.blockSignals(True)
+            self.m_time_slider.setValue(min(n - 1, int(round(self.m_time))))
+            self.m_time_slider.blockSignals(False)
+            self.m_status.setText('Sample %s' % (int(self.m_time) if self.m_time == int(self.m_time) else round(self.m_time, 2)))
+        if self.m_selection_age is not None:
+            self.m_selection_age += rate
+            if self.m_selection_age >= EMPHASIS_DURATION:
+                self.m_selection_age = None
+                if not self.m_playing:
+                    self.m_timer.stop()
+        self.m_canvas.update()
+
+    def match_reference_pose(self):
+        """Seek to the best visual match, without modifying recovered frames."""
+        if self.m_native_mode:
+            return
+        filename, _filter = W.QFileDialog.getOpenFileName(
+            self, 'Choose cropped 4:3 menu screenshot', '',
+            'Images (*.png *.jpg *.jpeg *.bmp)')
+        if not filename:
+            return
+        try:
+            with Image.open(filename) as image:
+                reference = normalize_reference(image)
+            self.match_reference_image(reference)
+        except (OSError, ValueError, TypeError) as error:
+            W.QMessageBox.warning(self, 'Menu frame match', str(error))
+
+    def match_reference_image(self, reference):
+        """Compare settled samples 23..119 in the 4:3 presentation only."""
+        if self.m_native_mode:
+            raise ValueError(
+                'Switch to Diagnostic timeline for screenshot matching')
+        if not self.m_data or not self.m_textures:
+            raise ValueError('load the main-menu PIX textures first')
+        if reference.size != (256, 192):
+            raise ValueError('normalize the screenshot before matching')
+
+        old_time = self.m_time
+        old_presentation = self.m_presentation
+        old_selection_age = self.m_selection_age
+        self.m_reference_matches = []
+        W.QApplication.setOverrideCursor(C.Qt.CursorShape.WaitCursor)
+        try:
+            self.m_presentation = 'tv_4_3'
+            self.m_selection_age = None
+
+            def frames():
+                # The baked timeline has authored entry/exit periods.
+                # Compare only the settled middle period, not the startup
+                # or exit, against an unknown screenshot timestamp.
+                for tick in range(23, min(120, len(self.m_data['frames']))):
+                    self.m_time = float(tick)
+                    canvas = G.QImage(
+                        512, 384, G.QImage.Format.Format_RGBA8888)
+                    canvas.fill(G.QColor('#10151c'))
+                    painter = G.QPainter(canvas)
+                    try:
+                        self.render(painter, C.QRect(0, 0, 512, 384))
+                    finally:
+                        painter.end()
+                    pixels = Image.frombytes(
+                        'RGBA', (512, 384), bytes(canvas.constBits()))
+                    yield tick, normalize_reference(pixels)
+
+            matches = rank_samples(reference, frames(), top_n=5)
+        finally:
+            self.m_time = old_time
+            self.m_presentation = old_presentation
+            self.m_selection_age = old_selection_age
+            W.QApplication.restoreOverrideCursor()
+        if not matches:
+            raise ValueError('no settled animation samples available')
+        self.m_reference_matches = matches
+        self.m_reference_match_index = 0
+        self.show_reference_match()
+
+    def show_reference_match(self):
+        if not self.m_reference_matches:
+            return
+        score, tick = self.m_reference_matches[self.m_reference_match_index]
+        if self.m_playing:
+            self.toggle_play()
+        self.m_time_slider.setValue(tick)
+        self.m_time = float(tick)
+        self.m_match_status.setText(
+            'Match %d/%d: %d (%.2f)' %
+            (self.m_reference_match_index + 1,
+             len(self.m_reference_matches), tick, score))
+        self.m_canvas.update()
+
+    def next_reference_match(self):
+        if not self.m_reference_matches:
+            return
+        self.m_reference_match_index = (
+            self.m_reference_match_index + 1) % len(self.m_reference_matches)
+        self.show_reference_match()
+
+    def set_presentation(self, index):
+        mode = self.m_presentation_combo.itemData(index)
+        if mode in ('fit', 'auto', 'tv_4_3', 'wide_16_9',
+                    'native_10_7', 'square', 'raw'):
+            self.m_presentation = mode
+            self.m_scan_combo.setVisible(mode == 'auto')
+            if self.m_pcsx2_enabled:
+                self.apply_pcsx2_comparison(self.m_pcsx2_settings, True)
+            self.m_canvas.update()
+
+    def set_scan_mode(self, index):
+        mode = self.m_scan_combo.itemData(index)
+        if mode in ('interlaced', 'progressive'):
+            self.m_scan_mode = mode
+            if self.m_pcsx2_enabled:
+                self.apply_pcsx2_comparison(self.m_pcsx2_settings, True)
+            self.m_canvas.update()
+
+    def presentation_height(self):
+        # Virtual display units at width 512. Source geometry remains 512x448.
+        if self.m_presentation == 'auto':
+            return 384.0 if self.m_scan_mode == 'interlaced' else 512.0 * 2.0 / 3.0
+        return {
+            'square': 512.0, 'raw': 448.0,
+            'tv_4_3': 384.0, 'wide_16_9': 288.0,
+            'native_10_7': 512.0 * 7.0 / 10.0,
+        }.get(self.m_presentation, 448.0)
 
     def render(self, painter, rect):
         painter.fillRect(rect, G.QColor('#10151c'))
-        if not self.m_data:
+        if not self.m_data or not self.m_textures:
             painter.setPen(G.QColor('#e8edf3'))
-            painter.drawText(rect, C.Qt.AlignmentFlag.AlignCenter, 'Menu data not found')
+            text = 'Recovered menu layout not found' if not self.m_data else (
+                'Open INFO.DAT and GAME.DAT to display original menu textures')
+            painter.drawText(rect, C.Qt.AlignmentFlag.AlignCenter, text)
             return
+        # 0x333AE0 omits the menu draw callback once parent phase == 4.
+        if self.m_native_mode and self.m_native_runtime.m_outer_phase == 4:
+            return
+        native_item_active = (
+            not self.m_native_mode or
+            (self.m_native_runtime.m_selected >= 0 and
+             self.m_native_runtime.m_item_phases[
+                 self.m_native_runtime.m_selected] != 0))
         n = len(self.m_data['frames'])
         t = self.m_time % n
         i0 = int(t)
@@ -202,23 +948,73 @@ class c_menu_editor(W.QWidget):
         if self.m_background:
             enqueue(1, self.m_data['background'], 0)
         if self.m_motion:
-            enqueue(2, frame['banner'], 99)
-            for t in frame['tiles']:
-                enqueue(2, t, 85)
-            for s in frame['small']:
-                enqueue(3, s, 5)
-        if self.m_tint and not frame['hidden']:
-            enqueue(8, self.m_data['tint'], 10, frame['alpha'])
+            if self.m_native_mode:
+                # 0x378170: shared draw ordering is banner -> two
+                # tile quads -> ten companions -> seven small sprites.
+                # These all read recovered child clocks, not sample t.
+                banner = self.m_native_runtime.shared_banner_geometry()
+                if banner is not None:
+                    enqueue(banner['texture_entry'], banner, 99)
+                for part in self.m_native_runtime.shared_tile_geometry():
+                    enqueue(part['texture_entry'], part['geometry'], 85)
+                for part in self.m_native_runtime.companion_geometry():
+                    enqueue(part['texture_entry'], part['geometry'], 86)
+                for sprite in self.m_native_runtime.shared_small_geometry():
+                    enqueue(sprite['texture_entry'], sprite, 5)
+            else:
+                enqueue(2, frame['banner'], 99)
+                for tile in frame['tiles']:
+                    enqueue(2, tile, 85)
+                for sprite in frame['small']:
+                    enqueue(3, sprite, 5)
+        # The overlay's visibility/opacity are owned by shared +0xE0
+        # and +0xAC, not the diagnostic timeline on native mode.
+        shared = self.m_native_runtime.m_shared if self.m_native_mode else None
+        tint_visible = (not shared['overlay_hidden']
+                        if shared is not None else not frame['hidden'])
+        tint_alpha = (shared['overlay_alpha']
+                      if shared is not None else frame['alpha'])
+        if self.m_tint and tint_visible:
+            enqueue(8, self.m_data['tint'], 10, tint_alpha)
+
+        if self.m_native_mode:
+            # 0x379E60 draws the pending old item before the current item.
+            # First layer, character and label have independent exit ages.
+            pending = self.m_native_runtime.m_pending
+            if pending >= 0:
+                if self.m_first:
+                    for part_index, part in enumerate(self.m_data['items'][pending]['first']):
+                        geometry = self.m_native_runtime.first_geometry(
+                            pending, part['geometry'], component_index=part_index)
+                        enqueue(part['texture_entry'], geometry, 47)
+                    for part in self.m_native_runtime.first_strip_geometry(pending):
+                        enqueue(part['texture_entry'], part['geometry'], 45)
+                    # This pool belongs to DRAGON SUMMONING, not the new
+                    # selected item. Retain it through pending exit.
+                    if pending == 3 and self.m_native_runtime.m_selected != 3:
+                        for part in self.m_native_runtime.particle_geometry(pending):
+                            enqueue(part['texture_entry'], part['geometry'], 45)
+                if self.m_middle and self.m_character_motion:
+                    for part in (self.m_native_runtime.character_geometry(
+                            pending, include_idle=self.m_idle) or []):
+                        enqueue(part['texture_entry'], part['geometry'], 60)
+                if self.m_overlay and self.m_label_motion:
+                    geometry = self.m_native_runtime.label_geometry(pending)
+                    for part in self.m_data['items'][pending]['overlay']:
+                        enqueue(part['texture_entry'], geometry, 70)
 
         active_characters = frame['idle_characters' if self.m_idle else 'characters'][self.m_item]
+        if self.m_native_mode and self.m_character_motion:
+            native_characters = self.m_native_runtime.character_geometry(
+                self.m_item, include_idle=self.m_idle)
+            if native_characters is not None:
+                active_characters = native_characters
         active_labels = frame['labels']
+        # Diagnostic emphasis samples are not the native selection clock.
+        selection_sample = (emphasis_sample(self.m_data['frames'], self.m_selection_age)
+                            if self.m_selection_effect and not self.m_native_mode else None)
 
-        if self.m_middle:
-            group_checked = True
-        else:
-            group_checked = False
-
-        for group in ('first', 'middle', 'overlay', 'arrows'):
+        for group in (('first', 'middle', 'overlay') if native_item_active else ()):
             checked = {'first': self.m_first, 'middle': self.m_middle, 'overlay': self.m_overlay, 'arrows': self.m_arrows}[group]
             if not checked:
                 continue
@@ -228,30 +1024,170 @@ class c_menu_editor(W.QWidget):
                 parts = item['middle']
             else:
                 parts = item[group]
-            for p in parts:
+            for part_index, p in enumerate(parts):
                 geometry = p['geometry']
+                if group == 'first' and self.m_native_mode:
+                    geometry = self.m_native_runtime.first_geometry(
+                        self.m_item, geometry, component_index=part_index)
                 if group == 'overlay' and self.m_label_motion:
-                    geometry = active_labels[self.m_item]
+                    if self.m_native_mode:
+                        geometry = self.m_native_runtime.label_geometry(
+                            self.m_item)
+                    else:
+                        geometry = active_labels[self.m_item]
+                if selection_sample and group == 'middle' and self.m_character_motion:
+                    sample_group = 'idle_characters' if self.m_idle else 'characters'
+                    pulse_group = 'emphasis_idle_characters' if self.m_idle else 'emphasis_characters'
+                    baseline = selection_sample[sample_group][self.m_item]
+                    emphasized = selection_sample[pulse_group][self.m_item]
+                    if emphasized is not None and part_index < len(baseline) and part_index < len(emphasized):
+                        geometry = emphasis_geometry(geometry, baseline[part_index]['geometry'],
+                                                    emphasized[part_index]['geometry'])
+                elif selection_sample and group == 'overlay' and self.m_label_motion:
+                    pulse_label = selection_sample['emphasis_labels']
+                    if pulse_label is not None:
+                        geometry = emphasis_geometry(geometry, selection_sample['labels'][self.m_item],
+                                                    pulse_label[self.m_item])
                 enqueue(p['texture_entry'], geometry, 47 if group == 'first' else 60 if group == 'middle' else 70)
 
-        if self.m_first:
-            for p in frame['strips'][self.m_item]:
-                enqueue(p['texture_entry'], p['geometry'], 45)
+            if group == 'first' and self.m_first:
+                strips = (self.m_native_runtime.first_strip_geometry(self.m_item)
+                          if self.m_native_mode else frame['strips'][self.m_item])
+                for p in strips:
+                    enqueue(p['texture_entry'], p['geometry'], 45)
+                if self.m_native_mode:
+                    # 0x37A910: literal+decoration sprites precede
+                    # the 0x37AEE0 Dragon particle pass.
+                    for p in self.m_native_runtime.particle_geometry(self.m_item):
+                        enqueue(p['texture_entry'], p['geometry'], 45)
 
-        draw_queue.sort(key=lambda q: q['depth'])
+        if self.m_arrows and native_item_active:
+            for part in arrow_parts(self.m_menu_report, self.m_item, self.m_navigation.m_previous):
+                geometry = part['geometry']
+                if self.m_arrow_bob:
+                    arrow_age = self.m_time
+                    if self.m_native_mode:
+                        arrow_age = self.m_native_runtime.m_item_ages[self.m_item]
+                    geometry = bobbed_arrow_geometry(geometry, arrow_age)
+                enqueue(0, geometry, 95)
 
-        scale = min(rect.width() / 512.0, rect.height() / 448.0)
-        offset_x = rect.x() + (rect.width() - 512 * scale) / 2
-        offset_y = rect.y() + (rect.height() - 448 * scale) / 2
+        # Preserve the recovered EE submission order in draw_queue:
+        # 0x379E60 issues shared, pending, current, then arrows.
+        # QPainter has no PS2 GS depth buffer, so painting those calls
+        # directly would allow the later small sprite #2 (depth 5)
+        # to erase the earlier MAIN MENU banner (depth 99). The PCSX2
+        # reference proves that this must NOT happen.
+        # Until GS TEST/ZBUF/ALPHA are fully recovered, use a stable
+        # back-to-front software approximation while leaving source
+        # submission order intact. Equal depths retain native order.
+        painter_queue = software_painter_order(draw_queue)
+
+        # 512x448 recovered coordinates never change. Fit deliberately fills
+        # the complete widget; the remaining choices preserve their aspect ratio.
+        display_height = self.presentation_height()
+        if self.m_presentation == 'fit':
+            scale_x = rect.width() / 512.0
+            scale_y = rect.height() / 448.0
+            offset_x, offset_y = rect.x(), rect.y()
+        else:
+            scale = min(rect.width() / 512.0, rect.height() / display_height)
+            scale_x = scale
+            scale_y = scale * display_height / 448.0
+            offset_x = rect.x() + (rect.width() - 512.0 * scale) / 2.0
+            offset_y = rect.y() + (rect.height() - display_height * scale) / 2.0
 
         painter.save()
-        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth)
+        smooth = (self.m_pcsx2_settings.approximate_linear_filter()
+                  if self.m_pcsx2_enabled else self.m_smooth)
+        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, smooth)
         painter.translate(offset_x, offset_y)
-        painter.scale(scale, scale)
+        painter.scale(scale_x, scale_y)
+        painter.setClipRect(C.QRectF(0, 0, 512, 448))
 
-        for q in draw_queue:
+        for q in painter_queue:
             self.draw_sprite(painter, q['entry'], q['geometry'], q['alpha'])
 
+        # 0x37BF60 renders the help component in phases 1, 2, 3.
+        # It is not tied to whether the selected item is already active.
+        # Diagnostic mode intentionally retains its older help overlay.
+        if self.m_help_panel and (not self.m_native_mode or
+                self.m_native_runtime.m_help_state['phase'] != 0):
+            self.draw_help_panel(painter)
+
+        painter.restore()
+
+    def draw_help_panel(self, painter):
+        """Draw the game's archive-backed help artwork and FFON glyphs.
+
+        Native mode uses the component's own ELF-derived position, sprite
+        UV bounds, and fixed FFON scale. The diagnostic viewer deliberately
+        retains its earlier screenshot-calibrated placement for comparison.
+        """
+        painter.save()
+        smooth = (self.m_pcsx2_settings.approximate_linear_filter()
+                  if self.m_pcsx2_enabled else False)
+        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, smooth)
+
+        native_layout = None
+        if self.m_native_mode:
+            help_state = self.m_native_runtime.m_help_state
+            native_layout = native_help_layout(
+                self.m_item, help_state['x'], help_state['y'])
+
+        # Atlas 4 contains the original panel sprite; no substitute border.
+        panel = self.m_textures.get(4)
+        if panel is not None and not panel.isNull():
+            if native_layout is not None:
+                # 0x37BEB0 sets (0,0)-(464,176) on the *whole*
+                # texture. Transparent source margins are meaningful:
+                # alpha-bounds cropping would shift the visible frame.
+                painter.drawPixmap(
+                    C.QRectF(*native_layout['panel_rect']), panel,
+                    C.QRectF(*HELP_FRAME_SOURCE_BOUNDS))
+            elif self.m_help_panel_uv is not None:
+                painter.drawPixmap(
+                    C.QRectF(*HELP_PANEL_RECT), panel, self.m_help_panel_uv)
+
+        if self.m_help_font is None or (native_layout is not None and
+                self.m_native_runtime.m_help_state['phase'] != 2):
+            # 0x36980 / +0x20: text is drawn only after entry has
+            # completed, not during the sprite's entry/exit curves.
+            painter.restore()
+            return
+
+        if native_layout is None:
+            # Provisional screenshot-calibrated diagnostic text clipping.
+            # The ELF's FFON call does not supply this specific rectangle.
+            painter.setClipRect(
+                C.QRectF(*HELP_TEXT_CLIP),
+                C.Qt.ClipOperation.IntersectClip)
+
+        pixmaps = [self.help_line_pixmap(line)
+                   for line in self.m_navigation.help_lines()[:4]]
+        if native_layout is not None:
+            # 0x37C1C0 passes one 0.75f scale to 0x2CDCA0 and moves
+            # Y by 25.0f for every line. Never fit each line to width.
+            scale = native_layout['font_scale']
+            for origin, pixmap in zip(native_layout['line_origins'], pixmaps):
+                if pixmap is None or pixmap.isNull():
+                    continue
+                painter.drawPixmap(
+                    C.QRectF(origin[0], origin[1],
+                             pixmap.width() * scale, pixmap.height() * scale),
+                    pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
+        else:
+            # Preserve pre-existing 140-frame diagnostic display.
+            widths = [pixmap.width() for pixmap in pixmaps
+                      if pixmap is not None and not pixmap.isNull()]
+            if widths:
+                scale = min(1.0, HELP_TEXT_MAX_WIDTH / max(widths))
+                for index, pixmap in enumerate(pixmaps):
+                    if pixmap is None or pixmap.isNull():
+                        continue
+                    painter.drawPixmap(
+                        C.QRectF(*help_text_row_rect(
+                            index, pixmap.width(), pixmap.height(), scale)),
+                        pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
         painter.restore()
 
     def draw_sprite(self, painter, entry, geometry, alpha):
@@ -282,9 +1218,14 @@ class c_menu_editor(W.QWidget):
         path.closeSubpath()
 
         painter.save()
-        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, self.m_smooth or ((abs(du) == 1 and abs(dv) > 4) or (abs(dv) == 1 and abs(du) > 4)))
+        smooth = (self.m_pcsx2_settings.approximate_linear_filter()
+                  if self.m_pcsx2_enabled else
+                  self.m_smooth or
+                  ((abs(du) == 1 and abs(dv) > 4) or
+                   (abs(dv) == 1 and abs(du) > 4)))
+        painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, smooth)
         painter.setOpacity(alpha)
-        painter.setClipPath(path)
+        painter.setClipPath(path, C.Qt.ClipOperation.IntersectClip)
         transform = G.QTransform(a, b, c, d, tx, ty)
         painter.setTransform(transform, True)
         painter.drawPixmap(0, 0, pixmap)

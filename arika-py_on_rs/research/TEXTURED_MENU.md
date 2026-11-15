@@ -1,5 +1,40 @@
 # Textured menu lab
 
+## Copyright-conscious editor data flow
+
+**The repository no longer includes the generated `previews/menu_textured.html`
+containing 13 game-derived PNG atlases.** Instead, it retains the same
+recovered numeric menu geometry and animation data in
+`previews/menu_layout.json` plus nine `previews/menu_frames_###.json`
+files. These contain no texture-image data. The Qt menu editor reads those
+files on startup, displays a prompt while no game archive is open, and
+loads the actual artwork from **`dis/main_menu.pix` in the user's own
+`INFO.DAT`/`GAME.DAT` files**.
+
+In Arika Editor, open the game archive by opening either `INFO.DAT`
+or `GAME.DAT` with its sibling file in the same folder. The in-memory
+archive browser already reads each file; the menu panel now consumes its
+`dis/main_menu.pix` bytes directly and decodes all thirteen XPIX/TIM2
+entries into Qt pixmaps. Switching archives clears the previous atlases,
+including when the new archive has no menu PIX or the decode fails.
+No game textures are written to disk.
+
+The original browser-based menu lab remains available as a **locally
+generated, ignored** artifact when users supply their own game files.
+For example:
+
+```sh
+cd arika-py_on_rs
+python arika_menu_textured.py extracted/dis/main_menu.pix research/main_menu_map.json ../examples/menu_shared_children_trace.json ../previews/menu_textured.html
+```
+
+The generated HTML is now gitignored. It must not be committed or
+redistributed with original game art. Existing Git history still retains
+the previous generated file: deleting it from the current tree is not a
+history rewrite.
+
+## Historical browser preview (locally generated only)
+
 Open `previews/menu_textured.html` in a browser. It is self-contained, works offline and embeds all thirteen original menu atlases as PNGs. No game installation, server or external CDN is required to view it.
 
 The viewer offers all seven selected-item startup poses, a shared-animation scrubber/play button, independent scenery/character/label and shared-layer toggles, atlas inspection, optional quad outlines, nearest/smooth sampling and PNG export. It starts at settled diagnostic sample 70. The seven item texture labels read ORIGINAL, Z SURVIVOR, VERSUS, DRAGON SUMMONING, TRAINING, CUSTOMIZE and OPTIONS.

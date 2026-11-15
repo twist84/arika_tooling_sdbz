@@ -31,4 +31,28 @@ class MenuCoupledIdleTests(unittest.TestCase):
             for i,offset in enumerate(offsets):self.assertEqual([bits(v) for v in offset],[machine.read_int(0x1000+c['part_offset']+i*8+j*4,4) for j in range(2)])
 
 
+    def test_customize_phase_two_entry_resets_both_clocks_with_jr_delay(self):
+        """0x37F7E0 active callback resets primary +8 and secondary +0x1E8.
+
+        The second store runs in JR $ra's delay slot. The constructor's
+        initial secondary bytes are still not inferred from this fact.
+        """
+        native_words = (0xac800008, 0x03e00008, 0xac8001e8)
+        machine = c_banner_oracle(self.report['shared_banner'])
+        machine.m_code.update({
+            0x37f7e0 + i * 4: word
+            for i, word in enumerate(native_words)})
+        self.assertEqual(self.report['item_character_animation'][
+            'components'][5]['callbacks'][3], 0x37f7e0)
+        machine.m_registers[4] = 0x1000
+        machine.write_float(0x1008, 79.0)
+        machine.write_float(0x11e8, 319.5)
+        machine.write_float(0x100c, -7.0)
+        machine.run(0x37f7e0)
+        self.assertEqual(machine.read_int(0x1008, 4), bits(0.0))
+        self.assertEqual(machine.read_int(0x11e8, 4), bits(0.0))
+        self.assertEqual(machine.read_int(0x100c, 4), bits(-7.0))
+
+
+
 if __name__=='__main__':unittest.main()

@@ -174,3 +174,13 @@ The inner tile/companion owner is now recovered in `NATIVE_MENU_OWNER.md`, inclu
 3. Recover animation curves, visibility gates, and native compositing order.
 4. Validate the seven routes in an instrumented native run, including cancel and disabled/alternate entries.
 5. Build a menu layout preview/editor only after the texture selection and rectangle representation are verified.
+
+## Interactive preview: recovered graph and routes
+
+The new `arika_menu_navigation.py` consumes this ELF extraction to drive the
+Qt `arika_menu_editor.py` selection graph, including previous-selection flags,
+failed-move handling, route inspection and original help descriptions.
+Canvas arrow keys and control buttons are editor conveniences; they are not
+claims about physically traced controller mappings or exact native transition
+timing. See [NATIVE_MENU_INTERACTION.md](NATIVE_MENU_INTERACTION.md) for the
+input evidence, controls, parity tests, and remaining work.

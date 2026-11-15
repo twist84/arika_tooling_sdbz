@@ -29,8 +29,8 @@ def texture_assets(data):
 
 
 def build_payload(report,pix,trace):
-    assets=texture_assets(pix)
-    if len(assets)!=report['resource']['entry_count']:raise ValueError('texture count differs from researched resource')
+    assets=texture_assets(pix) if pix is not None else []
+    if pix is not None and len(assets)!=report['resource']['entry_count']:raise ValueError('texture count differs from researched resource')
     if trace['elf_sha256']!=report['elf_sha256']:raise ValueError('trace/report ELF mismatch')
     items=[]
     for composite in report['composite_layout']['composites']:
@@ -71,7 +71,7 @@ def build_payload(report,pix,trace):
     return dict(textures=assets,items=items,frames=frames,
         background=next(p for p in shared if p['label']=='background')['geometry'],
         tint=next(p for p in shared if p['label']=='conditional_overlay')['geometry'],
-        provenance=dict(elf_sha256=report['elf_sha256'],pix_sha256=hashlib.sha256(pix).hexdigest(),
+        provenance=dict(elf_sha256=report['elf_sha256'],pix_sha256=hashlib.sha256(pix).hexdigest() if pix is not None else None,
             texture_mapping='FPIX chunk order matched to resource-entry indices; visually checked atlas content.',
             limits='Diagnostic layer composition. Labels and character groups use recovered entry/exit; individual part idle offsets are zero. Activation, seed and exit are authored. Canvas blending/filtering are not PS2 GPU emulation.'))
 

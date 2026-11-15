@@ -46,6 +46,8 @@ class c_strip_oracle:
         elif op==11:r[rt]=int((r[rs]&0xffffffffffffffff)<(immediate&0xffffffffffffffff))
         elif op==0 and fn in (0x21,0x2d):r[rd]=signed(r[rs]+r[rt],32 if fn==0x21 else 64)
         elif op==0 and fn==0:r[rd]=signed(r[rt]<<shift,32)
+        elif op==0 and fn==2:r[rd]=(r[rt]&0xffffffff)>>shift
+        elif op==0 and fn==3:r[rd]=signed(r[rt],32)>>shift
         elif op==0 and fn==0x23:r[rd]=signed(r[rs]-r[rt],32)
         elif op==0 and fn==0x2a:r[rd]=int(r[rs]<r[rt])
         elif op==0 and fn==0x3c:r[rd]=signed(r[rt]<<(shift+32))
@@ -83,10 +85,14 @@ class c_strip_oracle:
         for _ in range(4096):
             if pc==0xf00000:return
             word=self.m_code[pc];op=word>>26;rs=(word>>21)&31;rt=(word>>16)&31;fn=word&63
-            is_branch=op in (4,5,6) or (op==17 and rs==8)
+            is_branch=op in (1,4,5,6) or (op==17 and rs==8)
             is_jump=op==0 and fn in (8,9)
             if is_branch:
-                if op==4:take=r[rs]==r[rt]
+                if op==1:
+                    if rt==0:take=r[rs]<0
+                    elif rt==1:take=r[rs]>=0
+                    else:raise AssertionError('unsupported REGIMM branch 0x%08X'%word)
+                elif op==4:take=r[rs]==r[rt]
                 elif op==5:take=r[rs]!=r[rt]
                 elif op==6:take=r[rs]<=0
                 else:take=self.m_condition==bool(rt&1)
