@@ -11,8 +11,10 @@ import unittest
 
 from arika_menu_gs_correlation import (
     CACHE_FLAGS_ADDRESS, CACHE_POINTER_ADDRESS,
-    RESOURCE_RETURN_SLOT_OFFSET, RESOURCE_VTABLE_RETURN_OFFSET,
-    binding_cache_decision, correlate_capture,
+    RESOURCE_MANAGER_GLOBAL_ADDRESS, RESOURCE_MANAGER_VTABLE,
+    RESOURCE_MANAGER_ENTRY_COUNT, RESOURCE_RETURN_SLOT_OFFSET,
+    RESOURCE_VTABLE_RETURN_OFFSET, binding_cache_decision,
+    correlate_capture, resolve_resource_selector_from_ram,
 )
 from arika_menu_gs_texture import ELF_DESCRIPTOR_TABLE
 
@@ -43,6 +45,20 @@ def make_ram(slot=1, tbp0=0x100, include_sprite=True):
         struct.pack_into('<H', ram, address + 0x0e, 0)
         struct.pack_into('<h', ram, address + 0x16, 512)
         struct.pack_into('<h', ram, address + 0x18, 256)
+    return bytes(ram)
+
+
+def make_ram_with_manager(ready=True, manager_vtable=RESOURCE_MANAGER_VTABLE):
+    ram = bytearray(make_ram())
+    manager = 0x3000
+    wrapper = 0x4000
+    record = 0x5000
+    table = 0x6000
+    struct.pack_into('<I', ram, RESOURCE_MANAGER_GLOBAL_ADDRESS, manager)
+    struct.pack_into('<II', ram, manager, manager_vtable, wrapper)
+    struct.pack_into('<II', ram, wrapper + 4, int(ready), record)
+    struct.pack_into('<I', ram, record + 0x34, table)
+    struct.pack_into('<I', ram, table + 4 * 4, RESOURCE_OBJECT)
     return bytes(ram)
 
 
@@ -159,6 +175,69 @@ class NativeGsCorrelationTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             correlate_capture(make_packet(), bytearray(1024))
 
+    def test_original_manager_selector_maps_to_sprite_resource_not_packet(self):
+        ram = make_ram_with_manager()
+        self.assertEqual(RESOURCE_MANAGER_GLOBAL_ADDRESS, 0x4fdc48)
+        self.assertEqual(RESOURCE_MANAGER_ENTRY_COUNT, 13)
+        entry = resolve_resource_selector_from_ram(ram, 4)
+        self.assertEqual(entry['status'], 'resolved')
+        self.assertEqual(entry['resource_object_pointer'], hex(RESOURCE_OBJECT))
+        self.assertNotEqual(entry['resource_object_pointer'], hex(RETURNED_ADDRESS))
+        report = correlate_capture(
+            make_packet(), ram, [SPRITE_ADDRESS],
+            resource_selectors=(2, 4, 11))
+        self.assertEqual(len(report['selector_entries']), 3)
+        self.assertEqual(report['selector_entries'][1]['matching_captured_sprites'],
+                         [hex(SPRITE_ADDRESS)])
+        self.assertEqual(report['selector_entries'][0]['status'], 'entry_null')
+        self.assertEqual(report['selector_entries'][2]['status'], 'entry_null')
+        # A selector match to the sprite's resource object alone DOES
+        # NOT establish the vtable callback return / opcode-1 identity.
+        self.assertEqual(report['bindings'][0]['sprite_ownership'], 'not_captured')
+
+    def test_manager_missing_unready_mismatch_and_native_fallback(self):
+        self.assertEqual(
+            resolve_resource_selector_from_ram(make_ram(), 4)['status'],
+            'manager_not_initialized')
+        self.assertEqual(
+            resolve_resource_selector_from_ram(make_ram_with_manager(False), 4)[
+                'status'], 'wrapper_not_ready')
+        self.assertEqual(
+            resolve_resource_selector_from_ram(
+                make_ram_with_manager(manager_vtable=0x12345678), 4)['status'],
+            'unverified_manager_vtable')
+        for index in (13, 42, 0xffffffff):
+            with self.subTest(index=index):
+                result = resolve_resource_selector_from_ram(
+                    make_ram_with_manager(), index)
+                self.assertEqual(result['status'], 'native_fallback_null')
+                self.assertEqual(result['resource_object_pointer'], '0x0')
+        with self.assertRaises(ValueError):
+            resolve_resource_selector_from_ram(make_ram(), -1)
+        with self.assertRaises(ValueError):
+            resolve_resource_selector_from_ram(make_ram(), True)
+        with self.assertRaises(TypeError):
+            resolve_resource_selector_from_ram(bytearray(make_ram()), 4)
+
+    def test_manager_partial_capture_does_not_fabricate_a_pointer(self):
+        tiny = bytearray(RESOURCE_MANAGER_GLOBAL_ADDRESS + 4)
+        struct.pack_into('<I', tiny, RESOURCE_MANAGER_GLOBAL_ADDRESS, 0x3000)
+        result = resolve_resource_selector_from_ram(bytes(tiny), 4)
+        self.assertEqual(result['status'], 'unverified_manager_vtable'
+                         if len(tiny) > 0x3000 else 'manager_outside_ram')
+        # Manager+4 points at wrapper outside a truncated capture.
+        partial = bytearray(RESOURCE_MANAGER_GLOBAL_ADDRESS + 4)
+        struct.pack_into('<I', partial, RESOURCE_MANAGER_GLOBAL_ADDRESS, 0x3000)
+        struct.pack_into('<II', partial, 0x3000, RESOURCE_MANAGER_VTABLE, 0x700000)
+        self.assertEqual(
+            resolve_resource_selector_from_ram(bytes(partial), 4)['status'],
+            'wrapper_outside_ram')
+        partial = bytearray(make_ram_with_manager())
+        struct.pack_into('<I', partial, 0x5000 + 0x34, 0xfffffffc)
+        self.assertEqual(
+            resolve_resource_selector_from_ram(bytes(partial), 4)['status'],
+            'entry_outside_ram')
+
     def test_json_cli_with_synthetic_snapshot(self):
         script = Path(__file__).with_name('arika_menu_gs_correlation.py')
         with tempfile.TemporaryDirectory() as folder:
@@ -210,6 +289,31 @@ class NativeGsCorrelationElfTests(unittest.TestCase):
         }
         self.assertEqual(RESOURCE_RETURN_SLOT_OFFSET, 0x38)
         self.assertEqual(RESOURCE_VTABLE_RETURN_OFFSET, 0x4c)
+        # The static menu global and checked vtable prove this is a
+        # 13-entry resource-manager selector, not a PIX atlas index.
+        manager_words = {
+            0x374de4: 0x8f82e8d8,
+            0x374e3c: 0xae030000,
+            0x374f14: 0x2402000d,
+            0x3725f4: 0x8c990000,
+            0x3725f8: 0x8f39000c,
+            0x372604: 0x0202102b,
+            0x372610: 0x8e390000,
+            0x372618: 0x8f390010,
+            0x37262c: 0x0c0bee64,
+            0x372630: 0x8e240004,
+            0x372634: 0x8c420034,
+            0x372640: 0x8c420000,
+            0x2fb990: 0x8c820004,
+            0x2fb994: 0x30420001,
+            0x2fb998: 0x10400002,
+            0x2fb9a0: 0x8c820008,
+            0x4f188c: 0x00374f10,
+            0x4f1890: 0x00354870,
+        }
+        for va, opcode in manager_words.items():
+            with self.subTest(manager_va=hex(va)):
+                self.assertEqual(word(va), opcode)
         for va, opcode in expected.items():
             with self.subTest(va=hex(va)):
                 self.assertEqual(word(va), opcode)
