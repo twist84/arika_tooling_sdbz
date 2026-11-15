@@ -244,6 +244,28 @@ oracle must be verified separately on the latest head. The next
 scope is compositing/GS state against genuine game output rather
 than guessing image blending or frame duration.
 
+### Sprite command and native painter ordering checkpoint (15 November 2026)
+
+After the shared visual milestone, the top-level renderer was found to
+globally sort the native draw queue by depth. The actual `0x379E60`
+draw callback issues **shared → pending → selected → arrow** in that
+order; `0x378170` issues **background → banner → tiles/companions
+→ seven small sprites → conditional overlay**. The Qt native renderer
+now preserves this instruction-verified order, including the item-3
+`0x37A910` literal/decorations-before-particles order. The diagnostic
+140-frame renderer retains its previous depth sort for comparison.
+
+`test_arika_menu_gs_state.py` interprets the native `0x2FDA00`
+sprite reset, `0x2FD8F0` texture binding and `0x2FD8A0`
+vtable dispatch. These recover raw engine mode fields and the
+0/512/0/448 sprite raster bounds; they **do not** recover the
+hardware GS `ALPHA`, `TEST`, `ZBUF`, or texture filtering.
+Detailed command formats, evidence and remaining unknowns appear in
+[NATIVE_MENU_GS_COMMANDS.md](NATIVE_MENU_GS_COMMANDS.md).
+The next milestone is tracing intermediate engine command consumers to
+real GS state and validating with a game/PCSX2 capture, not inferring
+blend mode from byte values. No timing assumptions were added.
+
 ### Follow-up
 
 Continue from the exact existing PR head, consult the particle research file
