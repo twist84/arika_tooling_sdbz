@@ -12,6 +12,7 @@ from arika_menu_selection_effect import EMPHASIS_DURATION, emphasis_geometry, em
 from arika_menu_arrow_preview import arrow_parts, bobbed_arrow_geometry
 from arika_menu_navigation import read_menu_report
 from arika_menu_runtime import c_menu_runtime
+from arika_menu_compositor import software_painter_order
 import arika_ffon
 from arika_menu_frame_match import normalize_reference, rank_samples
 from PIL import Image
@@ -916,14 +917,16 @@ class c_menu_editor(W.QWidget):
                     geometry = bobbed_arrow_geometry(geometry, arrow_age)
                 enqueue(0, geometry, 95)
 
-        # In native mode the EE emits distinct draw commands. Do NOT
-        # infer a depth-test ordering from their Z values: the actual
-        # GS TEST/ZBUF/ALPHA state has not yet been verified.
-        # 0x379E60 calls 0x378170 shared, pending item, current item,
-        # then the arrow draw. The authored timeline retains its
-        # previous depth-sort presentation for comparison.
-        if not self.m_native_mode:
-            draw_queue.sort(key=lambda q: q['depth'])
+        # Preserve the recovered EE submission order in draw_queue:
+        # 0x379E60 issues shared, pending, current, then arrows.
+        # QPainter has no PS2 GS depth buffer, so painting those calls
+        # directly would allow the later small sprite #2 (depth 5)
+        # to erase the earlier MAIN MENU banner (depth 99). The PCSX2
+        # reference proves that this must NOT happen.
+        # Until GS TEST/ZBUF/ALPHA are fully recovered, use a stable
+        # back-to-front software approximation while leaving source
+        # submission order intact. Equal depths retain native order.
+        painter_queue = software_painter_order(draw_queue)
 
         # 512x448 recovered coordinates never change. Fit deliberately fills
         # the complete widget; the remaining choices preserve their aspect ratio.
@@ -945,7 +948,7 @@ class c_menu_editor(W.QWidget):
         painter.scale(scale_x, scale_y)
         painter.setClipRect(C.QRectF(0, 0, 512, 448))
 
-        for q in draw_queue:
+        for q in painter_queue:
             self.draw_sprite(painter, q['entry'], q['geometry'], q['alpha'])
 
         if self.m_help_panel and native_item_active:
