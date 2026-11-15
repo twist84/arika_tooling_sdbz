@@ -169,6 +169,33 @@ spacing are screenshot-calibrated estimates,
 not native ELF assertions. See
 [TEXTURED_MENU.md](TEXTURED_MENU.md).
 
+## Update: native help sprite and text owner recovered (15 November 2026)
+
+The earlier "native help-panel implementation is still unknown" section is
+retained as a historical investigation checkpoint and **superseded** by
+[NATIVE_MENU_HELP_DRAW.md](NATIVE_MENU_HELP_DRAW.md). The ELF-backed
+help-component owner is the parent menu's embedded `this+0x40` derived
+vtable `0x4F1F30`, reached by menu draw `0x379E60`.
+Its `0x37BF60` draw callback submits sprite atlas 4
+with native geometry `(24,272,464,176)` in settled phase 2,
+depth 97, and renders its description through `0x37C1C0 →
+0x2CDCA0`. The FFON loop uses native scale `0.75`,
+text offset `(+64,+52)` and 25-unit line advances.
+The screenshot-aligned `(87,324)` first line is thus
+the native `(88,324)`, not a guessed vertical shift.
+
+The help component's phase dispatcher `0x35F820` uses independent
+entry (`0x37C020`, 27 logical ticks) and exit
+(`0x37C0F0`, 5 ticks) interpolation, including a 13-key
+entry bounce. Native mode now owns and renders this state,
+while the diagnostic timeline's original crop/placement
+remains available. Qt tests use synthetic atlases and
+FFON bitmaps; original art is not checked into Git.
+
+Remaining issues are precise font glyph metrics inside
+`0x2CDCA0` and live GS rendering capture—not the identity
+or geometry of the outer help-panel owner.
+
 ## Further work without PCSX2
 
 1. Trace font/help UI ownership and draw callbacks
