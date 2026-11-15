@@ -107,6 +107,25 @@ class NativeMenuSamplerAttachmentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             scan_menu_sprite_attachments(bytes(256))
 
+    def test_audited_provenance_inventory_requires_no_original_assets(self):
+        self.assertEqual(len(VERIFIED_NONCANONICAL_DEFS), 11)
+        self.assertEqual(len({row[0] for row in VERIFIED_NONCANONICAL_DEFS}), 11)
+        for site, a2, a3, a4, a5 in VERIFIED_NONCANONICAL_DEFS:
+            self.assertTrue(0x370000 <= site < 0x3b0000)
+            self.assertTrue(all(address % 4 == 0
+                                for address in (site, a2, a3, a4, a5)))
+            self.assertTrue(all(address <= site + 4
+                                for address in (a2, a3, a4, a5)))
+        self.assertEqual(len(NEAREST_ROUTINE_SITES), 5)
+        nearest = [site for _routine, entries in NEAREST_ROUTINE_SITES
+                   for site in entries]
+        self.assertEqual(len(nearest), 11)
+        self.assertEqual(len(set(nearest)), 11)
+        self.assertEqual(set(function for function, _ in
+                             EXTERNAL_CALLER_EVIDENCE),
+                         set(function for function, _ in
+                             NEAREST_ROUTINE_SITES))
+
     def test_noncanonical_proof_requires_exact_elf(self):
         self.assertIsNone(
             classify_literal_attachment_words(0, 0, 0, 0))
