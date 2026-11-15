@@ -128,6 +128,41 @@ Only after lifecycle timing is stable:
 
 These are separate milestones, not blockers for shipping a tested lifecycle emulator.
 
+### Phase 6 implementation status (15 November 2026)
+
+The numbered targets above are **historical**: several have been
+completed in subsequent PR #14 checkpoints. The current status is:
+
+- [x] All seven per-part idle callbacks are implemented (including
+  VERSUS, DRAGON SUMMONING and OPTIONS) and their native-word suites
+  are now included in both platforms' CI. OPTIONS and DRAGON SUMMONING
+  callback arithmetic is instruction-tested with injected trig outputs;
+  **bit-exact native libm** is still outstanding.
+- [x] CUSTOMIZE's +488 secondary age **re-entry reset** is confirmed by
+  executing the `0x37F7E0` callback and its return delay slot.
+  The constructor's pre-entry value remains unknown and is not used
+  to infer active-phase behavior.
+- [x] Ten-slot shared companions and six DRAGON SUMMONING particles
+  consume one explicitly seeded diagnostic RNG, respecting recovered
+  shared-before-item update ordering. Real runtime seed/other
+  consumers still require capture.
+- [x] Screen-reference normalization for the existing help frame and
+  FFON line positions is now tested using separate axes for the
+  512×448 logical raster displayed at 4:3. The previous apparent
+  40-unit Y offset was mostly a pixel-aspect comparison error.
+- [ ] Trace the **actual external native help-panel/text draw owner**
+  and native FFON glyph metrics/UV. The present Qt rectangles remain
+  screenshot-calibrated, not ELF-proven.
+- [x] Reconstruct file-backed PS2 GS TEST/ALPHA/ZBUF and texture
+  register writers, including the six-register TEX0/TEX1/TEXA/CLAMP
+  GIF path and 240 synthetic ELF differential cases.
+- [ ] Capture **active** GS register state, runtime texture records,
+  actual filtering/blending and per-pixel depth behavior via PCSX2.
+
+See [NATIVE_MENU_PHASE6_OFFLINE.md](NATIVE_MENU_PHASE6_OFFLINE.md)
+for addresses, code paths, screenshot anchor measurements, test
+coverage and explicit unknowns.
+
 ## Acceptance checklist
 
 - [ ] No authored sample-23 idle start or sample-120 exit trigger in native mode.
