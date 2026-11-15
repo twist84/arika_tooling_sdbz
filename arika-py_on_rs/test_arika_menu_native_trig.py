@@ -105,7 +105,7 @@ class MenuNativeTrigDispatchTests(unittest.TestCase):
         def jal(address, target):
             self.assertEqual(word(address), 0x0c000000 | (target >> 2),
                              (hex(address),hex(target)))
-        for address in (0x1859fc, 0x185c98):
+        for address in (0x1859f8, 0x185c98):
             self.assertEqual(word(address), 0x34630fd8,
                              hex(address))
         for site, target in (
