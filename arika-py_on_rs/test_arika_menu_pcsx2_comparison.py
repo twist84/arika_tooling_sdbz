@@ -158,7 +158,7 @@ class Pcsx2ComparisonQtTests(unittest.TestCase):
             metadata_path = png.with_suffix('.pcsx2-settings.json')
             self.assertTrue(png.is_file())
             self.assertTrue(metadata_path.is_file())
-            self.assertEqual(png.read_bytes()[:8], b'\\x89PNG\\r\\n\\x1a\\n')
+            self.assertEqual(png.read_bytes()[:8], b'\x89PNG\r\n\x1a\n')
             metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
             self.assertEqual(metadata['image_size'], [512, 384])
             self.assertEqual(metadata['internal_resolution'], 1)
