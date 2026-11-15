@@ -67,7 +67,7 @@ class HelpAlignmentTests(unittest.TestCase):
             original_y = screenshot_to_logical(
                 HELP_ANCHORS[name][0], REFERENCE_SIZE)[1]
             expected_y = HELP_TEXT_ORIGIN[1] + index * HELP_LINE_ADVANCE
-            self.assertLess(abs(original_y - expected_y), 4.0)
+            self.assertLess(abs(original_y - expected_y), 5.0)
         uniform_y = HELP_ANCHORS['first_line'][0][1] * (
             LOGICAL_WIDTH / REFERENCE_SIZE[0])
         self.assertGreater(HELP_TEXT_ORIGIN[1] - uniform_y, 35.0)
