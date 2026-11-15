@@ -126,3 +126,100 @@ byte identity, inspect exact selector table bytes,
 run both packet decoder and editor suites, inspect
 new CI failures and review the PR diff before
 treating each milestone as complete.
+
+## Source sprite initializers to opcode-1 binding (next static milestone)
+
+The first direct sprite-to-binding link is **now proven**, with two
+separate generic sprite paths. The sprite setter `0x2FD8F0` writes a
+resource pointer at `sprite+0x44`, and four independent bytes at
+`sprite+0x48/+0x49/+0x4A/+0x4B` (the last store is in its
+`JR $ra` delay slot at `0x2FD904`). The draw-command producers
+`0x2FD084–0x2FD094` and `0x2FDB68–0x2FDB78` load those four
+bytes into `a2/a3/a4/a5` and call `0x2FE920` when the attached
+resource is non-null. At `0x2FE974–0x2FE990`, that producer emits
+a 12-byte opcode-1 intermediate command with the same four fields:
+
+| Sprite byte | Engine opcode-1 offset | Interpretation in `0x19B688` |
+| --- | --- | --- |
+| +0x48 | +2 | separate native selector (not filter) |
+| +0x49 | +4 | halfword filter selector: 0 nearest / 1 linear |
+| +0x4A | +6 | byte clamp selector: 0 enables / 1 disables |
+| +0x4B | +7 | additional option, unverified |
+
+`0x2FE920` also caches the most recent resource/flags and can
+elide a redundant binding. This means the constructor's four
+literal arguments establish the sprite's **initial fields**, not
+that every frame executes the opcode-1 packet or leaves GS state
+unchanged.
+
+### Four named constructor sites, each verified instruction-by-instruction
+
+Each of the four direct JAL sites below sets
+`a2=0, a3=1, a4=0` in the preceding three instructions and
+`a5=0` in the JAL delay slot, i.e. **(0, 1, 0, 0)**.
+The resource selectors are independently passed to `0x3725E0`
+earlier in their constructors:
+
+| JAL `0x2FD8F0` | Owner | Resource selector | Initial filter/clamp |
+| --- | --- | ---: | --- |
+| `0x376034` | shared tile owner sprite | 2 | linear / clamp enabled |
+| `0x378434` | shared MAIN MENU banner sprite | 2 | linear / clamp enabled |
+| `0x37A754` | DRAGON SUMMONING embedded sprite | 11 | linear / clamp enabled |
+| `0x37BF0C` | main-menu help-panel sprite | 4 | linear / clamp enabled |
+
+This is actual **constructor-site provenance**, not an assignment
+from a texture's filename, alpha bounds or screenshot colours. It
+does not prove the resource selector's runtime pointer is non-null,
+that other draws reuse this object, or that a later setter/callback
+has not changed the GS state.
+
+### Broader code-region scan, strict unknowns
+
+A SHA-256-gated offline scan of **direct** `JAL 0x2FD8F0`
+within the EU-beta menu-code range `[0x370000,0x3B0000)`
+found **77** matching call instructions. Only an *exact*
+consecutive constant-argument signature (three instructions
+before JAL and its delay slot) was classified:
+
+| Class | Verified direct sites |
+| --- | ---: |
+| Literal (0,1,0,0): initial linear filtering | 59 |
+| Literal (0,0,0,0): initial nearest filtering | 7 |
+| Noncanonical/conditional argument setup: **unknown** | 11 |
+
+The seven nearest-initialization JAL sites are
+`0x370A6C`, `0x370B7C`, `0x370BE4`,
+`0x370C08`, `0x37C56C`, `0x37C67C`,
+and `0x37D8D0`. Some use dynamic resource pointers;
+their PIX indices and draw-time GS state have **not**
+been claimed or filled in.
+
+The parser `arika_menu_gs_attachment.py` accepts a captured
+sprite memory image through offset `+0x4B`. It reports the
+native sampler fields and whether a non-null resource makes
+opcode-1 submission **possible**, without fabricating a TEX1
+write from an explicitly null pointer. The separate
+`arika_menu_gs_attachment_elf.py` inventories the verified
+literal direct-call sites using the user's **own** exact ELF:
+
+```sh
+cd arika-py_on_rs
+python arika_menu_gs_attachment.py --static-menu
+python arika_menu_gs_attachment.py captured_sprite.bin
+python arika_menu_gs_attachment_elf.py path/to/SLES_541.61 --only-nearest
+```
+
+The first command lists only four named source-to-attachment
+constructors, and the last scans the bounded code region. Neither
+accepts archive filenames as a substitute for captured resource
+pointers.
+
+**Validation boundary:** The test modules include synthetic
+snapshots, null-resource handling, standalone JSON CLI paths and
+optional exact-ELF opcode/constructor checks. Native editor
+filtering is **unchanged**: the data above is not a complete
+per-draw/screenshot GS capture, and substituting inferred
+per-atlas switches would erase that distinction. The next
+step is to correlate a captured menu sprite instance and
+opcode-1 resource pointer with its runtime texture descriptor
+and active GS registers.
