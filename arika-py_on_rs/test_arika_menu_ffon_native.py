@@ -75,6 +75,30 @@ class NativeMenuFfonAdvanceTests(unittest.TestCase):
             render_native_help_line(font, data, 'A')
 
 
+@unittest.skipUnless(os.environ.get('SDBZ_FFON_FONT'),
+                     'set SDBZ_FFON_FONT to test a user-owned original font')
+class NativeFfonAssetCoverageTests(unittest.TestCase):
+    def test_ascii_glyphs_fit_in_fixed_half_width_source_cells(self):
+        from arika_ffon import parse_ffon
+        data = Path(os.environ['SDBZ_FFON_FONT']).read_bytes()
+        font = parse_ffon(data)
+        self.assertEqual((font.width, font.height, font.row_stride),
+                         (24, 24, 12))
+        self.assertEqual(font.char_map[0], 1,
+                         'mapped ASCII space is the first blank glyph')
+        for code in range(0x20, 0x7f):
+            with self.subTest(code=hex(code)):
+                glyph_id = font.char_map[code - 0x20]
+                self.assertNotEqual(glyph_id, 0)
+                base = font.glyph_offset(glyph_id - 1)
+                for y in range(24):
+                    # In a 24x24 4bpp record the right 12 columns
+                    # occupy bytes 6..11 of each 12-byte row.
+                    self.assertEqual(
+                        data[base + y * 12 + 6:base + y * 12 + 12],
+                        bytes(6))
+
+
 @unittest.skipUnless(os.environ.get('SDBZ_EU_BETA_ELF'),
                      'requires original EU-beta ELF, not included in repo/CI')
 class NativeFfonElfOracleTests(unittest.TestCase):
