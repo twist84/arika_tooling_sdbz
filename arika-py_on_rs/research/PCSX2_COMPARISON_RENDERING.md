@@ -95,3 +95,61 @@ ASCII advance and panel texture bounds remain unchanged by this work.
 See `NATIVE_MENU_HELP_DRAW.md` for reference screenshot alignment
 results, and `NATIVE_MENU_LIFECYCLE_PLAN.md` for the remaining glyph UV
 and active-GS-state milestones.
+
+## 15 November 2026: 4x internal PNG capture pair
+
+The user supplied two **lossless PNGs** of the ORIGINAL selection:
+
+| Capture | Resolution | SHA-256 |
+| --- | --- | --- |
+| PCSX2 D3D12 4x | 958×719 | `053a2f214f493e12f747b18b3fc0e5e6b3d962413b57bb04fff7a85235fae740` |
+| Qt comparison 4x | 2048×1536 | `05e0573ed17566bc93d4f5286d998d2b5cadd621c97bb243c88024d00385753b` |
+
+These screenshots remain **user-owned**, and are **not checked in**.
+The Qt PNG is its internal supersampled render target; the PCSX2 PNG
+is the emulator's 958×719 output capture. Compare at a **common
+final output resolution**, not pixel-for-pixel at their distinct native
+sizes.
+
+The new optional pixel comparison resizes the Qt image to 958×719 with
+a fixed **bilinear** output filter, does **not** auto-register/align
+the screenshots, and measures RGB absolute error. A reference-luminance
+3×3 min/max gradient of at least 20/255 defines edge regions; all
+other pixels are counted as flatter regions.
+
+| Statistic | RGB mean absolute error | RGB RMS error |
+| --- | ---: | ---: |
+| Full frame | 16.613/255 | 32.545/255 |
+| Reference edges (50.198% of pixels) | 29.345/255 | 44.514/255 |
+| Reference flatter regions | 3.779/255 | 11.377/255 |
+
+This provides useful evidence that visible differences are concentrated
+on outlines, FFON glyph edges, sprite alpha transitions and texture
+sampling rather than large uniform fills. For instance, PCSX2's sky
+sample (110,200,201) and the corresponding normalized Qt sample
+(111,200,201) differ in red by only one value. **Do not**
+assume an exact native GS filter or fix the output by modifying
+verified coordinates; native animation ages, sampling mode, blending,
+rendering APIs and capture post-processing may all differ.
+
+Usage:
+
+```sh
+cd arika-py_on_rs
+python compare_menu_captures.py original.png menu_comparison.png \
+    --pixel-metrics --diff-image render_diff.png --json
+```
+
+The PNG heatmap is a contrast-enhanced visual aid. Quantitative
+metrics are computed from the **original unenhanced** RGB differences.
+The default command remains the original native help-text line-bound
+comparison for regression compatibility. Test fixtures are synthetic;
+the two PNGs and all copyrighted textures remain outside the repo.
+
+**PCSX2 semantics:** Bilinear (PS2) follows the game's per-draw
+filtering choice. It is not an instruction to force linear filtering
+on all 2D sprites. The current Qt "Bilinear (PS2)" preset is still
+only a global approximate linear filter; matching the emulator's
+per-draw sampling requires actual GS TEX1 state and draw-command
+consumer recovery. Do not claim filtering parity based on this
+reference pair alone.
