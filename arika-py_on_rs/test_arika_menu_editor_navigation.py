@@ -358,8 +358,13 @@ class MenuEditorNavigationTests(unittest.TestCase):
                          G.QColor('#c83214'))
         step_help(state)
         self.assertAlmostEqual(state['y'], 316.8, places=3)
-        self.assertEqual(render_help().pixelColor(88, 324),
-                         G.QColor('#10151c'))
+        moved = render_help()
+        self.assertEqual(moved.pixelColor(88, 300),
+                         G.QColor('#10151c'),
+                         'native exit has moved the panel top below y=300')
+        self.assertEqual(moved.pixelColor(88, 324),
+                         G.QColor('#c83214'),
+                         'the exit panel still covers y=324, but text is gated')
 
     def test_4_3_help_frame_matches_reference_top(self):
         from PySide6 import QtCore as C, QtGui as G
