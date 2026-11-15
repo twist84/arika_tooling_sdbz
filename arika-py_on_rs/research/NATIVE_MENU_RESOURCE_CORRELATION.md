@@ -145,3 +145,63 @@ per primitive and a live GIF capture remain unknown without additional
 static callsite proof and/or PCSX2 observation. Static initializer
 flags remain **initial flags**, not per-atlas sampling policies.
 The Qt native and diagnostic renderers are intentionally unchanged.
+
+
+## Further static recovery: the 13-entry menu resource selector owner
+
+A second instruction-backed path now precedes the sprite's initial
+resource-object pointer. The known help, tile, banner and Dragon
+constructors call `0x374DE0` and `0x3725E0` to select a resource.
+
+- `0x374DE0` returns the resident manager pointer from
+  `gp-0x1728 = 0x4FDC48` (return-delay `LW` at `0x374DE4`).
+  `0x374DF0` lazily allocates/initializes a 12-byte manager when
+  needed; the derived vtable `0x4F1880` is stored at `0x374E3C`.
+- The manager's vtable `+0x0C = 0x374F10` returns **13**
+  (`addiu v0,zero,0xD` in the return-delay slot `0x374F14`).
+  Its `+0x10 = 0x354870` fallback returns **zero**, so the
+  known concrete manager has **13 valid unsigned selector indices**
+  0..12. At `0x372604`, the selector comparison is `SLTU`,
+  not a signed comparison.
+- In-range `0x3725E0` calls `0x2FB990` on manager `+0x04`.
+  The wrapper returns its `+0x08` stored record only when bit 0
+  of wrapper `+0x04` is set (`0x2FB990..0x2FB9A4`).
+- The selector reader then loads that record's `+0x34` pointer
+  (`0x372634`), adds `selector * 4` (`0x372638`) and returns
+  the indexed 32-bit entry (`0x372640`). This is the **resource
+  object pointer** subsequently stored into sprite `+0x44`.
+  It is not yet the vtable `+0x4C` callback return used by opcode-1.
+- An in-range table entry may be null; a wrapper may not yet be
+  marked ready, so **none** of the 13 record contents can be
+  reconstructed from static file bytes. The original routine
+  assumes a valid initialized wrapper for the in-range dereference.
+
+The four already-proven constructor resource selectors:
+`2` (tiles/banner), `11` (Dragon item), and `4` (help panel),
+all lie in this verified manager range, but this **does not
+identify corresponding PIX archive indices**. The manager
+records and actual pointer table live in runtime EE memory.
+
+`resolve_resource_selector_from_ram` now resolves a caller-supplied
+same-frame EE RAM snapshot through this exact chain. It checks the
+verified manager vtable, wrapper-ready flag, all pointer boundaries,
+the count/fallback, and the indexed resource pointer. The report
+adds `selector_entries` with optional direct matches to captured
+sprite `+0x44` object pointers. It **does not** automatically
+match those entries to opcode-1 `+0x08` because the resource's
+virtual callback still intervenes.
+
+Example:
+
+```sh
+python arika_menu_gs_correlation.py native_commands.bin ee_ram.bin \
+  --resource-selector 2 --resource-selector 4 \
+  --resource-selector 11 --sprite 0x00123400
+```
+
+The new tests use synthetic resident/nonresident manager,
+wrapper and 13-entry table structures; an opt-in test additionally
+checks the actual original-EU-beta ELF vtable words, 13-count
+immediate and 18 manager-related instructions. Neither static
+evidence nor synthetic tests prove any captured real resource
+allocation or active GS state.
