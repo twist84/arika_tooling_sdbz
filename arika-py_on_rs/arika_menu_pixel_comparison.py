@@ -38,7 +38,7 @@ def compare_screenshot_pixels(reference, candidate, resampling='bilinear',
     """
     if resampling not in RESAMPLE_MODES:
         raise ValueError('unsupported output resampling mode')
-    if not isinstance(edge_threshold, int) or not 1 <= edge_threshold <= 255:
+    if type(edge_threshold) is not int or not 1 <= edge_threshold <= 255:
         raise ValueError('edge threshold must be an integer in 1..255')
     source = reference.convert('RGB')
     target = candidate.convert('RGB')
