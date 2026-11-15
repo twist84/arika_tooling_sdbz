@@ -245,16 +245,20 @@ class NativeGsCorrelationTests(unittest.TestCase):
             packet = directory / 'command.bin'
             ram = directory / 'ram.bin'
             packet.write_bytes(make_packet())
-            ram.write_bytes(make_ram())
+            ram.write_bytes(make_ram_with_manager())
             completed = subprocess.run(
                 [sys.executable, str(script), str(packet), str(ram),
-                 '--sprite', hex(SPRITE_ADDRESS),
+                 '--resource-selector', '4', '--sprite', hex(SPRITE_ADDRESS),
                  '--observed-return',
                  '%s:%s' % (hex(SPRITE_ADDRESS), hex(RETURNED_ADDRESS))],
                 text=True, capture_output=True, check=True)
             result = json.loads(completed.stdout)
             self.assertEqual(result['bindings'][0]['sprite_ownership'],
                              'unique_match')
+            self.assertEqual(result['selector_entries'][0]['status'], 'resolved')
+            self.assertEqual(
+                result['selector_entries'][0]['matching_captured_sprites'],
+                [hex(SPRITE_ADDRESS)])
 
 
 @unittest.skipUnless(os.environ.get('SDBZ_EU_BETA_ELF'),
