@@ -427,10 +427,10 @@ class c_menu_editor(W.QWidget):
             metadata['native_lifecycle'] = self.m_native_mode
             metadata['selection'] = self.m_item
             metadata['native_tick'] = (
-                self.m_native_runtime.m_update
+                self.m_native_runtime.m_updates
                 if self.m_native_mode else None)
             destination.with_suffix('.pcsx2-settings.json').write_text(
-                json.dumps(metadata, indent=2) + '\\n', encoding='utf-8')
+                json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
         except (OSError, ValueError, RuntimeError) as error:
             W.QMessageBox.warning(
                 self, 'PCSX2 comparison capture', str(error))
@@ -893,12 +893,16 @@ class c_menu_editor(W.QWidget):
                     'native_10_7', 'square', 'raw'):
             self.m_presentation = mode
             self.m_scan_combo.setVisible(mode == 'auto')
+            if self.m_pcsx2_enabled:
+                self.apply_pcsx2_comparison(self.m_pcsx2_settings, True)
             self.m_canvas.update()
 
     def set_scan_mode(self, index):
         mode = self.m_scan_combo.itemData(index)
         if mode in ('interlaced', 'progressive'):
             self.m_scan_mode = mode
+            if self.m_pcsx2_enabled:
+                self.apply_pcsx2_comparison(self.m_pcsx2_settings, True)
             self.m_canvas.update()
 
     def presentation_height(self):
