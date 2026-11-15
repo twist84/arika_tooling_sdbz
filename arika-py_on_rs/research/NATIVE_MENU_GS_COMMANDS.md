@@ -252,11 +252,109 @@ The latter routines and their IOP/DMAC/GS effects still
 require tracing before any change to alpha, depth or filtering
 is justified.
 
+## GS register emission recovered: `0x103F20` / `0x104210`
+
+**This crosses the earlier research boundary.** The `0x104920`
+three-parameter caching wrapper calls `0x104210` with context
+selector `a7=2`; the `0x104840` four-parameter caching
+wrapper calls `0x103F20` with context selector `a8=2`.
+Both writers request aligned packet memory through `0x103B00`,
+construct DMA/GIF headers, and submit via `0x102C90`.
+
+The emitted 16-byte packet header is
+`(u64 0xF0000000 | (N+1), u32 0x13000000, u32
+0x50000000 | (N+1))`. At offset +0x10 the actual
+GIF tag is `0x1000000000008000 | N`, at +0x18
+the register descriptor is `0x0E` (**GIF A+D**),
+and from +0x20 onward there are N pairs
+`(u64 register_value, u64 GS_register_address)`.
+Context mode 0 emits context 1 only; 1 emits context 2;
+2 emits both. These address definitions are independently
+documented in the
+[PCSX2 GSRegs.h](https://github.com/PCSX2/pcsx2/blob/master/pcsx2/GS/GSRegs.h)
+and [PS2SDK libgs.h](https://github.com/ps2dev/ps2sdk/blob/master/ee/libgs/include/libgs.h).
+
+| Emitter | GS A+D destination(s) | Source and conversion |
+| --- | --- | --- |
+| `0x103F20` | `ZBUF_1=0x4E`, `TEST_1=0x47`, `ZBUF_2=0x4F`, `TEST_2=0x48` | `ZBUF` depends on runtime BSS `0x4FF3BC` and `0x4FF3B0`, plus incoming z-write selector. `TEST` uses two native jump tables at `0x4B4B90` and `0x4B4BB0`, and normalized AREF. |
+| `0x104210` | `ALPHA_1=0x42`, `ALPHA_2=0x43` | `A,B,C,D,FIX` come from one of three five-byte lookup tables at `0x439290`, `0x439350`, `0x439410`. First byte `0xFF` skips emission. |
+
+`0x103F20` maps native Z-test selector 0..7 to GS
+`ZTST = [0,1,1,1,1,1,3,2]` and alpha comparator
+selector 0..7 to `ATST=[0,1,4,7,2,3,5,6]`.
+It sets `ATE=1`, `ZTE=1`, `AFAIL=0` and
+`ZMSK=0` only if incoming z-write selector is exactly 1.
+For alpha reference `a7`, 0 stays 0, 255 becomes 128,
+and nonzero other values are shifted right one with a
+lower bound of 1. The game startup-derived selector tuple
+`(z_test=7,z_write=1,alpha_compare=3,alpha_reference=0)`
+produces **GS TEST = `0x0005000F`**, decoded as
+`ATE=1, ATST=7 (NOTEQUAL), AREF=0, ZTE=1,
+ZTST=2 (GEQUAL)`. This is a **verified ELF selector
+translation**, not proof that the live game retains it
+without later state changes.
+
+The startup-derived ALPHA selector tuple
+`(a4=2,a5=3,a6=0)` indexes file-backed bytes
+`(0,1,0,1,0)` at `0x4392DB`, yielding
+**GS ALPHA = `0x44`** in both contexts:
+`A=Cs, B=Cd, C=As, D=Cd, FIX=0`. The GS
+equation is `(Cs-Cd)*As+Cd` (source-alpha blending).
+The game's TIM2 RGBA decoder doubles 0..128 PS2 alpha
+to 0..255 for Qt; that remains an approximation to the
+actual PS2 blend/texture process.
+
+`arika-py_on_rs/arika_menu_gs_registers.py` implements
+a pure source-to-GS translator and strict GIF A+D
+packet serializer/decoder, with native selector tables
+and an opt-in, SHA-256-verified `extract_alpha_preset()`
+that reads the user's *own* EU-beta ELF; no ROM data
+or full lookup table bytes are committed. It leaves
+ZBUF values **`null`** until actual BSS words from the
+running graphics context are provided. It rejects
+unknown table indices rather than silently inventing
+GS modes. A six-test regression module covers 64
+native TEST selector combinations, the AREF special
+case, two-context GIF/DMA layout, ALPHA pack/unpack,
+invalid inputs and banner occlusion consistency.
+
+To inspect the recovered startup selector path with an
+exact user-owned executable:
+
+```sh
+cd arika-py_on_rs
+python arika_menu_gs_registers.py --elf path/to/SLES_541.61
+```
+
+The latest PCSX2 screenshot shows the banner Z=99
+visible over the later-submitted small sprite Z=5.
+An active GS `GEQUAL` depth test is consistent with
+that result. It is not proof that all menu draws use
+these exact mode settings, or that the Qt stable-Z
+fallback correctly simulates semitransparent pixel
+writes in all cases.
+
+### Remaining hardware evidence
+
+- Obtain runtime values for `0x4FF3BC` and
+  `0x4FF3B0` and confirm the actual allocated
+  ZBUF base and pixel format. They are BSS and
+  **cannot be read from file-backed ELF bytes**.
+- Record the active `TEST/ALPHA/ZBUF` and
+  texture/resource setup across a complete menu frame
+  with PCSX2 GS dump or emulator instrumentation;
+  call-site defaults are not a whole-frame trace.
+- Recover texture `TEX0/TEX1/CLAMP/TEXA`,
+  framebuffer/alpha-write state and any other engine
+  overrides before changing Qt's alpha and
+  depth compositing. Do not infer active GS state
+  from the startup selector mapping alone.
+
 ## Still unresolved before native GS parity
 
-- Follow the now-identified command consumer `0x19B5C0`, specifically
-  graphics context vtable +0x34 and the texture-resource calls, into
-  the actual GS `TEX0`,
+- The GS `TEST/ALPHA/ZBUF` emitters are now identified
+  (`0x103F20`, `0x104210`). Follow the texture-resource
+  calls and remaining backend functions into `TEX0`,
   `TEX1`, `CLAMP`, `ALPHA`, `TEST`, `ZBUF`, `PRIM`,
   `RGBAQ`, `XYZ`, and `UV/ST` setup. Avoid assigning names
   to the engine's mode bytes until those consumers are traced.
