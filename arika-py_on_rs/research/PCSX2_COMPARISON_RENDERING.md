@@ -153,3 +153,30 @@ only a global approximate linear filter; matching the emulator's
 per-draw sampling requires actual GS TEX1 state and draw-command
 consumer recovery. Do not claim filtering parity based on this
 reference pair alone.
+
+## Native help-line count and initializer-filter follow-up
+
+The capture comparator now accepts `--item` (default `original`)
+with the seven ELF-derived menu item names. It reads the
+`NATIVE_HELP_RECORDS` count for that selection rather than always
+scanning four lines. **VERSUS** and **OPTIONS** have exactly three
+text rows, and no fourth row is measured. Every menu selection is
+covered by synthetic report-backed tests:
+
+```sh
+python compare_menu_captures.py pcsx2_versus.png qt_versus.png --item versus --json
+python compare_menu_captures.py pcsx2_options.png qt_options.png --item options --pixel-metrics
+```
+
+The original `--item original` four-line baseline remains the
+default. The pixel-difference metrics are still computed over the
+**entire** screenshot rather than just the help text.
+
+Further native sprite research in `NATIVE_MENU_GS_SAMPLING.md`
+has now recovered four **specific** texture-attachment initializer
+sites, including the banner and help panel. All four initialize
+filter selector 1 (linear), clamp selector 0 (enabled).
+An original-ELF bounded code scan classifies 59 literal-linear,
+7 literal-nearest and 11 unknown direct attachment callsites.
+This does **not** establish active draw-time GS state, so Qt's
+comparison preset has **not** been silently changed.
