@@ -9,6 +9,11 @@ import sys
 import tempfile
 import unittest
 
+from arika_menu_gs_attachment_elf import (
+    MENU_START, MENU_STOP, ZERO_A2, ZERO_A3, ONE_A3, ZERO_A4,
+    ZERO_A5, classify_literal_attachment_words, scan_menu_sprite_attachments,
+)
+
 from arika_menu_gs_attachment import (
     NATIVE_MENU_ATTACHMENT_SITES, NATIVE_SPRITE_MIN_SIZE,
     SAMPLER_PACKET_PRODUCER, SAMPLER_SETTER_ADDRESS,
@@ -78,6 +83,24 @@ class NativeMenuSamplerAttachmentTests(unittest.TestCase):
         self.assertEqual(data['clamp_flag'], 1)
         # The sampler fields can be decoded, but no native TEX1 is
         # emitted via the null-resource path.
+
+    def test_strict_literal_argument_classifier_never_guesses(self):
+        self.assertEqual(
+            classify_literal_attachment_words(ZERO_A2, ONE_A3, ZERO_A4,
+                                              ZERO_A5), (0, 1, 0, 0))
+        self.assertEqual(
+            classify_literal_attachment_words(ZERO_A2, ZERO_A3, ZERO_A4,
+                                              ZERO_A5), (0, 0, 0, 0))
+        for words in (
+            (0, ONE_A3, ZERO_A4, ZERO_A5),
+            (ZERO_A2, 0x24070002, ZERO_A4, ZERO_A5),
+            (ZERO_A2, ONE_A3, 0x24080002, ZERO_A5),
+            (ZERO_A2, ONE_A3, ZERO_A4, 0),
+        ):
+            with self.subTest(words=words):
+                self.assertIsNone(classify_literal_attachment_words(*words))
+        with self.assertRaises(ValueError):
+            scan_menu_sprite_attachments(bytes(256))
 
     def test_invalid_snapshot_and_unknown_flag_values(self):
         for data in (b'', bytes(NATIVE_SPRITE_MIN_SIZE - 1),
@@ -151,6 +174,28 @@ class NativeAttachmentElfOracleTests(unittest.TestCase):
                 self.assertEqual(word(addr + 0x04), 0x0000482d)
                 # Entry selection is a literal in the earlier 0x3725E0 call.
                 # Those call-site addresses are established per site below.
+        # Scope is the bounded menu-relevant 0x370000..0x3B0000
+        # direct-call region, not all source-ELF instructions.
+        self.assertEqual((MENU_START, MENU_STOP), (0x370000, 0x3b0000))
+        scan = scan_menu_sprite_attachments(elf)
+        self.assertEqual(
+            (scan['direct_setter_calls'], scan['literal_linear'],
+             scan['literal_nearest'], scan['unclassified']),
+            (77, 59, 7, 11))
+        nearest = {int(site['callsite'], 16)
+                   for site in scan['sites']
+                   if site['initial_filter'] == 'nearest'}
+        self.assertEqual(nearest, {
+            0x370a6c, 0x370b7c, 0x370be4, 0x370c08,
+            0x37c56c, 0x37c67c, 0x37d8d0,
+        })
+        by_site = {int(site['callsite'], 16): site
+                   for site in scan['sites']}
+        for addr, entry, owner in NATIVE_MENU_ATTACHMENT_SITES:
+            self.assertEqual(by_site[addr]['initial_filter'], 'linear')
+            self.assertEqual(by_site[addr]['known_resource_entry'], entry)
+            self.assertEqual(by_site[addr]['known_owner'], owner)
+
         entry_literals = {
             0x376034: 0x376004,
             0x378434: 0x378404,
