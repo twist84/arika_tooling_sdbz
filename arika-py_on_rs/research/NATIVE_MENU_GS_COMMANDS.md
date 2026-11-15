@@ -121,9 +121,59 @@ This supports the Qt model's evolving tint alpha **as a
 presentation approximation**, but does not establish the
 underlying GS ALPHA blending equation.
 
+## Recovered command consumer: `0x19B5C0`
+
+The next consumer is **now identified**. `0x19B5C0` obtains the
+graphics context through `0x199C60`, copies the 10-byte current
+render state from context +0x5C through `0x199500`, then reads the
+sprite command-buffer header. The header's **u32 at +0x04 is the
+record count**, with records starting at +0x08. At `0x19B614`, a
+`SLTIU` range check accepts only opcodes 0..8, and
+`0x19B620..0x19B634` jumps through the nine-entry
+little-endian table at `0x004C02C0`.
+
+| Opcode | ELF jump target | Verified consumer effect / length |
+| --- | --- | --- |
+| 0 | `0x19B658` | Calls context vtable +0x34 with the local state, processes its opaque data, and advances 8 + payload byte length from record +0x04 |
+| 1 | `0x19B688` | Uses selector u16 at +0x04 and byte at +0x06 to index two GP-relative resource tables, calls `0x104820` and `0x10DA20` on the resource pointer at +0x08; advances 12 |
+| 2 | `0x19B6E8` | Copies signed halfword at +0x02 into local state halfword +0x00; advances 4 |
+| 3 | `0x19B6F8` | Copies the low byte from +0x02 into local state byte +0x02; advances 4 |
+| 4 | `0x19B6C8` | Copies signed halfword at +0x02 into local state halfword +0x06; advances 4 |
+| 5 | `0x19B6D8` | Copies signed halfword at +0x02 into local state halfword +0x08; advances 4 |
+| 6 | `0x19B708` | Advances 12 bytes in this dispatcher; no direct local-state update here |
+| 7 | `0x19B710` | Advances 12 bytes in this dispatcher; no direct local-state update here |
+| 8 | `0x19B640` | Refreshes local state from the graphics context via `0x199500`; advances 4 |
+
+This confirms the earlier producer-side opcode numbering, and
+**narrows the next research target** from generic sprite drawing
+to the graphics context vtable +0x34 callback, the resource
+operations `0x104820`/`0x10DA20`, and the actual GS packet
+emission downstream. It still does *not* identify GS blending, Z
+testing, texture filtering, or active framebuffer/display settings.
+
+The new standard-library
+`arika-py_on_rs/arika_menu_gs_packet.py` can decode captured
+**intermediate command-buffer bytes**, retaining all unknown payloads
+and exposing only proven local-state mutations. It takes an explicit
+optional initial state from a real context; absent values stay
+`null`, rather than silently initializing them to guessed modes.
+
+```sh
+cd arika-py_on_rs
+python arika_menu_gs_packet.py path/to/captured_sprite_packet.bin
+python arika_menu_gs_packet.py path/to/captured_sprite_packet.bin --initial-state '{"word0":1}'
+```
+
+`test_arika_menu_gs_packet.py` validates the extracted nine
+switch targets, each opcode's record length, mixed command/state
+sequences, opcode-8 reset, and truncation/unknown-input rejection.
+No game files or command-buffer captures are included.
+
 ## Still unresolved before native GS parity
 
-- Follow intermediate command consumers to the actual GS `TEX0`,
+- Follow the now-identified command consumer `0x19B5C0`, specifically
+  graphics context vtable +0x34 and the texture-resource calls, into
+  the actual GS `TEX0`,
   `TEX1`, `CLAMP`, `ALPHA`, `TEST`, `ZBUF`, `PRIM`,
   `RGBAQ`, `XYZ`, and `UV/ST` setup. Avoid assigning names
   to the engine's mode bytes until those consumers are traced.
