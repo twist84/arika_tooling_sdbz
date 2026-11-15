@@ -18,8 +18,7 @@ from arika_menu_help_geometry import (
     help_text_row_rect,
 )
 from arika_menu_help_native import (
-    HELP_FRAME_SOURCE_BOUNDS, HELP_SETTLED_COMPONENT_ORIGIN,
-    native_help_layout,
+    HELP_FRAME_SOURCE_BOUNDS, native_help_layout,
 )
 import arika_ffon
 from arika_menu_frame_match import normalize_reference, rank_samples
@@ -959,7 +958,11 @@ class c_menu_editor(W.QWidget):
         for q in painter_queue:
             self.draw_sprite(painter, q['entry'], q['geometry'], q['alpha'])
 
-        if self.m_help_panel and native_item_active:
+        # 0x37BF60 renders the help component in phases 1, 2, 3.
+        # It is not tied to whether the selected item is already active.
+        # Diagnostic mode intentionally retains its older help overlay.
+        if self.m_help_panel and (not self.m_native_mode or
+                self.m_native_runtime.m_help_state['phase'] != 0):
             self.draw_help_panel(painter)
 
         painter.restore()
@@ -967,18 +970,18 @@ class c_menu_editor(W.QWidget):
     def draw_help_panel(self, painter):
         """Draw the game's archive-backed help artwork and FFON glyphs.
 
-        Native mode uses the ELF's settled component position, sprite UV
-        bounds, and fixed FFON scale. The diagnostic viewer deliberately
+        Native mode uses the component's own ELF-derived position, sprite
+        UV bounds, and fixed FFON scale. The diagnostic viewer deliberately
         retains its earlier screenshot-calibrated placement for comparison.
-        Entry/exit help-owner animation has not yet been ported.
         """
         painter.save()
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, False)
 
         native_layout = None
         if self.m_native_mode:
+            help_state = self.m_native_runtime.m_help_state
             native_layout = native_help_layout(
-                self.m_item, *HELP_SETTLED_COMPONENT_ORIGIN)
+                self.m_item, help_state['x'], help_state['y'])
 
         # Atlas 4 contains the original panel sprite; no substitute border.
         panel = self.m_textures.get(4)
@@ -994,7 +997,10 @@ class c_menu_editor(W.QWidget):
                 painter.drawPixmap(
                     C.QRectF(*HELP_PANEL_RECT), panel, self.m_help_panel_uv)
 
-        if self.m_help_font is None:
+        if self.m_help_font is None or (native_layout is not None and
+                self.m_native_runtime.m_help_state['phase'] != 2):
+            # 0x36980 / +0x20: text is drawn only after entry has
+            # completed, not during the sprite's entry/exit curves.
             painter.restore()
             return
 
