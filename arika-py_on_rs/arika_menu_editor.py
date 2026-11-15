@@ -17,6 +17,10 @@ from arika_menu_help_geometry import (
     HELP_PANEL_RECT, HELP_TEXT_CLIP, HELP_TEXT_MAX_WIDTH,
     help_text_row_rect,
 )
+from arika_menu_help_native import (
+    HELP_FRAME_SOURCE_BOUNDS, HELP_SETTLED_COMPONENT_ORIGIN,
+    native_help_layout,
+)
 import arika_ffon
 from arika_menu_frame_match import normalize_reference, rank_samples
 from PIL import Image
@@ -961,41 +965,72 @@ class c_menu_editor(W.QWidget):
         painter.restore()
 
     def draw_help_panel(self, painter):
-        """Draw recovered help strings with the archive's native FFON font.
+        """Draw the game's archive-backed help artwork and FFON glyphs.
 
-        The frame itself must use recovered PIX sprite UVs; no QPainter
-        imitation of copyrighted texture art or system font substitution.
+        Native mode uses the ELF's settled component position, sprite UV
+        bounds, and fixed FFON scale. The diagnostic viewer deliberately
+        retains its earlier screenshot-calibrated placement for comparison.
+        Entry/exit help-owner animation has not yet been ported.
         """
         painter.save()
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, False)
-        # Atlas 4 is the native framed help panel (research/TEXTURED_MENU.md).
-        # Placement/crop are provisional until its draw helper is traced.
-        # Render the game texture, never a synthetic QPainter border.
+
+        native_layout = None
+        if self.m_native_mode:
+            native_layout = native_help_layout(
+                self.m_item, *HELP_SETTLED_COMPONENT_ORIGIN)
+
+        # Atlas 4 contains the original panel sprite; no substitute border.
         panel = self.m_textures.get(4)
-        if panel is not None and not panel.isNull() and self.m_help_panel_uv is not None:
-            painter.drawPixmap(C.QRectF(*HELP_PANEL_RECT), panel,
-                               self.m_help_panel_uv)
+        if panel is not None and not panel.isNull():
+            if native_layout is not None:
+                # 0x37BEB0 sets (0,0)-(464,176) on the *whole*
+                # texture. Transparent source margins are meaningful:
+                # alpha-bounds cropping would shift the visible frame.
+                painter.drawPixmap(
+                    C.QRectF(*native_layout['panel_rect']), panel,
+                    C.QRectF(*HELP_FRAME_SOURCE_BOUNDS))
+            elif self.m_help_panel_uv is not None:
+                painter.drawPixmap(
+                    C.QRectF(*HELP_PANEL_RECT), panel, self.m_help_panel_uv)
+
         if self.m_help_font is None:
             painter.restore()
             return
-        painter.setClipRect(C.QRectF(*HELP_TEXT_CLIP),
-                            C.Qt.ClipOperation.IntersectClip)
-        # The four ELF lines share one font scale. Scaling each line to the
-        # maximum width independently makes every line equally long and does
-        # not match the original game's fixed glyph advance.
+
+        if native_layout is None:
+            # Provisional screenshot-calibrated diagnostic text clipping.
+            # The ELF's FFON call does not supply this specific rectangle.
+            painter.setClipRect(
+                C.QRectF(*HELP_TEXT_CLIP),
+                C.Qt.ClipOperation.IntersectClip)
+
         pixmaps = [self.help_line_pixmap(line)
                    for line in self.m_navigation.help_lines()[:4]]
-        widths = [pixmap.width() for pixmap in pixmaps
-                  if pixmap is not None and not pixmap.isNull()]
-        if widths:
-            scale = min(1.0, HELP_TEXT_MAX_WIDTH / max(widths))
-            for index, pixmap in enumerate(pixmaps):
+        if native_layout is not None:
+            # 0x37C1C0 passes one 0.75f scale to 0x2CDCA0 and moves
+            # Y by 25.0f for every line. Never fit each line to width.
+            scale = native_layout['font_scale']
+            for origin, pixmap in zip(native_layout['line_origins'], pixmaps):
                 if pixmap is None or pixmap.isNull():
                     continue
                 painter.drawPixmap(
-                    C.QRectF(*help_text_row_rect(
-                        index, pixmap.width(), pixmap.height(), scale)),
+                    C.QRectF(origin[0], origin[1],
+                             pixmap.width() * scale, pixmap.height() * scale),
                     pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
+        else:
+            # Preserve pre-existing 140-frame diagnostic display.
+            widths = [pixmap.width() for pixmap in pixmaps
+                      if pixmap is not None and not pixmap.isNull()]
+            if widths:
+                scale = min(1.0, HELP_TEXT_MAX_WIDTH / max(widths))
+                for index, pixmap in enumerate(pixmaps):
+                    if pixmap is None or pixmap.isNull():
+                        continue
+                    painter.drawPixmap(
+                        C.QRectF(*help_text_row_rect(
+                            index, pixmap.width(), pixmap.height(), scale)),
+                        pixmap, C.QRectF(0, 0, pixmap.width(), pixmap.height()))
         painter.restore()
 
     def draw_sprite(self, painter, entry, geometry, alpha):
