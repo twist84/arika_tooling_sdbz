@@ -155,10 +155,15 @@ completed in subsequent PR #14 checkpoints. The current status is:
   `NATIVE_MENU_HELP_DRAW.md` documents the verified `0x37BF60` and
   `0x37C1C0` paths; native Qt preview uses these with diagnostic
   screenshot-calibrated mode still available.
-- [ ] Trace internal FFON glyph metrics/UV and compare original
-  `0x2CDCA0` output with a runtime capture. Source native font/records
-  and fixed line positions are confirmed; individual glyph advances
-  and final GS compositing remain unresolved.
+- [x] Recover resident FFON vtable `0x4E3390`, 24-unit font
+  dimensions, and the exact `0x19A030` ASCII half-cell advance.
+  Native Qt mode now uses 12-unit fixed advances (scaled to 9)
+  while diagnostic mode retains its earlier proportional glyph preview.
+  Synthetic glyph and ELF-word tests cover these values.
+- [ ] Trace native glyph UV/bitmap command lowering beyond
+  `0x199EE0 → 0x112780`; capture runtime GS output. The
+  font-run advance is established, but exact per-pixel glyph sampling,
+  alpha/depth and EU-beta asset identity are still unresolved.
 - [x] Reconstruct file-backed PS2 GS TEST/ALPHA/ZBUF and texture
   register writers, including the six-register TEX0/TEX1/TEXA/CLAMP
   GIF path and 240 synthetic ELF differential cases.
