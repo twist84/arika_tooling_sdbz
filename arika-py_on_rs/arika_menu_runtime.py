@@ -10,6 +10,9 @@ import struct
 from arika_menu_navigation import c_menu_navigation, read_menu_report
 from arika_menu_shared import initialize_shared, request_exit, step_shared
 from arika_menu_input import decode_menu_input
+from arika_menu_help_lifecycle import (
+    initialize_help, start_help, exit_help, step_help, help_draw_state,
+)
 from arika_menu_children import (
     initialize_child, start_first, exit_first, emphasize_first, step_first,
     start_character, exit_character, emphasize_character, step_character,
@@ -105,6 +108,8 @@ class c_menu_runtime:
         self.m_item_phases = [0] * 7
         self.m_item_ages = [0.0] * 7
         self.m_label_states = [initialize_label() for _ in range(7)]
+        # 0x379A88: embedded help owner has its own per-update clock.
+        self.m_help_state = initialize_help()
         self.m_first_states = [initialize_child() for _ in range(7)]
         self.m_particle_pool = None
         self.m_context_rng = None
@@ -292,6 +297,10 @@ class c_menu_runtime:
                 self.m_pending = -1
         if self.m_selected >= 0:
             self._update_item(self.m_selected, 'current_arrow_update')
+        # 0x379A88-0x379A94 invokes this+0x40 vtable +0x14 after
+        # pending/current item updates. The help owner does not tick
+        # from Qt painting, a global frame slider, or input shortcuts.
+        step_help(self.m_help_state)
         self._emit('inner_update')
 
     def _select(self, new_index):
@@ -367,6 +376,9 @@ class c_menu_runtime:
                         self.m_label_states[self.m_selected],
                         self.m_label_kernel)
                 self._emit('request_selected_cancel', index=self.m_selected)
+        # Both 0x3799CC cancel and 0x3799FC confirm converge at
+        # 0x3799E4: embedded help vtable +0x10 begins phase 3.
+        exit_help(self.m_help_state)
         self._emit('inner_exit_start')
 
     def _update_audio(self, sound_busy):
@@ -429,6 +441,9 @@ class c_menu_runtime:
             self.m_flags |= 1
             self._emit('entry_sound')
             self._select(0)
+            # 0x379970 calls selection vtable +0x70, followed by
+            # embedded help vtable +0x08 at 0x379990.
+            start_help(self.m_help_state)
             self._emit('inner_entry_start')
             # Native parent immediately falls through to input on entry-ready.
 
@@ -604,6 +619,7 @@ class c_menu_runtime:
             'selected': self.m_selected,
             'previous': self.m_navigation.m_previous,
             'pending': self.m_pending,
+            'help': help_draw_state(self.m_help_state),
             'item_phases': tuple(self.m_item_phases),
             'item_ages': tuple(self.m_item_ages),
             'first_phases': tuple(state['phase']
