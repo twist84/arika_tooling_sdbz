@@ -20,6 +20,7 @@ from arika_menu_help_geometry import (
 from arika_menu_help_native import (
     HELP_FRAME_SOURCE_BOUNDS, native_help_layout,
 )
+from arika_menu_ffon_native import render_native_help_line
 import arika_ffon
 from arika_menu_frame_match import normalize_reference, rank_samples
 from PIL import Image
@@ -343,11 +344,22 @@ class c_menu_editor(W.QWidget):
     def help_line_pixmap(self, text):
         if self.m_help_font is None or self.m_help_font_data is None:
             return None
-        if text not in self.m_help_lines_pixmaps:
-            image = arika_ffon.render_text(self.m_help_font, self.m_help_font_data,
-                                          text, spacing=3)
-            self.m_help_lines_pixmaps[text] = arika_ffon.image_to_qpixmap(image)
-        return self.m_help_lines_pixmaps[text]
+        # Separate cached bitmaps: native uses the ELF's fixed 12-unit
+        # ASCII cell advance, diagnostic retains its older bbox-trim
+        # plus 3px authored spacing for screenshot comparison.
+        mode = 'native' if self.m_native_mode else 'diagnostic'
+        key = (mode, text)
+        if key not in self.m_help_lines_pixmaps:
+            font = self.m_help_font
+            if self.m_native_mode and font.width == 24 and font.height == 24:
+                image = render_native_help_line(font, self.m_help_font_data, text)
+            else:
+                # Non-game-size synthetic fonts remain usable in the Qt
+                # test harness; actual 5-24-2.fon always takes native path.
+                image = arika_ffon.render_text(font, self.m_help_font_data,
+                                              text, spacing=3)
+            self.m_help_lines_pixmaps[key] = arika_ffon.image_to_qpixmap(image)
+        return self.m_help_lines_pixmaps[key]
 
     def load_textures(self, pix_data=None):
         """Decode dis/main_menu.pix from an opened game archive, entirely in memory.
