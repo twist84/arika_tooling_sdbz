@@ -55,11 +55,15 @@ class HelpOwnerStateTests(unittest.TestCase):
         self.assertEqual((state['phase'], state['age']), (3, 0.0))
         self.assertTrue(help_draw_state(state)['visible'])
         self.assertFalse(help_draw_state(state)['draw_text'])
+        # These values include the EE's float32 DIV.S, MUL.S, ADD.S
+        # rounding. Double-precision 272+224*t/5 is not a valid oracle.
+        expected_y = (
+            316.79998779296875, 361.6000061035156,
+            406.4000244140625, 451.20001220703125, 496.0,
+        )
         for tick in range(1, 6):
             step_help(state)
-            self.assertAlmostEqual(state['y'],
-                                   272.0 + 224.0 * tick / 5.0,
-                                   delta=0.00002)
+            self.assertEqual(state['y'], expected_y[tick - 1])
             if tick < 5:
                 self.assertEqual((state['phase'], state['age']),
                                  (3, float(tick)))
