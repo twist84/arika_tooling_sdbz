@@ -247,6 +247,34 @@ prove pixel-exact native bitmap compositing. Do not infer FFON
 glyph UVs, source cropping, multiline escape semantics or GS
 blend modes from the width callback alone.
 
+### Original FFON bitmap half-cell cross-check (asset-backed, regional caveat)
+
+A separately supplied `sdbz_eu_beta.7z` archive was inspected **locally**
+without committing its assets. Despite its archive filename, its root
+contains a **`SLUS_214.42`** executable, so this is *not* proof that its
+font bytes exactly match the target EU-beta disc. It contains
+`GAME.DAT` with one FFON at byte offset `0x032E8800`.
+The 340,192-byte `5-24-2.fon` has SHA-256
+`95a3bd0cc002ea619adc12bd916fcddffc98c1e512605704eeadf29251230db9`.
+
+All **95 mapped printable ASCII cells** in that supplied font have no
+nonzero nibble in source columns **12..23**; their visible bits lie
+entirely within columns **0..11** of each 24×24, 4-bpp glyph record.
+The space glyph (ID 1) has no ink. Representative raster bounds:
+`A` and `B` X=0..10; lowercase `m` and `n` X=0..11;
+`I` X=3..7. This independently explains why a 12-unit ASCII
+advance can place glyphs without ink overlap, while a
+bbox-trimmed/3-pixel-spaced preview cannot replicate the native
+measurement. It does **not** establish the EU-beta resource's
+byte identity or original GS filtering/blending.
+
+`test_arika_menu_ffon_native.py` provides an opt-in
+`SDBZ_FFON_FONT` source-column oracle. CI uses synthetic bitmaps
+and does not distribute or require game assets. The original
+EU-beta ELF's `0x19A030` half-width instruction remains the
+authoritative advance evidence regardless of regional resource
+differences.
+
 **Next:** trace the text command consumer reached through
 `0x199EE0 → 0x112780` and the resource-specific FFON raster
 path; compare the positions of several glyph edges with a
