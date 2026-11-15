@@ -266,6 +266,29 @@ The next milestone is tracing intermediate engine command consumers to
 real GS state and validating with a game/PCSX2 capture, not inferring
 blend mode from byte values. No timing assumptions were added.
 
+### Intermediate renderer packet and context checkpoint
+
+The native sprite command stream is now traceable past the draw
+vtable. The dispatcher `0x19B5C0` reads a count-prefixed packet,
+switches on nine command opcodes through a verified table at
+`0x4C02C0`, and passes the current six-field render context to
+`0x199340`. The direct native function `0x199500` copies that
+state (13 instructions, including return delay slot).
+`0x199340` resolves two backend setter argument sets using
+file-backed lookup tables. These are still **engine-side raw
+parameters**, not decoded GS `ALPHA/TEST/ZBUF/TEX0` registers.
+
+`arika_menu_gs_packet.py` and `arika_menu_gs_context.py`
+provide strict, asset-independent decoders for a future game capture.
+Unknown state fields, unverified lookup indices and arbitrary byte
+modes are not guessed. Tests check every packet opcode and native
+state copy, and reject malformed records or unsupported lookup
+indices. The next step is tracing the resulting backend functions
+`0x104920 -> 0x104210` and `0x104840 -> 0x103F20`
+to a real GS register dump before altering the Qt compositor's
+blend or depth modes. See
+[NATIVE_MENU_GS_COMMANDS.md](NATIVE_MENU_GS_COMMANDS.md).
+
 ### Follow-up
 
 Continue from the exact existing PR head, consult the particle research file
