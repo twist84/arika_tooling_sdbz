@@ -10,8 +10,10 @@ import tempfile
 import unittest
 
 from arika_menu_gs_attachment_elf import (
-    MENU_START, MENU_STOP, ZERO_A2, ZERO_A3, ONE_A3, ZERO_A4,
-    ZERO_A5, classify_literal_attachment_words, scan_menu_sprite_attachments,
+    EXTERNAL_CALLER_EVIDENCE, MENU_START, MENU_STOP, ZERO_A2,
+    ZERO_A3, ONE_A3, ZERO_A4, ZERO_A5, VERIFIED_NONCANONICAL_DEFS,
+    classify_literal_attachment_words, scan_menu_sprite_attachments,
+    verify_noncanonical_reaching_defs,
 )
 
 from arika_menu_gs_attachment import (
@@ -104,6 +106,12 @@ class NativeMenuSamplerAttachmentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             scan_menu_sprite_attachments(bytes(256))
 
+    def test_noncanonical_proof_requires_exact_elf(self):
+        self.assertIsNone(
+            classify_literal_attachment_words(0, 0, 0, 0))
+        with self.assertRaises(ValueError):
+            verify_noncanonical_reaching_defs(bytes(4), 0x37086c)
+
     def test_invalid_snapshot_and_unknown_flag_values(self):
         for data in (b'', bytes(NATIVE_SPRITE_MIN_SIZE - 1),
                      bytearray(NATIVE_SPRITE_MIN_SIZE)):
@@ -182,14 +190,35 @@ class NativeAttachmentElfOracleTests(unittest.TestCase):
         scan = scan_menu_sprite_attachments(elf)
         self.assertEqual(
             (scan['direct_setter_calls'], scan['literal_linear'],
-             scan['literal_nearest'], scan['unclassified']),
-            (77, 59, 7, 11))
+             scan['literal_nearest'], scan['audited_linear'],
+             scan['audited_nearest'], scan['total_linear'],
+             scan['total_nearest'], scan['unclassified']),
+            (77, 59, 7, 7, 4, 66, 11, 0))
+        self.assertEqual(len(VERIFIED_NONCANONICAL_DEFS), 11)
+        self.assertEqual(sum(site['proof'] == 'audited_reaching_definitions'
+                             for site in scan['sites']), 11)
+        for callsite, *_ in VERIFIED_NONCANONICAL_DEFS:
+            found = next(row for row in scan['sites']
+                         if int(row['callsite'], 16) == callsite)
+            self.assertIsNotNone(found['argument_definition_addresses'])
+            self.assertEqual(len(found['argument_definition_addresses']), 4)
+            flags = verify_noncanonical_reaching_defs(elf, callsite)
+            self.assertEqual(found['sampler_bytes'], list(flags))
+        # All three listed external callers contain literal direct JALs.
+        self.assertEqual(EXTERNAL_CALLER_EVIDENCE, (
+            (0x3707f0, 0x41665c),
+            (0x370a00, 0x417ef8),
+            (0x37c470, 0x408338),
+        ))
+        for function, caller in EXTERNAL_CALLER_EVIDENCE:
+            self.assertEqual(word(caller), 0x0c000000 | (function >> 2))
         nearest = {int(site['callsite'], 16)
                    for site in scan['sites']
                    if site['initial_filter'] == 'nearest'}
         self.assertEqual(nearest, {
-            0x370a6c, 0x370b7c, 0x370be4, 0x370c08,
-            0x37c56c, 0x37c67c, 0x37d8d0,
+            0x37098c, 0x370a6c, 0x370b7c, 0x370be4,
+            0x370c08, 0x3727b4, 0x37c56c, 0x37c5bc,
+            0x37c624, 0x37c67c, 0x37d8d0,
         })
         by_site = {int(site['callsite'], 16): site
                    for site in scan['sites']}
