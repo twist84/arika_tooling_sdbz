@@ -61,6 +61,8 @@ class c_title_preview(W.QWidget):
     """Original-title app preview, embedded beside logos and warning."""
 
     handoff_requested = C.Signal(object)
+    # Distinct from the manual Inspect Destination action.
+    native_transition_completed = C.Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -196,6 +198,8 @@ class c_title_preview(W.QWidget):
         if result['finished']:
             self.pause_playback()
         self.redraw()
+        if result['finished'] and self.m_handoff is not None:
+            self.native_transition_completed.emit(result)
 
     def step(self):
         if not self.m_timer.isActive():

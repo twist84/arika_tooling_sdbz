@@ -132,6 +132,9 @@ def load_logo_archive_images(virtual_files):
 
 class c_logo_preview(W.QWidget):
     """Embeddable boot-logo viewer; no authored startup timings or art."""
+
+    # The native logo sequence completed; no unverified app ID is emitted.
+    sequence_completed = C.Signal()
     def __init__(self, images=None, errors=None, parent=None):
         super().__init__(parent)
         if images is None:
@@ -261,6 +264,8 @@ class c_logo_preview(W.QWidget):
         if sample['calls']:
             addresses = ', '.join(call['address'] for call in sample['calls'])
             self.m_status.setText(self.m_status.text() + ' | calls: ' + addresses)
+        if sample['finished']:
+            self.sequence_completed.emit()
 
     def step(self):
         if not self.m_timer.isActive():

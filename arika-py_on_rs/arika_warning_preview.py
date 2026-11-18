@@ -79,6 +79,9 @@ def warning_diagnostic_canvas(snapshot, image):
 class c_warning_preview(W.QWidget):
     """Native warning flow, manual stepping and optional timed playback."""
 
+    # Original completed 0x3DFB00(1), not a click on a menu option.
+    transition_completed = C.Signal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.m_runtime = c_warning_runtime()
@@ -211,6 +214,10 @@ class c_warning_preview(W.QWidget):
         if result['finished']:
             self.pause_playback()
         self.redraw()
+        if result['finished'] and any(
+                entry.get('address') == '0x3dfb00' and
+                entry.get('arguments') == [1] for entry in self.m_events):
+            self.transition_completed.emit(1)
 
     def step(self):
         if not self.m_timer.isActive():
