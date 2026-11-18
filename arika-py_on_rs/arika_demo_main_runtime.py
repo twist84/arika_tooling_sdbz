@@ -9,6 +9,7 @@ from arika_app_registry import (
     DEMO_MAIN_CHILD_CHOICES, DEMO_MAIN_CHOICE_SITES,
     resolve_app, title_handoff_request,
 )
+from arika_demo_main_update import c_demo_main_update
 
 
 DEMO_MAIN_INIT_ADDRESS = 0x003E0440
@@ -29,6 +30,7 @@ class c_demo_main_bootstrap:
         self.m_ready = False
         self.m_title_request = None
         self.m_entry_report = []
+        self.m_update = c_demo_main_update()
 
     def accept_title_result(self, result):
         handoff = title_handoff_request(result)
@@ -38,6 +40,7 @@ class c_demo_main_bootstrap:
         self.m_load_phase = 0
         self.m_load_updates = 0
         self.m_ready = False
+        self.m_update = c_demo_main_update()
         self.m_entry_report = [
             {'address': '0x3f1c40', 'arguments': [6], 'executed': False},
             {'address': '0x3f2c00', 'arguments': [], 'executed': False},
@@ -56,6 +59,7 @@ class c_demo_main_bootstrap:
             'load_updates': self.m_load_updates,
             'ready': self.m_ready,
             'child_candidates': list(DEMO_MAIN_CHILD_CHOICES),
+            'update': self.m_update.snapshot(),
         }
 
     def loader_step(self, external_ready):
@@ -100,4 +104,5 @@ class c_demo_main_bootstrap:
                                 if resolve_app(app_id) else None,
             'executed': False,
             'automatic_selection_proven': False,
+            'selection_mapping_verified': True,
         }
