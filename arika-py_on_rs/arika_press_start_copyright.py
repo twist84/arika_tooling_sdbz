@@ -64,6 +64,26 @@ PRESS_START_COPYRIGHT_WORDS = {
 }
 
 
+# Case-dispatch and three atlas quads selected for controller case 1.
+# The bounds at 0x3F7F50/54, 0x3F7FA0/A8 and 0x3F8010/18 are literal
+# native MIPS source corners; 0x42E80000 is destination x=116.0f.
+PRESS_START_PROMPT_CASE_WORDS = {
+    0x003F7E20: 0x0C0FDF50,
+    0x003F7E44: 0x24030001,
+    0x003F7E48: 0x10430038,
+    0x003F7F30: 0x3C0342E8,
+    0x003F7F44: 0xAE030010,
+    0x003F7F50: 0x24060165,
+    0x003F7F54: 0x24070063,
+    0x003F7FA0: 0x240500CC,
+    0x003F7FA4: 0x24060165,
+    0x003F7FA8: 0x2407004A,
+    0x003F8010: 0x24050063,
+    0x003F8014: 0x24060165,
+    0x003F8018: 0x24070069,
+}
+
+
 def _f32(value):
     return struct.unpack('<f', struct.pack('<f', value))[0]
 
@@ -111,9 +131,11 @@ def native_prompt_case_one():
 
 def verify_press_start_copyright_elf(elf):
     verify_press_start_elf(elf)
-    for address, expected in PRESS_START_COPYRIGHT_WORDS.items():
+    for address, expected in {
+            **PRESS_START_COPYRIGHT_WORDS,
+            **PRESS_START_PROMPT_CASE_WORDS}.items():
         if _word(elf, address) != expected:
-            raise ValueError('Press Start text instruction mismatch at 0x%08X' %
+            raise ValueError('Press Start text/prompt instruction mismatch at 0x%08X' %
                              address)
     for index, (pointer, content) in enumerate(zip(
             COPYRIGHT_TEXT_POINTERS, COPYRIGHT_LINES)):
