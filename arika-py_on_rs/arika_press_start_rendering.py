@@ -224,6 +224,12 @@ def render_press_start_image(images, copyright_images=None,
                             images[0].height() >= source[1] + source[3]):
                         painter.drawImage(C.QRectF(*destination), images[0],
                                           C.QRectF(*source))
+        # The original FFON submission rasterizes one glyph per PS2 quad.
+        # Use separate interpolated sampling for the reduced-size text,
+        # keeping the original game sprite atlas sampling unchanged.
+        # This is a Qt preview approximation until GS TEX1 is recovered.
+        painter.setRenderHint(
+            G.QPainter.RenderHint.SmoothPixmapTransform, True)
         for operation in operations:
             if operation['kind'] == 'text' and copyright_images is not None:
                 index = COPYRIGHT_LINES.index(operation['text'])
@@ -235,6 +241,8 @@ def render_press_start_image(images, copyright_images=None,
                     C.QRectF(operation['x'], operation['y'], width, height),
                     image, C.QRectF(0, 0, image.width(), image.height()))
             elif operation['kind'] == 'sprite' and images[2] is not None:
+                painter.setRenderHint(
+                    G.QPainter.RenderHint.SmoothPixmapTransform, False)
                 sx, sy, sw, sh = operation['source_rect']
                 if (images[2].width() >= sx + sw and
                         images[2].height() >= sy + sh):
