@@ -105,5 +105,5 @@ in GS submission, collision and the
 flag word rather than its descendants gates work. Determine
 whether mask propagation to child nodes agrees with the
 editor's subtree-hidden visual approximation. Compare actual
-PCXS2 stage screenshots in both initial and alternate states
+PCSX2 stage screenshots in both initial and alternate states
 before enabling automatic visibility by default.
