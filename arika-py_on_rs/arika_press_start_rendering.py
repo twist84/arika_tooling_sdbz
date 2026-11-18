@@ -15,7 +15,8 @@ from arika_press_start_resources import (
     PRESS_START_THIRD_SOURCE_RECT,
 )
 from arika_press_start_copyright import (
-    COPYRIGHT_LINES, native_copyright_draws, native_prompt_case_one,
+    COPYRIGHT_LINES, PRESS_START_CAPTURE_PROMPT_SOURCES,
+    native_copyright_draws, native_prompt_case_one,
 )
 
 
@@ -59,8 +60,12 @@ def load_press_start_archive_images(virtual_files):
         PRESS_START_BACKGROUND_KEY: (
             PRESS_START_BACKGROUND_RECT[2], PRESS_START_BACKGROUND_RECT[3]),
         PRESS_START_FOREGROUND_KEY: (
-            max(PRESS_START_FOREGROUND_SOURCE_RECT[2], 278),
-            max(PRESS_START_FOREGROUND_SOURCE_RECT[3], 387)),
+            max([PRESS_START_FOREGROUND_SOURCE_RECT[2]] +
+                [rect[0] + rect[2] for rect in
+                 PRESS_START_CAPTURE_PROMPT_SOURCES]),
+            max([PRESS_START_FOREGROUND_SOURCE_RECT[3]] +
+                [rect[1] + rect[3] for rect in
+                 PRESS_START_CAPTURE_PROMPT_SOURCES])),
         PRESS_START_RESOURCE_KEYS[2]: (
             PRESS_START_THIRD_SOURCE_RECT[0] + PRESS_START_THIRD_SOURCE_RECT[2],
             PRESS_START_THIRD_SOURCE_RECT[1] + PRESS_START_THIRD_SOURCE_RECT[3]),
