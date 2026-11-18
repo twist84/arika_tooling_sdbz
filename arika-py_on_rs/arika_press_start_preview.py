@@ -11,9 +11,11 @@ from arika_press_start_runtime import (
 )
 from arika_app_registry import resolve_app
 from arika_press_start_rendering import (
-    load_press_start_archive_images, render_press_start_image,
+    load_press_start_archive_images, load_press_start_archive_font,
+    raster_press_start_copyright, render_press_start_image,
     press_start_comparison_image,
 )
+from arika_press_start_animation import c_press_start_prompt_clock
 
 
 # Actual viewport bounds measured from the user's 1920x1040 PCSX2
@@ -91,6 +93,9 @@ class c_press_start_preview(W.QWidget):
         self.m_images = (None, None, None)
         self.m_asset_errors = (
             'Open an EU-beta INFO.DAT / GAME.DAT archive',) * 3
+        self.m_copyright_images = None
+        self.m_font_error = 'Original game FFON not loaded'
+        self.m_prompt_clock = c_press_start_prompt_clock()
 
         self.m_timer = C.QTimer(self)
         self.m_timer.setTimerType(C.Qt.TimerType.PreciseTimer)
@@ -110,9 +115,14 @@ class c_press_start_preview(W.QWidget):
         self.m_prompt_visible = W.QCheckBox('Show PRESS START prompt')
         self.m_prompt_visible.setChecked(True)
         self.m_prompt_visible.setToolTip(
-            'Choose the visible/hidden reference frame manually. '
-            'The native prompt blink timing is not yet verified.')
+            'Select the original visible/hidden PCSX2 reference independently '
+            'of the native shared prompt clock.')
         self.m_prompt_visible.toggled.connect(self.redraw)
+        self.m_clock_enabled = W.QCheckBox('Native UI clock updates')
+        self.m_clock_enabled.setChecked(True)
+        self.m_clock_enabled.setToolTip(
+            'Models the external 0x2CB710 scheduler gate using the supplied '
+            'step delta. The clock is global, not the application idle age.')
         self.m_view_mode = W.QComboBox()
         self.m_view_mode.addItems((
             'Reconstruction', 'Side-by-side comparison', 'Reference capture'))
@@ -160,11 +170,11 @@ class c_press_start_preview(W.QWidget):
         self.m_calls = W.QLabel()
         self.m_calls.setWordWrap(True)
         self.m_notice = W.QLabel(
-            'Two native sprite layers use decoded original game resources. '
-            'Qt compositing is NOT recreated native GS output: '
-            'exact blending, filtering, the third dynamic sprite, '
-            'copyright/font and prompt timing remain unresolved. '
-            'Prompt visibility manually selects the reference state only.')
+            'Decoded original sprites, copyright symbols and FFON text are '
+            'placed using recovered ELF draw arguments. The shared native '
+            'clock gates the atlas-backed prompt. Global clock phase at '
+            'screen entry, final GS blending/filtering, other controller '
+            'variants and pixel parity remain unverified.')
         self.m_notice.setWordWrap(True)
 
         layout = W.QVBoxLayout(self)
@@ -173,6 +183,7 @@ class c_press_start_preview(W.QWidget):
         references.addWidget(self.m_load_hidden)
         references.addWidget(self.m_load_visible)
         references.addWidget(self.m_prompt_visible)
+        references.addWidget(self.m_clock_enabled)
         references.addWidget(self.m_view_mode)
         references.addStretch()
         layout.addLayout(references)
@@ -250,6 +261,9 @@ class c_press_start_preview(W.QWidget):
         self.pause_playback()
         self.m_images = (None, None, None)
         self.m_asset_errors = ('Archive not loaded',) * 3
+        self.m_copyright_images = None
+        self.m_font_error = 'Archive not loaded'
+        self.m_prompt_clock = c_press_start_prompt_clock()
         self.m_reference_hidden = None
         self.m_reference_visible = None
         self.m_reference_error = None
@@ -262,12 +276,22 @@ class c_press_start_preview(W.QWidget):
         images, errors = load_press_start_archive_images(virtual_files)
         self.m_images = tuple(images)
         self.m_asset_errors = tuple(errors)
+        font, font_data, error = load_press_start_archive_font(virtual_files)
+        self.m_font_error = error
+        if font is not None:
+            try:
+                self.m_copyright_images = raster_press_start_copyright(
+                    font, font_data)
+            except (ValueError, TypeError) as failure:
+                self.m_font_error = str(failure)
         self.redraw()
         return sum(image is not None for image in images)
 
     def current_reconstruction(self):
         """Return decoded original sprite pixels, never screenshot pixels."""
-        return render_press_start_image(self.m_images)
+        return render_press_start_image(
+            self.m_images, self.m_copyright_images,
+            prompt_visible=self.m_prompt_clock.visible, fade_alpha=1.0)
 
     def draw_canvas(self):
         show_prompt = (self.m_prompt_visible.isChecked() and
@@ -345,6 +369,8 @@ class c_press_start_preview(W.QWidget):
             controller1_ready=self.m_controller1_ready.isChecked(),
             idle_reset=self.m_idle_reset.isChecked())
         self.m_last_calls = result['calls']
+        self.m_prompt_clock.advance(
+            delta_seconds, self.m_clock_enabled.isChecked())
         if result['finished']:
             self.pause_playback()
         self.redraw()
@@ -396,6 +422,7 @@ class c_press_start_preview(W.QWidget):
     def reset(self):
         self.pause_playback()
         self.m_runtime = c_press_start_runtime()
+        self.m_prompt_clock = c_press_start_prompt_clock()
         self.m_last_calls = self.m_runtime.begin()
         self.m_transition_busy.setChecked(False)
         self.m_idle_reset.setChecked(False)
