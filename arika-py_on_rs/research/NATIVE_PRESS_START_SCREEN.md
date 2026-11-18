@@ -111,6 +111,20 @@ No generalized interpolation or invented asset key is used.
 The existing editor's exact `font/5-24-2.fon` **24×24, 4bpp**
 loader and native half-cell FFON raster path are reused.
 Unsupported/missing or ambiguous source fonts fail closed.
+
+**2026-11-18 screenshot feedback — copyright shadow fix:** The editor
+previously used `painter.setOpacity(alpha * rgb)` for copyright text,
+turning native RGB `0.25` into a **25%-opaque white glyph**. That is
+not equivalent to the original dark-grey shadow: it produces bright
+double-letter edges over the landscape. `tint_press_start_ffon` now
+tints the original FFON alpha mask to native RGB `(0.25,0.25,0.25)`
+for the shadow and `(1,1,1)` for the foreground, preserving glyph
+coverage and applying the independently supplied native fade alpha
+only at composition. The verified native `(88,383)/(86,381)` offsets,
+source font, draw order and copyright-symbol sprites are unchanged.
+Synthetic tests verify full/half-coverage tint and shadow-only pixels;
+no screenshot-derived offsets or artwork are embedded.
+
 FFON source-cell placement and final PS2 GS alpha/UV still require
 runtime image comparison.
 
