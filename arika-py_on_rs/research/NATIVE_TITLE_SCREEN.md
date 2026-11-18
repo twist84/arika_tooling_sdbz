@@ -69,7 +69,9 @@ The loader at `0x3F8790` has native stages **0, 1 and 10**:
   it initializes a sprite at `this+0x40`, unwraps and binds
   the resource through `0x2FB960 → 0x2FD8F0`, and sets both
   source and destination rectangles to **(0, 0, 512, 448)**.
-- Stage 10 reports ready.
+- The stage-1 callback still returns **not ready** on the update
+  that changes the loader to stage 10. **The following call** enters
+  stage 10 and reports ready.
 
 At draw callback `0x3F8A90`, the sprite's vtable `+0x10`
 function is dispatched. Native rendering state (GS `TEX0`,
