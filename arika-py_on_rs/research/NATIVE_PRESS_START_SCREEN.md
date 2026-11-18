@@ -27,7 +27,7 @@ Native loader phases are 0 → 1 → 2 → 3 → 4 (field this+0x34).
 - Phase 3 fetches render resource pointers through 0x3EF140 and creates three sprite objects at this+0x40, +0xA0, +0x100. Draw callback uses a **512×448** logical rectangle.
 - Phase 4 begins the original transition and reports loader completion.
 
-The exact asset-group-to-PIX and complete GS compositing have **not** been recovered. The editor does not replace them with a guessed asset key or pretend the earlier d03t0202 splash texture is the Press Start background.
+M1 has now recovered the three sprite-handle-to-resource-key bindings (see below); the group-ID registration relationship and complete GS compositing are **not** yet established. The editor never guesses an asset key or substitutes the earlier d03t0202 splash texture.
 
 ## Native update: EE 0x3F76A0
 
@@ -73,7 +73,7 @@ When the exact user-owned EU beta ELF is available, set environment variable SDB
 
 The optional original-ELF oracle checks SHA-256, the phase vtable, original instructions for Start bit 0x10, 1-second latch, 20-second idle timeout, render dimensions and transition IDs. CI runs synthetic tests without original game assets.
 
-**Next:** recover group→texture mapping, exact native GS composition and prompt alpha/blink period, then compare rendered pixels against the two supplied PCSX2 captures.
+**Remaining:** recover the dynamic third sprite, original copyright and prompt draw calls, exact GS composition and prompt alpha/blink period, then measure reconstruction differences against both original PCSX2 captures. See the M1 research below.
 
 
 ## M1 rendering recovery — original sprites (2026-11-18)
