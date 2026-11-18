@@ -37,7 +37,7 @@ class TitlePreviewTests(unittest.TestCase):
         self.assertEqual(TITLE_RESOURCE, 'dis/d03/d03t0202')
         payload = synthetic_tim2_rgba32()
         image, error = load_title_archive_image({
-            'DIS\D03\D03T0202.PIX': payload,
+            r'DIS\D03\D03T0202.PIX': payload,
             'dis/main_menu.pix': b'ignore',
         })
         self.assertIsNone(error)
