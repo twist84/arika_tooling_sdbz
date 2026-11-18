@@ -242,6 +242,20 @@ class PressStartRenderingTests(unittest.TestCase):
         self.assertIsNone(data)
         self.assertIn('not found', error)
 
+    def test_copyright_uses_native_half_width_ffon_source_cells(self):
+        from test_arika_menu_ffon_native import synthetic_font
+        from arika_press_start_copyright import COPYRIGHT_LINES
+        font, raw = synthetic_font()
+        raw = bytearray(raw)
+        # Nonblank x=13 of the 24-wide A bitmap is outside the
+        # native ASCII width=12. It must not bleed onto following text.
+        raw[6] = 0xf0
+        text = raster_press_start_copyright(font, bytes(raw))[0]
+        index = COPYRIGHT_LINES[0].index('A')
+        self.assertEqual(text.pixelColor(index * 12, 0).alpha(), 255)
+        self.assertEqual(text.pixelColor(index * 12 + 13, 0).alpha(), 0)
+        self.assertEqual(text.width(), 12 * len(COPYRIGHT_LINES[0]))
+
     def test_native_prompt_clock_steps_without_replacing_reference_toggle(self):
         viewer = c_press_start_preview()
         self.m_views.append(viewer)
