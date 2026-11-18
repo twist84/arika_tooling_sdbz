@@ -126,10 +126,13 @@ def press_start_comparison_image(reconstructed, reference):
     canvas.fill(G.QColor(0, 0, 0))
     painter = G.QPainter(canvas)
     try:
-        painter.drawImage(C.QRect(0, 0, size.width(), size.height()),
-                          reconstructed)
-        painter.drawImage(C.QRect(640, 0, size.width(), size.height()),
-                          reference)
+        painter.drawImage(C.QRectF(0, 0, size.width(), size.height()),
+                          reconstructed,
+                          C.QRectF(0, 0, reconstructed.width(),
+                                   reconstructed.height()))
+        painter.drawImage(C.QRectF(640, 0, size.width(), size.height()),
+                          reference,
+                          C.QRectF(0, 0, reference.width(), reference.height()))
     finally:
         painter.end()
     return canvas
