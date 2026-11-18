@@ -136,8 +136,14 @@ change to the 67 registered transition/child requests**.
 
 ## Boundaries for the next milestone
 
-The source application for most provider calls remains **unassigned**
-until interprocedural caller/callback ownership is proven. Some
+The source application for **35 of the 37** provider calls remains
+**unassigned** until interprocedural caller/callback ownership is proven.
+Two existing verified ID 1 `CAppWarning` vtable callbacks own the
+provider calls at `0x003FABF8` (phase 3) and `0x003FAC30`
+(phase 4), each addressing ID 2 `CAppCRISofdec`. These were
+cross-checked against the canonical registry's existing
+`cross_app_interactions` and app ID 1 base-vtable callbacks;
+no other source ID is assigned by proximity. Some
 callers are generic lifecycle functions and deliberately have no
 unique application ID. Runtime traces remain necessary to distinguish
 a reached `jalr`, a returned singleton/cached object, successful
