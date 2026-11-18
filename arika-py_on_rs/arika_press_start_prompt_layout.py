@@ -36,7 +36,7 @@ PRESS_START_PROMPT_CASE_ENTRY = {
 # Dispatch/first-draw and subsequent source-corner immediates, selected
 # from each case's distinct original machine-code sequence.
 PRESS_START_PROMPT_LAYOUT_WORDS = {
-    0x003F7E28: 0x10430164,  # case 4
+    0x003F7E2C: 0x10430164,  # case 4
     0x003F7E34: 0x104300F7,  # case 3
     0x003F7E40: 0x10430089,  # case 2
     0x003F7E48: 0x10430038,  # case 1
