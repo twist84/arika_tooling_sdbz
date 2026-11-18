@@ -1,7 +1,6 @@
 """Asset-backed, deliberately bounded Press Start renderer for the editor.
 
-Only the first two statically positioned native sprites are composited.
-The third sprite, FFON text and prompt animation remain evidence-gated.
+Composes verified static and prompt atlas sprites, copyright text and symbols.
 This Qt approximation does not emulate GS blending or filtering.
 """
 from PySide6 import QtCore as C, QtGui as G
@@ -133,6 +132,33 @@ def raster_press_start_copyright(font, font_data):
     return tuple(images)
 
 
+
+def tint_press_start_ffon(image, rgb):
+    """Apply native FFON RGB as a glyph tint, preserving coverage alpha.
+
+    QPainter.setOpacity scales *alpha*, not source RGB. The native dark
+    copyright pass specifies RGB=.25 at full fade alpha; drawing a white
+    glyph at opacity .25 would instead produce a pale ghost behind text.
+    """
+    if not isinstance(image, G.QImage) or image.isNull():
+        raise ValueError('expected original FFON glyph raster')
+    if type(rgb) not in (int, float) or not 0.0 <= rgb <= 1.0:
+        raise ValueError('native FFON tint must be in [0,1]')
+    tinted = G.QImage(
+        image.size(), G.QImage.Format.Format_ARGB32_Premultiplied)
+    tinted.fill(C.Qt.GlobalColor.transparent)
+    painter = G.QPainter(tinted)
+    try:
+        painter.drawImage(C.QPointF(0.0, 0.0), image)
+        painter.setCompositionMode(
+            G.QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(
+            tinted.rect(), G.QColor.fromRgbF(rgb, rgb, rgb, 1.0))
+    finally:
+        painter.end()
+    return tinted
+
+
 def render_press_start_image(images, copyright_images=None,
                              prompt_visible=False, fade_alpha=1.0,
                              prompt_case=1):
@@ -161,6 +187,18 @@ def render_press_start_image(images, copyright_images=None,
                 for image in copyright_images):
             raise ValueError('expected two decoded original FFON strings')
     operations = native_copyright_draws(fade_alpha)
+    # Native shadow/text tints are separate from the fade alpha.
+    # Tint each glyph mask once per render, not once for each text line.
+    text_passes = {}
+    if copyright_images is not None:
+        for operation in operations:
+            if operation['kind'] != 'text':
+                continue
+            index = COPYRIGHT_LINES.index(operation['text'])
+            tint_key = (index, operation['rgb'])
+            if tint_key not in text_passes:
+                text_passes[tint_key] = tint_press_start_ffon(
+                    copyright_images[index], operation['rgb'])
     canvas = G.QImage(*PRESS_START_CANVAS_SIZE,
                       G.QImage.Format.Format_ARGB32_Premultiplied)
     canvas.fill(G.QColor(0, 0, 0))
@@ -186,8 +224,8 @@ def render_press_start_image(images, copyright_images=None,
         for operation in operations:
             if operation['kind'] == 'text' and copyright_images is not None:
                 index = COPYRIGHT_LINES.index(operation['text'])
-                image = copyright_images[index]
-                painter.setOpacity(operation['alpha'] * operation['rgb'])
+                image = text_passes[(index, operation['rgb'])]
+                painter.setOpacity(operation['alpha'])
                 width = image.width() * operation['scale']
                 height = image.height() * operation['scale']
                 painter.drawImage(
