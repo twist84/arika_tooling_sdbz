@@ -23,7 +23,7 @@ class WarningPreviewTests(unittest.TestCase):
     def test_exact_warning_resource_lookup(self):
         payload = synthetic_tim2_rgba32()
         image, error = load_warning_archive_image({
-            'DIS\D03\D03T0801.PIX': payload,
+            r'DIS\D03\D03T0801.PIX': payload,
             'dis/main_menu.pix': b'not the warning',
         })
         self.assertIsNone(error)
