@@ -8,6 +8,7 @@ GS or application-switch subsystems.
 from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
 
 from arika_logo_preview import decode_logo_texture
+from arika_app_registry import title_handoff_request, resolve_app
 from arika_title_runtime import (
     TITLE_RESOURCE, TITLE_SOURCE_RECT, TITLE_DEST_RECT, c_title_runtime,
 )
@@ -59,12 +60,16 @@ def title_diagnostic_canvas(image):
 class c_title_preview(W.QWidget):
     """Original-title app preview, embedded beside logos and warning."""
 
+    handoff_requested = C.Signal(object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.m_runtime = c_title_runtime()
         self.m_image = None
         self.m_asset_error = 'Open an EU-beta INFO.DAT / GAME.DAT archive'
         self.m_last_calls = []
+        self.m_last_result = None
+        self.m_handoff = None
 
         self.m_timer = C.QTimer(self)
         self.m_timer.setTimerType(C.Qt.TimerType.PreciseTimer)
@@ -96,6 +101,11 @@ class c_title_preview(W.QWidget):
         self.m_step = W.QPushButton('Step one update')
         self.m_play = W.QPushButton('Play')
         self.m_reset = W.QPushButton('Reset')
+        self.m_destination = W.QPushButton('Inspect destination (ID 6)')
+        self.m_destination.setToolTip(
+            'Open the registered CAppDemoMain factory/loader inspector; '
+            'no game app switch or movie playback is executed.')
+        self.m_destination.clicked.connect(self.inspect_destination)
         self.m_step.clicked.connect(self.step)
         self.m_play.clicked.connect(self.toggle_play)
         self.m_reset.clicked.connect(self.reset)
@@ -116,6 +126,7 @@ class c_title_preview(W.QWidget):
         controls.addWidget(self.m_step)
         controls.addWidget(self.m_play)
         controls.addWidget(self.m_reset)
+        controls.addWidget(self.m_destination)
         controls.addStretch()
         layout.addLayout(controls)
         layout.addWidget(self.m_status)
@@ -133,6 +144,8 @@ class c_title_preview(W.QWidget):
         self.m_runtime = c_title_runtime()
         self.m_busy.setChecked(False)
         self.m_last_calls = []
+        self.m_last_result = None
+        self.m_handoff = None
         self.redraw()
         return int(self.m_image is not None)
 
@@ -162,12 +175,24 @@ class c_title_preview(W.QWidget):
                                not self.m_timer.isActive())
         self.m_play.setEnabled(not snapshot['finished'])
         self.m_play.setText('Pause' if self.m_timer.isActive() else 'Play')
+        self.m_destination.setEnabled(self.m_handoff is not None)
+        if self.m_handoff is not None:
+            self.m_status.setText(
+                self.m_status.text() +
+                ' | native next: %s (ID 6; factory 0x3F2C00)' %
+                self.m_handoff['target']['class_name'])
+
+    def inspect_destination(self):
+        if self.m_handoff is not None and self.m_last_result is not None:
+            self.handoff_requested.emit(self.m_last_result)
 
     def advance_native(self, delta_seconds):
         if self.m_runtime.snapshot()['finished']:
             return
         result = self.m_runtime.step(delta_seconds, self.m_busy.isChecked())
         self.m_last_calls = result['calls']
+        self.m_last_result = result
+        self.m_handoff = title_handoff_request(result)
         if result['finished']:
             self.pause_playback()
         self.redraw()
@@ -203,6 +228,8 @@ class c_title_preview(W.QWidget):
         self.pause_playback()
         self.m_runtime = c_title_runtime()
         self.m_last_calls = []
+        self.m_last_result = None
+        self.m_handoff = None
         self.redraw()
 
     def hideEvent(self, event):
