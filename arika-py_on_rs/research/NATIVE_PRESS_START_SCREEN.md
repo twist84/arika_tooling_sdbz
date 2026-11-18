@@ -74,3 +74,99 @@ When the exact user-owned EU beta ELF is available, set environment variable SDB
 The optional original-ELF oracle checks SHA-256, the phase vtable, original instructions for Start bit 0x10, 1-second latch, 20-second idle timeout, render dimensions and transition IDs. CI runs synthetic tests without original game assets.
 
 **Next:** recover group→texture mapping, exact native GS composition and prompt alpha/blink period, then compare rendered pixels against the two supplied PCSX2 captures.
+
+
+## M1 rendering recovery — original sprites (2026-11-18)
+
+This milestone is **in progress**, not pixel-complete. The exact original EU-beta
+ELF was recovered from the owner's ELF archive and matched SHA-256
+`80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0`.
+The version/region is **not** inferred from the name `SLES_541.61`.
+
+At `0x003EF6C0`, original strings and calls `0x2FB850` assign the resources
+to handles in the original singleton returned by `0x3EF140`. At
+`0x003F7320` (loader phase 3), `0x2FB960` resolves each handle and
+`0x2FD8F0` attaches it to a sprite.
+
+| Resource handle | App sprite | ELF key pointer | Verified key | Result |
+|---|---|---|---|---|
+| `+0x10` | `this+0x40` | `0x4D7740` | `dis/d03/d03t0101` | Foreground sprite, drawn second |
+| `+0x14` | `this+0xA0` | `0x4D7760` | `dis/d03/d03t0103` | Full-frame sprite, drawn first |
+| `+0x18` | `this+0x100` | `0x4D7780` | `dis/d05/d05t0101` | Dynamic sprite; destination not yet proven |
+
+ELF addresses and instructions used by the optional oracle live in
+`arika_press_start_resources.py`. It verifies all three original strings,
+specific resource-handle stores, sprite setup and geometry instructions,
+**after** checking the entire executable SHA-256.
+
+### Geometry and draw order
+
+1. At `0x3F7AEC` through `0x3F7B08`, the game submits `this+0xA0`
+   first, covering source/destination `(0,0,512,448)` from the loader's
+   `0x3F7548..0x3F7564` setup. Its initial colour channels are three
+   `0x3F19999A` floats (0.6f RGB), with alpha 1.0f, set at
+   `0x3F7504..0x3F7520`.
+2. At `0x3F7B0C..0x3F7B54`, `this+0x40` is moved to `(128,28)`,
+   scaled by 1.0 and submitted with sprite rectangle `(0,0,257,306)`.
+3. `this+0x100` has its initial source subrectangle `(15,97,17,17)`
+   at `0x3F75D8..0x3F75F0`. Its later draw placement is computed by
+   `0x3F8510` calls in `0x3F7C90..`. No static placement is substituted.
+4. Additional font/text and dynamic draw calls follow the two verified
+   static sprites. The `0x2E4B30 → 0x2E5510` gate at `0x3F7B58`
+   conditionally invokes `0x3F7E10`. Its exact relation to the prompt,
+   blink period, alpha evolution, and resulting GS state are **unverified**.
+
+The 512×448 game logical coordinates are stretched to an **independent
+4:3 presentation** in the editor; 512/448 itself is not the display ratio.
+The existing 1920×1040 capture crop remains `(307,96,1040,778)`, which
+is a PCSX2-window measurement, **not** a native GS viewport register.
+
+### M1 editor implementation (partial visual reconstruction)
+
+- `arika_press_start_rendering.py` decodes only the three literal ELF keys
+  from the open editor archive, supporting a single unambiguous
+  FPIX/XPIX/TIM2 or directly supplied TIM2. Exact extensionless and
+  `.pix` matches work; duplicate/missing/unsupported keys fail closed.
+  No different PIX file, guessed FPIX chunk or replacement artwork is used.
+- The existing **Menu → Press Start** tab renders the known first two sprite
+  layers from those decoded pixels on a 512×448 QImage. The 0.6f
+  background RGB is approximated via painter opacity against black.
+  **This is not verified PS2 GS alpha, filtering or texture sampling.**
+- Reference controls permit reconstructed output, original capture only,
+  and native/capture side-by-side comparison, without mixing reference
+  screenshot pixels into a game sprite.
+- Archive swaps discard stale decoded images and captures, stop playback,
+  and reset the native state, preserving manual step and Start controls.
+- The dynamic third sprite, copyright and prompt text are intentionally
+  absent from generated output until native draw/font bindings are proven.
+  The prompt checkbox remains a manual **reference-frame switch**, not
+  fabricated animation. No blink timing is claimed.
+
+### Verification and remaining blockers
+
+Run synthetic offscreen tests (Windows and Ubuntu CI):
+
+```shell
+cd arika-py_on_rs
+python -m unittest test_arika_press_start_resources test_arika_press_start_rendering test_arika_press_start_runtime test_arika_press_start_preview -v
+```
+
+With the *exact* ELF supplied locally, set `SDBZ_EU_BETA_ELF` to run
+additional ELF-gated tests. The original game archive and two reference
+screenshots must be loaded locally; **none are committed**.
+
+As of this milestone checkpoint, the original `GAME EU BETA.zip` and
+`sdbz_eu_beta.7z` archives are discoverable in the owner's project files
+but the available file service refuses raw-byte materialisation. Their
+contents could not be inspected to validate all three actual PIX
+container layouts, source alpha or visual parity. The two original
+PCSX2 captures are available for comparison, but comparing two screenshots
+to each other **does not establish reconstruction parity**.
+
+**Completion gates still open:** successfully decode all three original
+textures from the EU-beta game archive; recover and render original
+copyright and prompt font calls; trace dynamic sprite positions and
+visibility timing; recover GS blend/filter/UV state; measure pixel
+differences against both captures; pass final Windows/Ubuntu CI. Until
+those are done, the PR must remain unmerged or explicitly marked
+incomplete. App ID 42 remains out of scope.
