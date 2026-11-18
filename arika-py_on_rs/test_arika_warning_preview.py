@@ -3,6 +3,7 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import unittest
+import shiboken6
 from PySide6 import QtGui as G, QtWidgets as W
 
 from arika_warning_preview import (
@@ -19,6 +20,23 @@ class WarningPreviewTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.m_app = W.QApplication.instance() or W.QApplication([])
+
+    def setUp(self):
+        self.m_owned = []
+
+    def make_view(self):
+        view = c_warning_preview()
+        self.m_owned.append(view)
+        return view
+
+    def tearDown(self):
+        # Dispose every Qt C++ widget before QApplication shutdown rather
+        # than relying on Python's late cyclic finalizer.
+        for view in self.m_owned:
+            if shiboken6.isValid(view):
+                view.close()
+                shiboken6.delete(view)
+        self.m_app.processEvents()
 
     def test_exact_warning_resource_lookup(self):
         payload = synthetic_tim2_rgba32()
@@ -68,7 +86,7 @@ class WarningPreviewTests(unittest.TestCase):
         self.assertEqual(debug.width(), 512)
 
     def test_selection_buttons_and_mode_branch(self):
-        widget = c_warning_preview()
+        widget = self.make_view()
         self.assertFalse(widget.m_next.isEnabled())
         widget.m_step.click()
         self.assertEqual(widget.m_runtime.snapshot()['phase'], PHASE_SELECTION)
@@ -84,7 +102,7 @@ class WarningPreviewTests(unittest.TestCase):
         widget.close()
 
     def test_manual_test_screen_countdown_and_return(self):
-        widget = c_warning_preview()
+        widget = self.make_view()
         widget.load_archive_assets({
             WARNING_RESOURCE + '.pix': synthetic_tim2_rgba32(),
         })
@@ -114,7 +132,7 @@ class WarningPreviewTests(unittest.TestCase):
         widget.close()
 
     def test_play_pause_auto_clock_and_reset(self):
-        widget = c_warning_preview()
+        widget = self.make_view()
         widget.m_play.click()
         self.assertTrue(widget.m_timer.isActive())
         self.assertEqual(widget.m_play.text(), 'Pause')
@@ -133,7 +151,7 @@ class WarningPreviewTests(unittest.TestCase):
         widget.close()
 
     def test_archive_reload_pauses_and_clears_image(self):
-        widget = c_warning_preview()
+        widget = self.make_view()
         self.assertEqual(widget.load_archive_assets({
             WARNING_RESOURCE + '.pix': synthetic_tim2_rgba32(),
         }), 1)
@@ -146,7 +164,7 @@ class WarningPreviewTests(unittest.TestCase):
         widget.close()
 
     def test_to_game_completion_disables_playback(self):
-        widget = c_warning_preview()
+        widget = self.make_view()
         widget.m_step.click()
         widget.m_previous.click()
         widget.m_confirm.click()
@@ -162,7 +180,7 @@ class WarningPreviewTests(unittest.TestCase):
 
     def test_switching_editor_tabs_stops_timer(self):
         tabs = W.QTabWidget()
-        viewer = c_warning_preview()
+        viewer = self.make_view()
         tabs.addTab(viewer, 'Warning / Video Mode')
         tabs.addTab(W.QWidget(), 'Startup / Splash')
         tabs.resize(800, 560)
