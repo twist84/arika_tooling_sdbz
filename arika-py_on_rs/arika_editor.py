@@ -1245,6 +1245,27 @@ class c_scene_editor(W.QMainWindow):
         except Exception as error:
             self.m_demo_view=W.QLabel('Demo Main inspector unavailable: %s'%error)
             self.m_menu_tabs.addTab(self.m_demo_view,'Demo Main')
+
+        # One shared tour over the existing in-editor screen widgets.
+        # The archive and visual runtimes are reused; no game factory
+        # is executed and unknown boot handoffs remain explicitly manual.
+        try:
+            from arika_screen_flow_preview import c_native_screen_flow
+            self.m_screen_flow=c_native_screen_flow(
+                self.m_menu_tabs,{
+                    'startup':self.m_logo_view,
+                    'warning':self.m_warning_view,
+                    'title':self.m_title_view,
+                    'demo':self.m_demo_view,
+                    'press_start':self.m_press_start_view,
+                    'main_menu':self.m_menu_view,
+                },self)
+            menu_layout.insertWidget(1,self.m_screen_flow)
+        except Exception as error:
+            self.m_screen_flow=None
+            flow_notice=W.QLabel('Game-screen flow unavailable: %s'%error)
+            flow_notice.setWordWrap(True)
+            menu_layout.insertWidget(1,flow_notice)
         self.m_object_view=c_viewport();self.m_object_view.m_isolated=set();self.m_object_view.selection_requested.connect(self.select_view);self.m_object_view.selection_all.connect(self.select_all);self.m_object_view.delete_requested.connect(self.delete_selected);self.m_object_view.transform_changed.connect(self.sync_selection);self.m_object_view.gizmo_mode_requested.connect(self.set_gizmo_mode);self.m_views.addWidget(self.m_object_view)
         self.m_views.addWidget(menu_panel)
         audio_panel=W.QWidget();al=W.QVBoxLayout(audio_panel);al.setContentsMargins(8,8,8,8);al.setSpacing(6)
@@ -1776,6 +1797,8 @@ class c_scene_editor(W.QMainWindow):
         except OSError as error:
             self.fail(error)
             return
+        if self.m_screen_flow is not None:
+            self.m_screen_flow.archive_changed()
         self.m_virtual_files={}
         self.m_virtual=True
         self.m_project=None
@@ -3331,6 +3354,10 @@ class c_scene_editor(W.QMainWindow):
         from types import SimpleNamespace
         self.m_material_view.set_project(SimpleNamespace(m_document=material_preview_document(self.m_project.m_document,self.m_material)),fit=True)
     def inspect_demo_parent(self,app_id):
+        if self.m_screen_flow is not None:
+            route=self.m_screen_flow.route_native('demo',app_id)
+            self.statusBar().showMessage(route['message'])
+            return
         # ID 3 is the distinct Press Start CAppTitleMain, not ID 2's
         # timed title splash. This is explicit editor navigation only.
         if app_id==3 and hasattr(self.m_press_start_view,'reset'):
@@ -3345,6 +3372,10 @@ class c_scene_editor(W.QMainWindow):
                 'no native factory executed.'%app_id)
 
     def inspect_press_start_destination(self,app_id):
+        if self.m_screen_flow is not None:
+            route=self.m_screen_flow.route_native('press_start',app_id)
+            self.statusBar().showMessage(route['message'])
+            return
         # A navigation aid only; never execute the original game factory.
         if app_id == 6 and hasattr(self.m_demo_view,'reset'):
             self.m_demo_view.reset()
@@ -3358,6 +3389,13 @@ class c_scene_editor(W.QMainWindow):
                 'No native factory executed.'%app_id)
 
     def inspect_title_handoff(self,result):
+        if self.m_screen_flow is not None:
+            from arika_app_registry import title_handoff_request
+            request=title_handoff_request(result)
+            if request is not None:
+                route=self.m_screen_flow.route_native('title',6,result)
+                self.statusBar().showMessage(route['message'])
+            return
         # An in-editor inspector transition only; do not emulate the
         # original application factory, movie streaming or GS runtime.
         if hasattr(self.m_demo_view,'accept_title_result'):
@@ -3368,6 +3406,8 @@ class c_scene_editor(W.QMainWindow):
                     'Showing registered factory and loader (diagnostic).')
 
     def change_view(self,index):
+        if index!=4 and self.m_screen_flow is not None:
+            self.m_screen_flow.pause_playback()
         self.m_views.setCurrentIndex(index)
         self.m_workspaces.blockSignals(True);self.m_workspaces.setCurrentIndex(index);self.m_workspaces.blockSignals(False)
         self.m_editor_heading.setText(('3D Viewport','Material Preview','Image Editor','Object View','Menu Editor','Audio','Fonts')[index])

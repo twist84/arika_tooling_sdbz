@@ -1,0 +1,202 @@
+digraph native_sdbz_eu_beta {
+  rankdir=LR;
+  graph [label="EU-beta native requests vs observed screens", labelloc=t];
+  node [shape=box];
+  app_1 [label="1 · CAppWarning"];
+  app_2 [label="2 · CAppCRISofdec"];
+  app_3 [label="3 · CAppTitleMain"];
+  app_4 [label="4 · CAppLogoMain"];
+  app_5 [label="5 · CAppMonitorSelect"];
+  app_6 [label="6 · CAppDemoMain"];
+  app_7 [label="7 · CAppDemoMovie"];
+  app_8 [label="8 · CAppDemoMain"];
+  app_9 [label="9 · CAppDemoPlay"];
+  app_10 [label="10 · CAppSelectMain"];
+  app_11 [label="11 · CAppSelectCharcter"];
+  app_12 [label="12 · CAppSelectWorld"];
+  app_13 [label="13 · CAppSelectWorld"];
+  app_14 [label="14 · CAppFightMain"];
+  app_15 [label="15 · CAppFightMainTrain"];
+  app_22 [label="22 · CAppFightDemoFinish"];
+  app_23 [label="23 · CAppFightQuickLoad"];
+  app_24 [label="24 · CAppFightSurvivalNext"];
+  app_16 [label="16 · CAppFightDemoBoss"];
+  app_17 [label="17 · CAppFightDemoEnding"];
+  app_18 [label="18 · CAppFightDemoStart"];
+  app_19 [label="19 · CAppFightStageView"];
+  app_20 [label="20 · CAppFightPlaySingle"];
+  app_21 [label="21 · CAppFightPlayDoubles"];
+  app_25 [label="25 · CAppFightDemoEnd"];
+  app_26 [label="26 · CAppFightDemoEndCard"];
+  app_27 [label="27 · CAppFightGameOver"];
+  app_28 [label="28 · CAppFightResultMain"];
+  app_29 [label="29 · CAppFightResultCsAcSingle"];
+  app_30 [label="30 · CAppFightResultCsAcDoubles"];
+  app_31 [label="31 · CAppFgtResDgnM"];
+  app_32 [label="32 · CAppFgtResDgnO"];
+  app_33 [label="33 · CAppFgtResDgnC"];
+  app_34 [label="34 · CAppFightResultSurvival"];
+  app_35 [label="35 · CAppFightResultSurvBoss"];
+  app_36 [label="36 · CAppFightResultSurvNorm"];
+  app_37 [label="37 · CAppFightResultSurvRoul"];
+  app_38 [label="38 · CAppFightResultVersus"];
+  app_39 [label="39 · CAppEnding"];
+  app_42 [label="42 · CAppMenuMain"];
+  app_43 [label="43 · CAppShenronMain"];
+  app_44 [label="44 · CAppShenronSel"];
+  app_45 [label="45 · CAppDMModeMain"];
+  app_40 [label="40 · CAppEndingDemo"];
+  app_41 [label="41 · CAppGameOver"];
+  app_46 [label="46 · CAppOptionModeMain"];
+  app_47 [label="47 · CAppOptionRanking"];
+  // Source ids may be candidates, not verified full call graph owners.
+  app_6 -> app_4 [style=dashed,label="0x3e08b0"];
+  app_6 -> app_7 [style=dashed,label="0x3e08c8"];
+  app_6 -> app_8 [style=dashed,label="0x3e08e0"];
+  app_6 -> app_9 [style=dashed,label="0x3e08f8"];
+  app_39 -> app_40 [style=dashed,label="0x3e282c"];
+  app_39 -> app_41 [style=solid,label="0x3e289c"];
+  app_39 -> app_41 [style=solid,label="0x3e28bc"];
+  app_25 -> sentinel_48 [style=dotted,color=darkorange,label="0x003E4C54; timer > 0.02f or unordered"];
+  app_26 -> app_27 [style=dashed,label="0x3e53d0"];
+  app_26 -> app_28 [style=dashed,label="0x3e599c"];
+  app_14 -> app_19 [style=dashed,label="0x3e6d7c candidate"];
+  app_15 -> app_19 [style=dashed,label="0x3e6d7c candidate"];
+  app_14 -> app_16 [style=dashed,label="0x3e6da4 candidate"];
+  app_15 -> app_16 [style=dashed,label="0x3e6da4 candidate"];
+  app_14 -> app_18 [style=dashed,label="0x3e71bc candidate"];
+  app_15 -> app_18 [style=dashed,label="0x3e71bc candidate"];
+  app_14 -> app_20 [style=dashed,label="0x3e721c candidate"];
+  app_15 -> app_20 [style=dashed,label="0x3e721c candidate"];
+  app_14 -> app_21 [style=dashed,label="0x3e7234 candidate"];
+  app_15 -> app_21 [style=dashed,label="0x3e7234 candidate"];
+  app_14 -> app_26 [style=dashed,label="0x3e72a4 candidate"];
+  app_15 -> app_26 [style=dashed,label="0x3e72a4 candidate"];
+  app_14 -> app_25 [style=dashed,label="0x3e72b8 candidate"];
+  app_15 -> app_25 [style=dashed,label="0x3e72b8 candidate"];
+  app_14 -> app_10 [style=solid,label="0x3e7360 candidate"];
+  app_15 -> app_10 [style=solid,label="0x3e7360 candidate"];
+  app_14 -> app_41 [style=solid,label="0x3e73c8 candidate"];
+  app_15 -> app_41 [style=solid,label="0x3e73c8 candidate"];
+  app_14 -> app_10 [style=solid,label="0x3e74fc candidate"];
+  app_15 -> app_10 [style=solid,label="0x3e74fc candidate"];
+  app_14 -> app_42 [style=solid,label="0x3e7598 candidate"];
+  app_15 -> app_42 [style=solid,label="0x3e7598 candidate"];
+  app_14 -> app_41 [style=solid,label="0x3e7650 candidate"];
+  app_15 -> app_41 [style=solid,label="0x3e7650 candidate"];
+  app_14 -> app_41 [style=solid,label="0x3e76d4 candidate"];
+  app_15 -> app_41 [style=solid,label="0x3e76d4 candidate"];
+  app_14 -> app_39 [style=solid,label="0x3e7740 candidate"];
+  app_15 -> app_39 [style=solid,label="0x3e7740 candidate"];
+  app_14 -> app_41 [style=solid,label="0x3e7774 candidate"];
+  app_15 -> app_41 [style=solid,label="0x3e7774 candidate"];
+  app_14 -> app_20 [style=dashed,label="0x3e7804 candidate"];
+  app_15 -> app_20 [style=dashed,label="0x3e7804 candidate"];
+  app_14 -> app_21 [style=dashed,label="0x3e7814 candidate"];
+  app_15 -> app_21 [style=dashed,label="0x3e7814 candidate"];
+  app_14 -> app_10 [style=solid,label="0x3e783c candidate"];
+  app_15 -> app_10 [style=solid,label="0x3e783c candidate"];
+  app_14 -> app_17 [style=dashed,label="0x3e784c candidate"];
+  app_15 -> app_17 [style=dashed,label="0x3e784c candidate"];
+  app_14 -> app_39 [style=solid,label="0x3e7860 candidate"];
+  app_15 -> app_39 [style=solid,label="0x3e7860 candidate"];
+  app_14 -> app_24 [style=dashed,label="0x3e7878 candidate"];
+  app_15 -> app_24 [style=dashed,label="0x3e7878 candidate"];
+  app_14 -> app_10 [style=solid,label="0x3e7898 candidate"];
+  app_15 -> app_10 [style=solid,label="0x3e7898 candidate"];
+  app_14 -> app_23 [style=dashed,label="0x3e78f4 candidate"];
+  app_15 -> app_23 [style=dashed,label="0x3e78f4 candidate"];
+  app_14 -> app_10 [style=solid,label="0x3e7954 candidate"];
+  app_15 -> app_10 [style=solid,label="0x3e7954 candidate"];
+  app_14 -> app_10 [style=solid,label="0x3e79b0 candidate"];
+  app_15 -> app_10 [style=solid,label="0x3e79b0 candidate"];
+  app_14 -> app_23 [style=dashed,label="0x3e79f0 candidate"];
+  app_15 -> app_23 [style=dashed,label="0x3e79f0 candidate"];
+  app_14 -> app_10 [style=solid,label="0x3e7c2c candidate"];
+  app_15 -> app_10 [style=solid,label="0x3e7c2c candidate"];
+  app_20 -> sentinel_48 [style=dotted,color=darkorange,label="0x003E920C; state9, predicate=0"];
+  app_20 -> app_22 [style=dashed,label="0x3e9370 candidate"];
+  app_21 -> app_22 [style=dashed,label="0x3e9370 candidate"];
+  app_10 -> app_12 [style=dashed,label="0x3f59ec"];
+  app_10 -> app_11 [style=dashed,label="0x3f59fc"];
+  app_10 -> app_11 [style=dashed,label="0x3f5a14"];
+  app_10 -> app_15 [style=solid,label="0x3f5afc"];
+  app_10 -> app_43 [style=solid,label="0x3f5b0c"];
+  app_10 -> app_42 [style=solid,label="0x3f5b1c"];
+  app_10 -> app_14 [style=solid,label="0x3f5b5c"];
+  app_12 -> app_11 [style=solid,label="0x3f6568"];
+  app_3 -> app_42 [style=solid,label="0x3f786c"];
+  app_3 -> app_6 [style=solid,label="0x3f7898"];
+  app_2 -> app_6 [style=solid,label="0x3f89c8"];
+  app_41 -> app_3 [style=solid,label="0x3f9f34"];
+  app_1 -> app_6 [style=solid,label="0x3fada4"];
+  app_11 -> app_13 [style=solid,label="0x3fb78c"];
+  app_11 -> app_12 [style=solid,label="0x3fba8c"];
+  app_42 -> app_1 [style=solid,label="0x3fe1cc"];
+  app_42 -> app_3 [style=solid,label="0x3fe21c"];
+  app_43 -> app_42 [style=solid,label="0x402cf8"];
+  app_45 -> app_42 [style=solid,label="0x409ee8"];
+  app_30 -> app_32 [style=dashed,label="0x40b77c"];
+  app_30 -> app_33 [style=dashed,label="0x40b7a0"];
+  app_34 -> app_35 [style=dashed,label="0x40e978"];
+  app_34 -> app_36 [style=dashed,label="0x40e9d4"];
+  app_34 -> app_36 [style=dashed,label="0x40eaf8"];
+  app_34 -> app_37 [style=dashed,label="0x40eb38"];
+  app_46 -> app_42 [style=solid,label="0x419490"];
+  app_46 -> app_47 [style=dashed,label="0x4194b4"];
+  app_44 -> app_43 [style=solid,label="0x41d790"];
+  app_44 -> app_42 [style=solid,label="0x41d7a0"];
+  app_5 -> app_1 [style=solid,label="0x41f070"];
+  subgraph cluster_visible { label="User-observed visible screen progression (not factory edges)"; color=gray;
+    screen_warning -> screen_startup [color=gray,style=dotted];
+    screen_startup -> screen_title [color=gray,style=dotted];
+    screen_title -> screen_press_start [color=gray,style=dotted];
+    screen_press_start -> screen_main_menu [color=gray,style=dotted];
+}
+
+  // Direct ELF-verified ID 1 (Warning) -> ID 2 (CRI Sofdec) calls.
+  // A factory lookup and method invocation do NOT establish parent/child
+  // ownership or a successful construction event.
+  app_1 -> app_2 [style=dotted,color=darkcyan,label="lookup 0x003FABF8; direct 0x003FAC00"];
+  app_1 -> app_2 [style=dotted,color=darkcyan,label="lookup 0x003FAC30; virtual +0x38 at 0x003FAC40"];
+
+  // ID 28 result selector is a conditional native CHILD request, not a
+  // guaranteed child construction. Default sentinel 0x30 creates no edge.
+  app_28 -> app_29 [style=dashed,color=darkblue,label="0x0040BD0C selector=1; subcheck false"];
+  app_28 -> app_30 [style=dashed,color=darkblue,label="0x0040BD0C selector=1; subcheck true"];
+  app_28 -> app_34 [style=dashed,color=darkblue,label="0x0040BD0C selector=2"];
+  app_28 -> app_38 [style=dashed,color=darkblue,label="0x0040BD0C selector=3"];
+
+  // Sentinel 0x30 is not the 48th registered application.
+  sentinel_48 [shape=diamond,label="0x30 sentinel (48), NOT an app"];
+  request_input [shape=ellipse,label="Caller-supplied child ID"];
+  current_child [shape=ellipse,label="Existing child instance"];
+  request_input -> current_child [style=dashdot,color=darkorange,label="generic forward 0x003DFC1C, only if lookup succeeds"];
+
+  // Exact generic successor mechanism, not a concrete ID 6 -> ID 3 edge.
+  completed_child [shape=ellipse,label="Child phase 6"];
+  parent_slot [shape=folder,label="Parent child-ID byte +0x12"];
+  completed_child -> parent_slot [style=dashdot,color=darkblue,label="0x003DFF98 / 0x003DFFAC; successor from child +0x10"];
+  parent_slot -> factory_lookup [style=dashdot,color=darkblue,label="0x003DFFC0; conditional lookup"];
+
+  // ELF-backed field-derived native transitions; choice/exit flag gated.
+  // These are requests, not successfully executed factories.
+  app_6 -> app_3 [style=solid,color=darkblue,label="0x003E09E0; exit +0x2A = 3 (choice 1)"];
+  app_6 -> app_6 [style=solid,color=darkblue,label="0x003E09E0; exit +0x2A = 6 (choice 3)"];
+
+  // Factory lookup uses BSS ID-indexed table and jalr; it is not a direct
+  // transition or proof that any particular constructor was executed.
+  factory_lookup [shape=ellipse,label="lookup 0x003F1C40"];
+  factory_table [shape=folder,label="BSS 0x006217E0 + 4*ID"];
+  factory_lookup -> factory_table [style=dotted,color=darkgreen,label="indirect jalr at 0x003F1C78"];
+  // Exact native ROOT handoff after phase-5 success. This differs from
+  // lookup-only 0x3F1C40 and may actually invoke a factory via jalr.
+  // These are static possible control-flow paths, not runtime observations.
+  root_phase5 [shape=ellipse,label="Phase-5 completed, parent ID=0x30"];
+  root_dispatch [shape=ellipse,label="root handoff 0x003F1BA0"];
+  root_slot [shape=folder,label="active root pointer 0x0063BE38"];
+  root_phase5 -> root_dispatch [style=solid,color=darkorange,label="call 0x003DFF34; pending ID +0x10"];
+  root_dispatch -> factory_table [style=solid,color=darkorange,label="valid ID 1..47; indirect jalr 0x003F1BE0"];
+  root_dispatch -> root_slot [style=solid,color=darkorange,label="store factory result or fallback at 0x003F1C04"];
+  root_dispatch -> root_slot [style=dotted,color=gray,label="invalid ID => 0x005E1AC0 fallback at 0x003F1C30"];
+}

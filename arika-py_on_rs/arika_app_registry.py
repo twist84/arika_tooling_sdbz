@@ -1,8 +1,16 @@
 """EU-beta application's original EE factory ID registry.
 
 The code at 0x3F1580 installs factory pointers in BSS at 0x6217E0
-and registers their IDs through 0x3DFA60. These are *not* zero-based
-indexes of class-name strings. The initial registered ID is 1.
+and registers *all IDs 1..47* through 0x3DFA60, in a nonnumeric
+registration order. The entries catalogued below have independently
+verified factory, constructor and original class-name getter evidence;
+all 47 constructors, getter strings and top-level vtable slots are catalogued.
+The legacy 'factory lookup' name at 0x003F1C40 describes an instance
+provider: it DOES call a BSS factory through jalr and returns the
+result. The root handoff at 0x003F1BA0 also invokes a factory but installs
+its returned pointer at global BSS 0x0063BE38. Neither static call path
+proves that a particular user runtime executed it.
+Lifecycle callback semantics remain under investigation.
 """
 import hashlib
 import json
@@ -18,20 +26,24 @@ APP_FACTORY_TABLE = 0x006217E0
 APP_FACTORY_REGISTER = 0x003DFA60
 APP_TRANSITION_REQUEST = 0x003DFB00
 APP_CHILD_REQUEST = 0x003DFBD0
+APP_REGISTRY_COUNT = 47
+APP_REGISTRY_FIRST = 0x003F15BC
+APP_REGISTRY_LAST = 0x003F1B7C
 ELF_FILE_BIAS = 0xFFF80
 
-# (id, factory, constructor, class-name getter, text pointer, class name)
-# All names are returned through their own native vtables, not guessed
-# from neighboring strings. No claim of original boot order is made.
-APP_FACTORIES = (
-    (2, 0x3F2D80, 0x3F86E0, 0x3F86C0, 0x4D7F90, 'CAppTitleMain'),
-    (3, 0x3F2D20, 0x3F7150, 0x3F86C0, 0x4D7F90, 'CAppTitleMain'),
-    (4, 0x3F2CC0, 0x41E620, 0x41EC80, 0x4D91F8, 'CAppLogoMain'),
-    (5, 0x3F2C60, 0x41ECA0, 0x41F580, 0x4D8518, 'CAppWarning'),
-    (6, 0x3F2C00, 0x3E03E0, 0x3E0D10, 0x4D52F0, 'CAppDemoMain'),
-    (7, 0x3F2BA0, 0x3E1BD0, 0x3E2080, 0x4D5338, 'CAppDemoMovie'),
-    (8, 0x3F2B40, 0x3E2160, 0x3E26B0, 0x4D5348, 'CAppDemoMain'),
-    (9, 0x3F2AE0, 0x3E0DF0, 0x3E1AE0, 0x4D5310, 'CAppDemoPlay'),
+# The JSON is the single source of truth for all native application IDs.
+# Preserve APP_FACTORIES and APP_REGISTRATION_SITES for existing callers.
+APP_NATIVE_REGISTRY_PATH = (Path(__file__).with_name('research') /
+                            'native_app_registry_eu_beta.json')
+APP_NATIVE_REGISTRY = json.loads(APP_NATIVE_REGISTRY_PATH.read_text(encoding='utf-8'))
+APP_ENTRIES = {app['id']: app for app in APP_NATIVE_REGISTRY['applications']}
+if (len(APP_ENTRIES) != APP_REGISTRY_COUNT or
+        sorted(APP_ENTRIES) != list(range(1, APP_REGISTRY_COUNT + 1))):
+    raise ValueError('invalid native application registry: missing or duplicate IDs')
+APP_FACTORIES = tuple(
+    (app['id'], app['factory'], app['constructor'], app['name_getter'],
+     app['class_name_pointer'], app['class_name'])
+    for app in APP_NATIVE_REGISTRY['applications']
 )
 
 # CCardDemo is a helper class, not an application-factory entry.
@@ -44,14 +56,9 @@ DEMO_HELPER_STRINGS = {
 # Additional ID-specific constructor-pointer, singleton-factory,
 # registration site and registration table-address evidence.
 APP_REGISTRATION_SITES = {
-    2: (0x3F15CC, 0x3F15D4, 0x3F15E0),
-    3: (0x3F15EC, 0x3F15F4, 0x3F1600),
-    4: (0x3F160C, 0x3F1614, 0x3F1620),
-    5: (0x3F162C, 0x3F1634, 0x3F1640),
-    6: (0x3F164C, 0x3F1654, 0x3F1660),
-    7: (0x3F166C, 0x3F1674, 0x3F1680),
-    8: (0x3F168C, 0x3F1694, 0x3F16A0),
-    9: (0x3F16AC, 0x3F16B4, 0x3F16C0),
+    app['id']: (app['factory_site'], app['factory_table_store_site'],
+                app['registration_id_site'])
+    for app in APP_NATIVE_REGISTRY['applications']
 }
 
 # The *ID 6* CAppDemoMain's native 0x3E0830 update can request
@@ -78,20 +85,51 @@ def _cstring(elf, address, max_length=64):
 
 
 def resolve_app(app_id):
-    """A missing ID remains unknown, never inferred from list position."""
+    """Resolve exact native identity; never infer it from registration order."""
     if type(app_id) is not int:
         raise ValueError('app_id must be an integer')
-    for identifier, factory, constructor, getter, text_address, name in APP_FACTORIES:
-        if app_id == identifier:
-            return {
-                'id': identifier,
-                'class_name': name,
-                'factory': factory,
-                'constructor': constructor,
-                'name_getter': getter,
-                'name_address': text_address,
-            }
-    return None
+    app = APP_ENTRIES.get(app_id)
+    if app is None:
+        return None
+    return {
+        'id': app['id'],
+        'class_name': app['class_name'],
+        'factory': app['factory'],
+        'constructor': app['constructor'],
+        'name_getter': app['name_getter'],
+        'name_address': app['class_name_pointer'],
+        'registration_order': app['registration_order'],
+        'factory_table': APP_FACTORY_TABLE + 4 * app_id,
+        'registration_callsite': app['registration_callsite'],
+        'constructor_callsite': app['constructor_callsite'],
+        'base_vtable': app['base_vtable'],
+        'phase_vtable': app['phase_vtable'],
+        'base_slots': dict(app['base_slots']),
+        'phase_slots': dict(app['phase_slots']),
+        'callback_dispatch': dict(app['callback_dispatch']),
+        'factory_executed': False,
+    }
+
+
+def registered_native_requests(source_id=None, request_kind=None):
+    """Read statically recovered native helper callsites.
+
+    These include transition requests, child requests, and an historical
+    'factory_lookup' label for the factory-*invoking* instance provider.
+    Source ownership may be provisional. Recording a callsite does NOT
+    establish that the native runtime took the branch or ran a factory.
+    """
+    if source_id is not None and (type(source_id) is not int or
+                                  source_id not in APP_ENTRIES):
+        raise ValueError('invalid native source application ID')
+    if request_kind is not None and request_kind not in (
+            'transition', 'child_request', 'factory_lookup'):
+        raise ValueError('invalid native request kind')
+    requests = APP_NATIVE_REGISTRY['callsites']
+    return tuple(edge for edge in requests
+                 if (request_kind is None or edge['api'] == request_kind) and
+                 (source_id is None or source_id in edge['source_candidates']))
+
 
 
 def title_handoff_request(title_result):
@@ -114,11 +152,40 @@ def title_handoff_request(title_result):
     return None
 
 
+def recover_registered_app_ids_elf(elf):
+    """Count every native registration call, including uncatalogued IDs.
+
+    A registration must use the exact 0x3DFA60 JAL with its immediate
+    ID argument and the expected ID-indexed BSS factory-table store.
+    This does not execute a constructor or infer a class from its ID.
+    """
+    if type(elf) is not bytes or hashlib.sha256(elf).hexdigest() != ELF_SHA256:
+        raise ValueError('expected the exact EU-beta SLES_541.61 ELF')
+    registration_call = 0x0C000000 | (APP_FACTORY_REGISTER >> 2)
+    registered = []
+    for address in range(APP_REGISTRY_FIRST, APP_REGISTRY_LAST + 1, 4):
+        if _word(elf, address) != registration_call:
+            continue
+        immediate = _word(elf, address + 4)
+        if immediate & 0xFFFF0000 != 0x24050000:
+            raise ValueError('nonliteral factory ID at 0x%08X' % address)
+        app_id = immediate & 0xFFFF
+        table_store = _word(elf, address - 8)
+        if table_store != (0xAC430000 | (0x17E0 + 4 * app_id)):
+            raise ValueError('factory table index mismatch at ID %d' % app_id)
+        registered.append(app_id)
+    if (len(registered) != APP_REGISTRY_COUNT or
+            sorted(registered) != list(range(1, APP_REGISTRY_COUNT + 1))):
+        raise ValueError('the complete native factory register set changed')
+    return tuple(registered)
+
+
 def verify_app_registry_elf(elf):
     """Exact-ELF oracle for ID→constructor→class name and child routing."""
     if type(elf) is not bytes or hashlib.sha256(elf).hexdigest() != ELF_SHA256:
         raise ValueError('expected the exact EU-beta SLES_541.61 ELF')
 
+    native_ids = recover_registered_app_ids_elf(elf)
     # Native registry lookup guards ID < 0x30 then calls
     # *(0x6217E0 + id * 4). No executable BSS table is faked.
     dispatch_words = {
@@ -157,6 +224,17 @@ def verify_app_registry_elf(elf):
             raise ValueError('demo helper string mismatch')
 
     expected = {
+        0x4FC820: 0x4D8518,  # ID 1 getter loads this GP-relative pointer
+        0x4F6868: 0x3FAED0,  # ID 1 base name getter
+        0x4F6898: 0x3FAAB0,  # ID 1 load callback
+        0x4F68A0: 0x3FAC20,  # ID 1 update callback
+        0x3FABFC: 0x24040002, # ID 1 begins ID 2 child
+        0x4F6928: 0x3FE330,  # ID 42 base getter: CAppMenuMain
+        0x4F6958: 0x3FDEB0,  # ID 42 load callback
+        0x4F6960: 0x3FE020,  # ID 42 native update
+        0x4F69B8: 0x4030D0,  # ID 43 getter: CAppShenronMain
+        0x3F7868: 0x2405002A,  # Press Start request ID 42
+        0x41F074: 0x24050001,  # Warning To Game requests ID 1
         0x3E03FC: 0x24425E00,  # DemoMain base vtable
         0x3E0410: 0x24425E28,  # DemoMain phase vtable
         0x3E1BEC: 0x24425ED0,  # DemoMovie base vtable
@@ -197,14 +275,24 @@ def verify_app_registry_elf(elf):
         'factory_table': hex(APP_FACTORY_TABLE),
         'transition_request': hex(APP_TRANSITION_REQUEST),
         'child_request': hex(APP_CHILD_REQUEST),
+        'registered_ids': list(native_ids),
+        'registered_count': len(native_ids),
         'registered': [resolve_app(app_id) for app_id, *_ in APP_FACTORIES],
+        'screen_handoff_evidence': {
+            'warning_to_game': {'request_id': 1, 'factory': '0x3f2de0',
+                                'wrapper_class_name': 'CAppWarning'},
+            'press_start_confirm': {'request_id': 42,
+                                    'factory': '0x3f1f40',
+                                    'class_name': 'CAppMenuMain'},
+            'adjacent_id_43': {'class_name': 'CAppShenronMain'},
+        },
         'duplicate_class_names_are_distinct_factories': [
-            {'ids': [2, 3], 'name': 'CAppTitleMain'},
+            {'ids': [12, 13], 'name': 'CAppSelectWorld'},
             {'ids': [6, 8], 'name': 'CAppDemoMain'},
         ],
         'title_handoff': {
             'source_id': 2,
-            'source': 'CAppTitleMain',
+            'source': 'CAppCRISofdec',
             'destination_id': 6,
             'destination': 'CAppDemoMain',
             'next_child_choices': list(DEMO_MAIN_CHILD_CHOICES),

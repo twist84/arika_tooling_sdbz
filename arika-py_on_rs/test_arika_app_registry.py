@@ -7,6 +7,7 @@ import unittest
 
 from arika_app_registry import (
     APP_FACTORY_TABLE, APP_FACTORIES, APP_TRANSITION_REQUEST,
+    APP_REGISTRY_COUNT, recover_registered_app_ids_elf,
     DEMO_MAIN_CHILD_CHOICES, resolve_app, title_handoff_request,
     verify_app_registry_elf,
 )
@@ -26,22 +27,38 @@ def finished_title_result():
 class RegistryTests(unittest.TestCase):
     def test_original_ids_are_not_zero_based_list_offsets(self):
         expected = {
-            2: 'CAppTitleMain',
+            1: 'CAppWarning',
+            2: 'CAppCRISofdec',
             3: 'CAppTitleMain',
             4: 'CAppLogoMain',
-            5: 'CAppWarning',
+            5: 'CAppMonitorSelect',
             6: 'CAppDemoMain',
             7: 'CAppDemoMovie',
             8: 'CAppDemoMain',
             9: 'CAppDemoPlay',
+            42: 'CAppMenuMain',
+            43: 'CAppShenronMain',
         }
         self.assertEqual(set(record[0] for record in APP_FACTORIES),
-                         set(expected))
+                         set(range(1, 48)))
         for app_id, name in expected.items():
             with self.subTest(app_id=app_id):
                 self.assertEqual(resolve_app(app_id)['class_name'], name)
         self.assertIsNone(resolve_app(0))
-        self.assertIsNone(resolve_app(1))
+        self.assertEqual(resolve_app(1)['factory'], 0x3F2DE0)
+        self.assertEqual(resolve_app(1)['constructor'], 0x3FA9A0)
+        self.assertEqual(resolve_app(2)['class_name'], 'CAppCRISofdec')
+        self.assertEqual(resolve_app(5)['class_name'], 'CAppMonitorSelect')
+        self.assertNotEqual(resolve_app(1)['base_vtable'], resolve_app(5)['base_vtable'])
+        self.assertNotEqual(resolve_app(2)['base_vtable'], resolve_app(3)['base_vtable'])
+        self.assertEqual(resolve_app(42)['factory'], 0x3F1F40)
+        self.assertEqual(resolve_app(42)['constructor'], 0x3FDD60)
+        self.assertEqual(resolve_app(42)['name_getter'], 0x3FE330)
+        self.assertEqual(resolve_app(42)['name_address'], 0x4D85F0)
+        self.assertEqual(resolve_app(43)['factory'], 0x3F1EE0)
+        self.assertNotEqual(resolve_app(42)['class_name'],
+                            resolve_app(43)['class_name'])
+        self.assertIsNone(resolve_app(48))
         self.assertNotEqual(resolve_app(2)['constructor'],
                             resolve_app(3)['constructor'])
         self.assertEqual(resolve_app(3)['factory'], 0x3f2d20)
@@ -168,9 +185,20 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(result['title_handoff']['destination'], 'CAppDemoMain')
         self.assertEqual(result['title_handoff']['next_child_choices'],
                          [4, 7, 8, 9])
-        self.assertEqual(result['registered'][4]['id'], 6)
-        self.assertEqual(result['registered'][6]['id'], 8)
-        self.assertEqual(result['registered'][7]['id'], 9)
+        self.assertEqual(result['registered_count'], APP_REGISTRY_COUNT)
+        self.assertEqual(sorted(result['registered_ids']), list(range(1, 48)))
+        self.assertEqual(len(result['registered']), 47)
+        from arika_native_app_extract import verify as verify_complete_metadata
+        from arika_app_registry import APP_NATIVE_REGISTRY
+        self.assertEqual(verify_complete_metadata(data, APP_NATIVE_REGISTRY)
+                         ['verified_applications'], 47)
+        self.assertEqual(sorted(recover_registered_app_ids_elf(data)),
+                         list(range(1, 48)))
+        catalog = {app['id']: app for app in result['registered']}
+        self.assertEqual(catalog[1]['class_name'], 'CAppWarning')
+        self.assertEqual(catalog[42]['class_name'], 'CAppMenuMain')
+        self.assertEqual(catalog[43]['class_name'], 'CAppShenronMain')
+        self.assertEqual(catalog[6]['class_name'], 'CAppDemoMain')
         proc = subprocess.run([
             sys.executable,
             str(Path(__file__).with_name('arika_app_registry.py')), path,

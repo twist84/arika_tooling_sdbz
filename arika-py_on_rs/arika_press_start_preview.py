@@ -85,6 +85,8 @@ class c_press_start_preview(W.QWidget):
 
     # A diagnostic notification; no automatic game factory execution.
     transition_requested = C.Signal(int)
+    # Native update completed, independent of the Inspect button.
+    native_transition_completed = C.Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -485,6 +487,10 @@ class c_press_start_preview(W.QWidget):
         if result['finished']:
             self.pause_playback()
         self.redraw()
+        if result['finished']:
+            target = self.m_runtime.snapshot()['destination_id']
+            if target is not None:
+                self.native_transition_completed.emit(target)
 
     def step(self):
         if not self.m_timer.isActive():
