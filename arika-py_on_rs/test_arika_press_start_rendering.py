@@ -76,6 +76,18 @@ class PressStartRenderingTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             load_press_start_archive_images([])
 
+    def test_source_atlas_extents_are_required_for_all_original_draws(self):
+        images, errors = load_press_start_archive_images({
+            'dis/d03/d03t0101.pix': synthetic_tim2_rgba32(257, 306),
+            'dis/d03/d03t0103.pix': synthetic_tim2_rgba32(512, 448),
+            'dis/d05/d05t0101.pix': synthetic_tim2_rgba32(32, 110),
+        })
+        self.assertIsNone(images[0])
+        self.assertIn('smaller than native sprite source', errors[0])
+        self.assertIsNotNone(images[1])
+        self.assertIsNone(images[2])
+        self.assertIn('smaller than native sprite source', errors[2])
+
     def test_background_then_foreground_native_geometry(self):
         foreground = self.texture((0, 250, 0, 255), 300, 320)
         background = self.texture((200, 0, 0, 255))
