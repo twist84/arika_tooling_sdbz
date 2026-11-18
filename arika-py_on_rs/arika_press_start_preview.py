@@ -335,15 +335,20 @@ class c_press_start_preview(W.QWidget):
         self.m_status.setText(
             '%s | native app ID %d | phase %d | idle age %.4f s | '
             'updates %d | one-shot %s | destination %s | '
-            'reference captures %d/2 | decoded resources %d/3%s' %
+            'reference captures %d/2 | decoded resources %d/3 | '
+            'native prompt %.4f s (%s) | FFON %s%s' %
             (state, PRESS_START_APP_ID, snapshot['phase'],
              snapshot['elapsed_seconds'], snapshot['updates'],
              'done' if snapshot['one_shot'] else 'pending',
              target_name, capture_count,
              sum(image is not None for image in self.m_images),
+             self.m_prompt_clock.phase,
+             'visible' if self.m_prompt_clock.visible else 'hidden',
+             'loaded' if self.m_copyright_images is not None else 'missing',
              ' | ' + self.m_reference_error if self.m_reference_error else ''))
         self.m_notice.setToolTip(
-            '\n'.join(error for error in self.m_asset_errors if error))
+            '\n'.join([error for error in self.m_asset_errors if error] +
+                      ([self.m_font_error] if self.m_font_error else [])))
         self.m_calls.setText(
             'Original calls (recorded, NOT executed): ' +
             (', '.join(call['address'] for call in self.m_last_calls)
