@@ -207,6 +207,30 @@ On local original ELF builds set `SDBZ_EU_BETA_ELF` for additional
 SHA-256/opcode/string-gated tests. Windows and Ubuntu GitHub Actions
 execute the synthetic regression suites and compile all new modules.
 
+### Two-reference visual error measurement
+
+The existing Press Start tab now has **Measure both PCSX2 states**,
+enabled only with both reference captures and reconstructed game assets.
+It generates independent reconstructed hidden and visible frames from
+the **same** decoded game resources (with the verified prompt gate
+forced false/true for each comparison, independently of elapsed phase).
+The native prompt-layout case is an explicit diagnostic selection, not
+inferred from controller state.
+
+The measurement reuses the editor's
+`arika_menu_pixel_comparison.compare_screenshot_pixels` implementation:
+bilinear resize from logical 512×448 to each original 4:3 capture crop,
+**no registration, alignment, offset correction or fitted color grading**.
+The UI shows hidden and visible RGB mean absolute error and root mean
+square error. Underlying reports distinguish reference edge/flat areas.
+A prompt-case change, archive change or newly loaded reference invalidates
+the previously displayed metrics. No capture data is saved or committed.
+
+The metrics are strictly descriptive until an authentic EU-beta archive is
+available to decode and compare. Their existence **does not** demonstrate
+pixel parity, native GS blending/filter state or matching temporal phase.
+Real reference residual values remain unmeasured in this environment.
+
 ## Unresolved evidence / completion blockers
 
 M1 is **not yet complete**. The archived `GAME EU BETA.zip` and
