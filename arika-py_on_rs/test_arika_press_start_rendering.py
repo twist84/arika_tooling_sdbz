@@ -482,9 +482,20 @@ class PressStartRenderingTests(unittest.TestCase):
         self.assertGreater(
             errors['reference_states']['visible']['all_pixels']
             ['mean_absolute_error'], 0)
-        with self.assertRaisesRegex(ValueError, 'both original'):
+        hidden_only = press_start_comparison_metrics(
+            (foreground, background, None), hidden, None)
+        self.assertEqual(set(hidden_only['reference_states']), {'hidden'})
+        self.assertEqual(hidden_only['missing_states'], ['visible'])
+        self.assertEqual(
+            hidden_only['reference_states']['hidden']['all_pixels']
+            ['mean_absolute_error'], 0.0)
+        visible_only = press_start_comparison_metrics(
+            (foreground, background, None), None, visible)
+        self.assertEqual(set(visible_only['reference_states']), {'visible'})
+        self.assertEqual(visible_only['missing_states'], ['hidden'])
+        with self.assertRaisesRegex(ValueError, 'at least one original'):
             press_start_comparison_metrics(
-                (foreground, background, None), hidden, None)
+                (foreground, background, None), None, None)
 
     def test_editor_measurement_is_explicit_and_invalidated_by_case_change(self):
         viewer = c_press_start_preview()
@@ -500,15 +511,20 @@ class PressStartRenderingTests(unittest.TestCase):
             640, 480, C.Qt.AspectRatioMode.IgnoreAspectRatio,
             C.Qt.TransformationMode.SmoothTransformation)
         viewer.load_reference_capture(reference, False)
+        self.assertTrue(viewer.m_measure.isEnabled())
+        viewer.m_measure.click()
+        self.assertIn('hidden MAE', viewer.m_comparison_stats.text())
+        self.assertIn('visible: no reference loaded',
+                      viewer.m_comparison_stats.text())
         viewer.load_reference_capture(reference, True)
         self.assertTrue(viewer.m_measure.isEnabled())
         viewer.m_measure.click()
         self.assertIn('hidden MAE', viewer.m_comparison_stats.text())
         self.assertIn('visible MAE', viewer.m_comparison_stats.text())
-        self.assertIn('copyright-only hidden MAE',
+        self.assertIn('copyright-only MAE',
                       viewer.m_comparison_stats.text())
-        self.assertIn('copyright-only visible MAE',
-                      viewer.m_comparison_stats.text())
+        self.assertNotIn('no reference loaded',
+                         viewer.m_comparison_stats.text())
         self.assertIn('NOT GS parity', viewer.m_comparison_stats.text())
         viewer.m_prompt_case.setCurrentIndex(4)
         self.assertIn('not measured', viewer.m_comparison_stats.text())
