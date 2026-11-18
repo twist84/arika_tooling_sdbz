@@ -27,6 +27,7 @@ class RegistryTests(unittest.TestCase):
     def test_original_ids_are_not_zero_based_list_offsets(self):
         expected = {
             2: 'CAppTitleMain',
+            3: 'CAppTitleMain',
             4: 'CAppLogoMain',
             5: 'CAppWarning',
             6: 'CAppDemoMain',
@@ -41,6 +42,10 @@ class RegistryTests(unittest.TestCase):
                 self.assertEqual(resolve_app(app_id)['class_name'], name)
         self.assertIsNone(resolve_app(0))
         self.assertIsNone(resolve_app(1))
+        self.assertNotEqual(resolve_app(2)['constructor'],
+                            resolve_app(3)['constructor'])
+        self.assertEqual(resolve_app(3)['factory'], 0x3f2d20)
+        self.assertEqual(resolve_app(3)['constructor'], 0x3f7150)
         self.assertNotEqual(resolve_app(8)['factory'],
                             resolve_app(6)['factory'])
         self.assertNotEqual(resolve_app(8)['constructor'],
@@ -163,9 +168,9 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(result['title_handoff']['destination'], 'CAppDemoMain')
         self.assertEqual(result['title_handoff']['next_child_choices'],
                          [4, 7, 8, 9])
-        self.assertEqual(result['registered'][3]['id'], 6)
-        self.assertEqual(result['registered'][5]['id'], 8)
-        self.assertEqual(result['registered'][6]['id'], 9)
+        self.assertEqual(result['registered'][4]['id'], 6)
+        self.assertEqual(result['registered'][6]['id'], 8)
+        self.assertEqual(result['registered'][7]['id'], 9)
         proc = subprocess.run([
             sys.executable,
             str(Path(__file__).with_name('arika_app_registry.py')), path,
