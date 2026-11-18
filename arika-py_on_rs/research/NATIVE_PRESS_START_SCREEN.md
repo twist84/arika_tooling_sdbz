@@ -152,6 +152,43 @@ about actual in-game entry phase. Play/Pause, Step and Reset use the
 existing editor UI. The manual Show PRESS START checkbox still switches
 only **PCSX2 reference capture state**, not the rebuilt clock.
 
+## Copyright FFON spacing/weight follow-up (2026-11-18)
+
+The user's side-by-side capture shows that reconstructed copyright glyphs
+are visually broader/brighter than PCSX2, leaving less visible space
+between letters. Character origins and total line width remain close.
+This should **not** be "fixed" by inventing a different advance, font
+scale, text offset, extra spacing, or hand-authored glyphs.
+
+The exact EU-beta ELF's font vtable at `0x4E3390`, glyph draw at
+`0x199EE0` and advance at `0x19A030` establish a **24px source
+FFON cell with 12px ASCII advance/quad width** before the copyright
+scale `0x3F2B851F` (~0.67). The existing shared menu helper used
+the **full 24px bitmap** at every 12px step, potentially allowing
+right-half source pixels to overpaint the next character. Press Start
+now opts into half-cell clipping while leaving the original main-menu
+default unchanged. Native character origins and ELF-derived two-pass
+copyright draw positions remain unchanged.
+
+The copyright passes also opt into **Qt smooth glyph sampling** at the
+fractionally downscaled text size; native sprite atlas draw sampling is
+unchanged. This addresses visible blockiness as a host preview
+approximation, **not** as an assertion about the original GS TEX1
+MMIN/MMAG or its alpha-test settings. The real font/glyph source bytes
+were not embedded into the repo; source-cell and synthetic alpha
+regressions are CI-tested but original-asset pixel equivalence remains
+unproven.
+
+The existing **Measure both PCSX2 states** now reports separate
+`copyright-only` MAEs for logical native rectangle
+`(60,375)-(480,416)`, in addition to full-frame statistics. No
+registration, forced alignment, colour correction or synthetic letter
+spacing is used. Recheck this screenshot-specific region after loading
+the genuine game archive and both captures; a lower local MAE and
+the original glyph shapes together are the acceptance criterion.
+The prompt-case selector (currently case 0 in the user's screenshot)
+does not influence FFON glyph advance.
+
 ## All prompt dispatch layouts (M1 follow-up, 2026-11-18)
 
 A direct disassembly of exact EU-beta `0x3F7E10` shows five selector
