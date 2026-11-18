@@ -138,17 +138,52 @@ def raster_press_start_copyright(font, font_data):
 
 
 
-def tint_press_start_ffon(image, rgb):
-    """Apply native FFON RGB as a glyph tint, preserving coverage alpha.
+FONT_COVERAGE_MODELS = (
+    'coverage_alpha', 'coverage_alpha_4bit',
+    'coverage_luminance', 'coverage_luminance_4bit',
+)
+FONT_4BIT_ALPHA_FACTOR = 16.0 / 17.0
 
-    QPainter.setOpacity scales *alpha*, not source RGB. The native dark
-    copyright pass specifies RGB=.25 at full fade alpha; drawing a white
-    glyph at opacity .25 would instead produce a pale ghost behind text.
+
+def press_start_font_model(mode):
+    """Return (keep original FFON luminance, alpha multiplier).
+
+    These are explicit hypotheses for PS2 4-bit texture interpretation.
+    They must be compared against game captures, not auto-selected as fact.
+    """
+    if type(mode) is not str or mode not in FONT_COVERAGE_MODELS:
+        raise ValueError('unknown diagnostic FFON coverage model')
+    return ('luminance' in mode,
+            FONT_4BIT_ALPHA_FACTOR if mode.endswith('_4bit') else 1.0)
+
+
+def tint_press_start_ffon(image, rgb, preserve_luminance=False):
+    """Tint the FFON source while preserving its separate 4-bit alpha.
+
+    The default is the existing Qt alpha-only approximation. The opt-in
+    luminance path retains the original decoded FFON grey RGB in addition
+    to alpha; it is an experimental GS texture hypothesis, NOT an assertion
+    about original palette, TEXA or blend state.
     """
     if not isinstance(image, G.QImage) or image.isNull():
         raise ValueError('expected original FFON glyph raster')
     if type(rgb) not in (int, float) or not 0.0 <= rgb <= 1.0:
         raise ValueError('native FFON tint must be in [0,1]')
+    if type(preserve_luminance) is not bool:
+        raise ValueError('FFON luminance selector must be boolean')
+    if preserve_luminance:
+        source = image.convertToFormat(G.QImage.Format.Format_RGBA8888)
+        pixels = bytearray(bytes(source.bits()))
+        stride = source.bytesPerLine()
+        for y in range(source.height()):
+            for x in range(source.width()):
+                offset = y * stride + 4 * x
+                for channel in range(3):
+                    pixels[offset + channel] = round(
+                        pixels[offset + channel] * rgb)
+        return G.QImage(
+            bytes(pixels), source.width(), source.height(), stride,
+            G.QImage.Format.Format_RGBA8888).copy()
     tinted = G.QImage(
         image.size(), G.QImage.Format.Format_ARGB32_Premultiplied)
     tinted.fill(C.Qt.GlobalColor.transparent)
@@ -165,7 +200,8 @@ def tint_press_start_ffon(image, rgb):
 
 
 
-def raster_press_start_copyright_glyph_quads(font, font_data):
+def raster_press_start_copyright_glyph_quads(font, font_data,
+                                             preserve_luminance=False):
     """Decode the original FFON into individual native-width glyph quads.
 
     The EE string path submits glyphs separately, advancing the pen in
@@ -181,6 +217,8 @@ def raster_press_start_copyright_glyph_quads(font, font_data):
 
     if (font.width, font.height, font.bits_per_pixel) != (24, 24, 4):
         raise ValueError('expected original 24x24 4bpp native font')
+    if type(preserve_luminance) is not bool:
+        raise ValueError('FFON luminance selector must be boolean')
     cached = {}
     lines = []
     for text in COPYRIGHT_LINES:
@@ -204,8 +242,10 @@ def raster_press_start_copyright_glyph_quads(font, font_data):
                     source.tobytes(), width, height, width * 4,
                     G.QImage.Format.Format_RGBA8888).copy()
                 cached[glyph_id] = (
-                    tint_press_start_ffon(image, 0.25),
-                    tint_press_start_ffon(image, 1.0))
+                    tint_press_start_ffon(
+                        image, 0.25, preserve_luminance),
+                    tint_press_start_ffon(
+                        image, 1.0, preserve_luminance))
             quads.append((origin, *cached[glyph_id]))
         lines.append(tuple(quads))
     return tuple(lines)
@@ -278,7 +318,8 @@ def verify_press_start_font_draw_elf(elf):
 
 def render_press_start_image(images, copyright_images=None,
                              prompt_visible=False, fade_alpha=1.0,
-                             prompt_case=1, copyright_quads=None):
+                             prompt_case=1, copyright_quads=None,
+                             font_alpha_multiplier=1.0):
     """Compose original static sprites, proven text/icon calls and prompt case.
 
     Copyright glyph pixels are rasterised with the existing game FFON helper.
@@ -286,6 +327,10 @@ def render_press_start_image(images, copyright_images=None,
     the PCSX2-observed three-part source layout; other controller cases are
     not silently approximated.
     """
+    if (type(font_alpha_multiplier) not in (int, float) or
+            not math.isfinite(font_alpha_multiplier) or
+            not 0.0 < font_alpha_multiplier <= 1.0):
+        raise ValueError('FFON alpha multiplier must be finite in (0,1]')
     if len(images) != len(PRESS_START_RESOURCE_KEYS):
         raise ValueError('expected exactly three resource image slots')
     if all(image is None for image in images[:2]):
@@ -358,7 +403,8 @@ def render_press_start_image(images, copyright_images=None,
         for operation in operations:
             if operation['kind'] == 'text' and copyright_quads is not None:
                 index = COPYRIGHT_LINES.index(operation['text'])
-                painter.setOpacity(operation['alpha'])
+                painter.setOpacity(
+                    operation['alpha'] * font_alpha_multiplier)
                 tint_index = 0 if operation['rgb'] == 0.25 else 1
                 for origin, shadow, foreground in copyright_quads[index]:
                     image = shadow if tint_index == 0 else foreground
