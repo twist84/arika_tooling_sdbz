@@ -3,7 +3,7 @@
 The runtime models the *application state* only; it does not synthesize
 sprite resources, audio progress, screen output or elapsed wall time.
 Each step receives the game's observed float delta, audio-helper result and
-controller words, then follows the recovered MIPS branch/fallthrough order.
+controller words, then follows the recovered MIPS branches and delay slots.
 
 The matching ELF is SLES_541.61 SHA-256
 80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0.
@@ -102,7 +102,7 @@ class c_logo_runtime:
         }
 
     def step(self, delta_seconds, audio_busy, controller0=0, controller1=0):
-        """Execute one native update including fallthroughs 0→1→2→3, 4→5.
+        """Execute one native update; only phases 0→1→2 can fall through.
 
         'delta_seconds' mirrors (this+0x28)->+0x04, not host wall time.
         The native skip-test reads bit 0x10 of both controller +0x22
@@ -141,8 +141,9 @@ class c_logo_runtime:
                 self.m_phase = 3
             elif not self.m_age < LOGO_DURATION:
                 self.m_phase = 3
-            else:
-                return {'finished': False, 'calls': events, 'snapshot': self.snapshot()}
+            # 0x41E98C branches to the return even when the gate succeeds.
+            # Phase 3 executes on the next update, not on this one.
+            return {'finished': False, 'calls': events, 'snapshot': self.snapshot()}
 
         if self.m_phase == 3:
             if self.m_current_logo == 2:
@@ -165,8 +166,8 @@ class c_logo_runtime:
             if not audio_busy:
                 self.m_age = _f32(0.0)
                 self.m_phase = 5
-                # The 0x41E9E8 case falls through to 0x41EA0C.
-                # Since age was just reset, its 1/12 s gate is false.
+                # 0x41EA04 branches to return; phase 5 starts next tick.
+            return {'finished': False, 'calls': events, 'snapshot': self.snapshot()}
 
         elif self.m_phase == 5:
             if not self.m_age < LOOP_PAUSE:

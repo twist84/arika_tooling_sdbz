@@ -15,9 +15,10 @@ ELF string getters and embedded class-name records reveal at least:
 | `CAppWarning` | name literal `0x4D8518`; base/phase vtables `0x4F72B0`/`0x4F72D8` | separate next research target |
 | `CAppTitleMain` | name literal `0x4D7F90` | separate next research target |
 
-These identities are not evidence of the precise initial app order or the
-artwork/texture resource filenames. Do not infer boot sequencing from their
-positions in the ELF string table.
+These identities are not evidence of the precise initial app order.
+The three logo resource keys are now recovered independently in
+[NATIVE_LOGO_RESOURCE_RENDER.md](NATIVE_LOGO_RESOURCE_RENDER.md).
+Do not infer boot sequencing from ELF string proximity.
 
 ## Logo application vtable and state fields
 
@@ -46,16 +47,17 @@ or `0x41E680..0x41E748`, not assumed host defaults.
 | --- | --- | --- |
 | 0 | `0x41E900..0x41E950` | copy next logo into active; advance next mod 3; clear skip and age; phase 1, *falls into phase 1* |
 | 1 | `0x41E954..0x41E970` | if `0x2C0C20` nonzero, hold; otherwise age=0, phase 2, *falls into phase 2* |
-| 2 | `0x41E974..0x41E990` + `0x41EBF0` | hold until either input gate or `age >= 2.0`; then phase 3, *falls into phase 3* |
+| 2 | `0x41E974..0x41E990` + `0x41EBF0` | hold until either input gate or `age >= 2.0`; then phase 3, **returns; phase 3 executes next update** |
 | 3, logos 0/1 | `0x41E994..0x41E9E4` and `0x41EAC0` | if not skip-latched, invoke two helper calls; phase 4 |
 | 3, logo 2 | `0x41E9C0` to `0x41EA78` | invoke final two helper calls; optional `0x3E0B00` if skip-latched; phase 10 |
-| 4 | `0x41E9E8..0x41EA08` | hold while `0x2C0C20` nonzero; else age=0, phase 5, *falls into phase 5* |
+| 4 | `0x41E9E8..0x41EA08` | hold while `0x2C0C20` nonzero; else age=0, phase 5, **returns; phase 5 executes next update** |
 | 5 | `0x41EA0C..0x41EA50` | hold until float32 `age >= 0x3DAAAAAB` (approximately 1/12 second); invoke helpers and restart at phase 0 |
 | 10 | `0x41EA54..0x41EA68` | return completion `v0=1` only when `0x2C0C20` returns zero |
 
 The logo's two-second age is measured **after** phase 1's readiness
 gate returns zero; phase 1 can take arbitrarily many ticks. The
-native implementation falls through several phases **in one update**.
+native implementation falls from phase 0 into phase 1 and 2 within one update,
+but **not** from 2 into 3 or from 4 into 5.
 An authored 60 FPS transition schedule would be incorrect.
 
 At `0x41EC50`, two input sources read halfwords at offset `+0x22`,
@@ -97,14 +99,17 @@ All other synthetic tests run in Windows/Linux CI.
 
 ## Not yet recovered
 
-- The three logo resources, loader callbacks and actual sprite/atlas associations
-  in `0x41E750` and `0x41EB90`; do not guess texture names.
+- The three logo resource **names**, asynchronous loader path and sprite
+  rectangle are recovered. Runtime resource object identity, TIM2 chunk
+  selection when ambiguous, and actual GS texture bindings are still unknown.
+  See [NATIVE_LOGO_RESOURCE_RENDER.md](NATIVE_LOGO_RESOURCE_RENDER.md).
 - The downstream app route after phase 10 returns completion.
 - The meaning of native helper `0x3E0B00` and whether the two
   `0x2C0C90`/`0x2C08A0` calls directly correspond to audio or fades.
-- Exact start-up screen pixels, alpha/depth/GS state or image placement.
+- Exact startup screen pixels, alpha/depth/GS state and native raster
+  parity. The native sprite source/destination rectangles are now proven.
 - `CAppWarning` initialization/update/draw and `CAppTitleMain` flow.
 
-**Next:** trace the resource/renderer calls and connect observed logo
-instances to the existing PIX loader without synthetic geometry; then
-recover `CAppWarning` and its handoff into `CAppTitleMain`.
+**Next:** capture runtime resource/GS state for pixel parity and trace
+`CAppWarning` plus its handoff into `CAppTitleMain`. The separate
+original-asset Qt preview is described in NATIVE_LOGO_RESOURCE_RENDER.md.
