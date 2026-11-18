@@ -172,6 +172,8 @@ class WarningPreviewTests(unittest.TestCase):
         tabs.setCurrentIndex(1)
         self.m_app.processEvents()
         self.assertFalse(viewer.m_timer.isActive())
+        self.assertTrue(viewer.m_step.isEnabled())
+        self.assertIn('Paused', viewer.m_status.text())
         tabs.close()
 
 
