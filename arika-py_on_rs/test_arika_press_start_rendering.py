@@ -11,6 +11,7 @@ from arika_press_start_preview import c_press_start_preview
 from arika_press_start_rendering import (
     decode_press_start_texture, load_press_start_archive_images,
     render_press_start_image, press_start_comparison_image,
+    raster_press_start_copyright, load_press_start_archive_font,
 )
 from arika_press_start_resources import PRESS_START_RESOURCE_KEYS
 from test_arika_logo_preview import synthetic_tim2_rgba32, synthetic_fpix
@@ -133,6 +134,87 @@ class PressStartRenderingTests(unittest.TestCase):
         self.assertEqual(viewer.m_runtime.snapshot()['updates'], 0)
         self.assertEqual(viewer.m_view_mode.currentIndex(), 0)
         self.assertIn('decoded resources 0/3', viewer.m_status.text())
+
+
+    def test_native_copyright_symbols_use_third_original_texture(self):
+        background = self.texture((100, 10, 20, 255))
+        symbols = self.texture((0, 0, 0, 0))
+        painter = G.QPainter(symbols)
+        painter.fillRect(C.QRect(15, 97, 17, 17),
+                         G.QColor(20, 255, 80, 255))
+        painter.end()
+        native = render_press_start_image((None, background, symbols))
+        self.assertEqual(native.pixelColor(68, 382).green(), 255)
+        self.assertEqual(native.pixelColor(68, 399).green(), 255)
+        self.assertEqual(native.pixelColor(68, 381).green(), 6)
+        self.assertEqual(native.pixelColor(450, 420).green(), 6)
+
+    def test_atlas_prompt_visibility_uses_three_elf_case_one_rectangles(self):
+        foreground = self.texture((0, 0, 0, 0))
+        painter = G.QPainter(foreground)
+        painter.fillRect(C.QRect(0, 357, 99, 30),
+                         G.QColor(0, 255, 0, 255))
+        painter.fillRect(C.QRect(204, 357, 74, 30),
+                         G.QColor(0, 0, 255, 255))
+        painter.fillRect(C.QRect(99, 357, 105, 30),
+                         G.QColor(255, 255, 0, 255))
+        painter.end()
+        background = self.texture((100, 20, 0, 255))
+        hidden = render_press_start_image(
+            (foreground, background, None), prompt_visible=False)
+        visible = render_press_start_image(
+            (foreground, background, None), prompt_visible=True)
+        self.assertEqual(hidden.pixelColor(118, 345).green(), 12)
+        self.assertEqual(visible.pixelColor(118, 345).green(), 255)
+        self.assertEqual(visible.pixelColor(219, 345).blue(), 255)
+        self.assertEqual(visible.pixelColor(295, 345).red(), 255)
+        self.assertEqual(hidden.pixelColor(399, 345).red(), 60)
+        with self.assertRaises(ValueError):
+            render_press_start_image(
+                (foreground, background, None), prompt_visible=1)
+
+    def test_original_ffon_uses_shared_native_raster(self):
+        from test_arika_menu_ffon_native import synthetic_font
+        font, data = synthetic_font()
+        images = raster_press_start_copyright(font, data)
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0].height(), 24)
+        self.assertEqual(images[0].width(),
+                         12 * len('1989 BIRD STUDIO/SHUEISHA, TOEI ANIMATION'))
+        self.assertTrue(any(images[0].pixelColor(x, 0).alpha() != 0
+                            for x in range(images[0].width())))
+        blank, data, error = load_press_start_archive_font({})
+        self.assertIsNone(blank)
+        self.assertIsNone(data)
+        self.assertIn('not found', error)
+
+    def test_native_prompt_clock_steps_without_replacing_reference_toggle(self):
+        viewer = c_press_start_preview()
+        self.m_views.append(viewer)
+        pix = synthetic_tim2_rgba32()
+        mapping = {key + '.pix': pix for key in PRESS_START_RESOURCE_KEYS}
+        viewer.load_archive_assets(mapping)
+        self.assertFalse(viewer.m_prompt_clock.visible)
+        viewer.m_delta.setValue(1.25)
+        viewer.m_step.click()
+        self.assertTrue(viewer.m_prompt_clock.visible)
+        self.assertIn('native prompt 1.2500 s (visible)',
+                      viewer.m_status.text())
+        viewer.m_clock_enabled.setChecked(False)
+        viewer.m_delta.setValue(1.0)
+        viewer.m_step.click()
+        self.assertEqual(viewer.m_prompt_clock.phase, 1.25)
+        viewer.m_prompt_visible.setChecked(False)
+        self.assertTrue(viewer.m_prompt_clock.visible)
+        viewer.m_clock_enabled.setChecked(True)
+        viewer.m_delta.setValue(2.0)
+        viewer.m_step.click()
+        self.assertFalse(viewer.m_prompt_clock.visible)
+        self.assertEqual(viewer.m_prompt_clock.phase, 0.0)
+        viewer.reset()
+        self.assertEqual(viewer.m_prompt_clock.phase, 0.0)
+        viewer.load_archive_assets({})
+        self.assertIsNone(viewer.m_copyright_images)
 
 
 if __name__ == '__main__':
