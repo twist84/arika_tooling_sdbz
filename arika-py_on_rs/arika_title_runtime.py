@@ -172,6 +172,9 @@ class c_title_runtime:
         if type(resource_ready) is not bool:
             raise ValueError('resource_ready must be a captured boolean')
         self.m_loader_updates += 1
+        # 0x3F88AC returns zero even on the tick that switches 1 -> 10.
+        # Only the following call enters native state 10 and returns one.
+        ready_on_entry = self.m_loader_phase == 10
         calls = []
         if self.m_loader_phase == 0:
             calls += [
@@ -190,7 +193,7 @@ class c_title_runtime:
             ]
             self.m_loader_phase = 10
         return {
-            'ready': self.m_loader_phase == 10,
+            'ready': ready_on_entry,
             'calls': calls,
             'loader_phase': self.m_loader_phase,
         }
