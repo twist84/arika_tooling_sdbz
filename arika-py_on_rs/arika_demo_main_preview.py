@@ -279,11 +279,16 @@ class c_demo_main_preview(W.QWidget):
         trace = ', '.join(
             '%s(%s)' % (call['address'], ','.join(map(str,call['arguments'])))
             for call in self.m_update_calls)
+        destination = (
+            resolve_app(update['last_return'])
+            if update['finished'] else None)
         self.m_update_trace.setText(
             'Native calls (recorded, not executed): ' +
             (trace or 'none') +
-            (' | Requested parent application ID %d' %
-             update['last_return'] if update['finished'] else ''))
+            (' | Requested parent application ID %d (%s; factory 0x%X)' %
+             (update['last_return'], destination['class_name'],
+              destination['factory'])
+             if destination is not None else ''))
         self.m_update_play.setEnabled(not update['finished'])
         self.m_update_step.setEnabled(
             not update['finished'] and not self.m_update_timer.isActive())
