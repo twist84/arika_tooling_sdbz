@@ -172,9 +172,10 @@ class c_press_start_preview(W.QWidget):
         self.m_notice = W.QLabel(
             'Decoded original sprites, copyright symbols and FFON text are '
             'placed using recovered ELF draw arguments. The shared native '
-            'clock gates the atlas-backed prompt. Global clock phase at '
-            'screen entry, final GS blending/filtering, other controller '
-            'variants and pixel parity remain unverified.')
+            'clock gates the atlas-backed prompt. This is NOT recreated '
+            'native GS output. Global clock phase at screen entry, final '
+            'GS blending/filtering, other controller variants and pixel '
+            'parity remain unverified.')
         self.m_notice.setWordWrap(True)
 
         layout = W.QVBoxLayout(self)
