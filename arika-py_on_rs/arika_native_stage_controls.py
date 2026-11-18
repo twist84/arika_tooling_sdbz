@@ -101,7 +101,9 @@ def inspect_native_initial_stage_state(scene):
                                 (node['index'], role))
                 continue
             if target not in _descendants(nodes, node['index']):
-                raise ValueError('state-control target outside original subtree')
+                warnings.append('control %d: %s target outside original subtree' %
+                                (node['index'], role))
+                continue
             actions.append({
                 'controller_node': node['index'],
                 'target_node': target,
