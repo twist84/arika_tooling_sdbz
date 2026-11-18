@@ -48,6 +48,25 @@ ELF_SWITCH_WORDS = {
     0x240AA0: 0xAC620028,
 }
 
+# Independently verified object ownership and phase progression:
+# the loader calls the kind-6 initial setup; the constructor installs
+# vtable 0x4E7110 whose +0x18 slot points to switched callback 0x240710.
+ELF_LIFECYCLE_WORDS = {
+    0x23CCF4: 0x0C0900A4,  # loader JAL 0x240290
+    0x240C20: 0x24020007,  # class constructor
+    0x240C38: 0x24427110,  # vtable address 0x4E7110
+    0x240C40: 0xAC820000,  # write vtable ptr to object+0
+    0x240C78: 0xAC800054,  # constructor initializes phase/status=0
+    0x2403F4: 0xAE020060,  # timer countdown remaining
+    0x2404AC: 0x24020001,  # timer completion value 1
+    0x2404B0: 0xAE020054,  # writes phase/status=1
+    0x2408DC: 0xAC800054,  # reset status=0
+    0x2408E0: 0xAC820060,  # reset countdown from +0x5c
+}
+ELF_VTABLE_WORDS = {
+    0x4E7128: 0x00240710,  # kind-6 vtable +0x18 -> gated switch
+}
+
 SCENARIO_NAMES = ('initial', 'switched', 'restored')
 ALTERNATE_FUNCTION = 0x240710
 RESTORE_FUNCTION = 0x240910
@@ -61,16 +80,21 @@ def verify_native_stage_switch_elf(data):
     original = verify_native_stage_control_elf(data)
     if type(data) is not bytes or hashlib.sha256(data).hexdigest() != ELF_SHA256:
         raise ValueError('exact EU-beta ELF SHA-256 required')
-    for address, expected in ELF_SWITCH_WORDS.items():
-        offset = address - ELF_BIAS
-        if offset < 0 or offset + 4 > len(data):
-            raise ValueError('stage state-switch opcode outside mapped ELF')
-        if struct.unpack_from('<I', data, offset)[0] != expected:
-            raise ValueError('stage state-switch opcode mismatch at 0x%08X' %
-                             address)
+    for table in (ELF_SWITCH_WORDS, ELF_LIFECYCLE_WORDS,
+                  ELF_VTABLE_WORDS):
+        for address, expected in table.items():
+            offset = address - ELF_BIAS
+            if offset < 0 or offset + 4 > len(data):
+                raise ValueError('stage state-switch evidence outside mapped ELF')
+            if struct.unpack_from('<I', data, offset)[0] != expected:
+                raise ValueError(
+                    'stage state-switch opcode/pointer mismatch at 0x%08X' %
+                    address)
     return {
         'verified_initial_words': original['verified_original_instruction_words'],
         'verified_switch_words': len(ELF_SWITCH_WORDS),
+        'verified_lifecycle_words': len(ELF_LIFECYCLE_WORDS),
+        'verified_vtable_slots': len(ELF_VTABLE_WORDS),
         'initial_flag_mask': INITIAL_MASK,
         'original_runtime_executed': False,
     }
