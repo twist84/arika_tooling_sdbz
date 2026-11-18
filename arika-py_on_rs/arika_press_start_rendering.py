@@ -3,6 +3,8 @@
 Composes verified static and prompt atlas sprites, copyright text and symbols.
 This Qt approximation does not emulate GS blending or filtering.
 """
+import math
+
 from PySide6 import QtCore as C, QtGui as G
 
 from arika_dat import container, tim2_rgba
@@ -241,7 +243,9 @@ def render_press_start_image(images, copyright_images=None,
             raise ValueError('expected two native FFON glyph quad runs')
         for quads in copyright_quads:
             for quad in quads:
-                if (len(quad) != 3 or not isinstance(quad[0], (int, float))
+                if (not isinstance(quad, (tuple, list)) or len(quad) != 3
+                        or type(quad[0]) not in (int, float)
+                        or not math.isfinite(quad[0])
                         or any(not isinstance(image, G.QImage) or
                                image.isNull() for image in quad[1:])):
                     raise ValueError('invalid native FFON glyph quad')
