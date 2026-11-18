@@ -205,10 +205,11 @@ The original `0x2CDCA0` string renderer calls the font vtable
 comes from `0x19A030`. The editor now decodes each **12×24
 ASCII half-cell glyph** from the original `font/5-24-2.fon`, caches
 its shadow (RGB .25) and white (RGB 1.0) images on archive load, and
-submits a separate fractionally positioned 12×24 source quad at the
-original `0x3F2B851F` scale. Pen origins come from the existing
-float32 `native_help_glyph_origins` helper, not an invented
-inter-character spacing. The prior whole-line composition remains as
+submits a separate 12×24 source quad at the original
+`0x3F2B851F` scale. Pen origins come from the existing float32
+`native_help_glyph_origins` helper; actual submitted glyph positions
+and dimensions are **integer-quantized by the ELF** as documented below,
+not an invented inter-character spacing. The prior whole-line composition remains as
 an isolated legacy/synthetic fallback, and the main-menu font path
 does not change.
 
@@ -219,6 +220,44 @@ has been hardcoded. Repeat the two capture comparisons with the same
 case-1 prompt selection after pulling this commit; the measurable
 copyright-only residual will determine whether the actual-per-glyph
 submission reduced the visual discrepancy.
+
+### Native font pixel-coordinate quantization (18:35 capture)
+
+Inspecting the user's newer 1920×1040 side-by-side screenshot directly
+instead of relying on the editor (which had **only 1/2 reference states
+loaded**) confirms copyright-region near-white pixels are substantially
+overrepresented in the reconstruction. At an RGB threshold of 180,
+the reconstruction's copyright rows contain approximately **1.38×**
+as many bright pixels as the reference; at threshold 245 the count is
+almost **3×**. Those pixel counts come from the displayed editor
+screenshot, not raw GS or decoded original texture data, and contain
+capture scaling/background effects.
+
+The exact original EU-beta ELF also reveals a specific host-raster
+mistake: `0x199EE0` converts the font-scaled **glyph width**
+(`0x199F58`), **height** (`0x199FAC`), **x** (`0x199FE0`),
+and **y** (`0x199FF0`) with `CVT.W.S` before submitting
+`0x112780`. The previous Qt implementation drew these at fractional
+positions. The new `native_press_start_ffon_rect` reproduces
+float32 intermediates and integer rectangle dimensions/positions,
+without modifying the proven 12-unit character advance or original
+ELF two-pass text positions. With the original ~0.67 scale, a 12×24
+source glyph becomes an **8×16 destination**, with occasional 9-pixel
+pen-origin jumps from accumulated fractional advances. Original
+FCR31 rounding mode at runtime still needs confirmation; default
+round-to-nearest is the current evidence-bounded assumption.
+
+A dedicated `verify_press_start_font_draw_elf` checks seven original
+machine words and exact EU-beta SHA-256; the synthetic tests check
+integer destination examples and reject malformed quads.
+
+**Comparison usability:** Press Start now allows pixel metrics from
+**either** original PCSX2 capture independently, explicitly marking
+the missing state as unavailable. It continues to measure both when
+both captures are loaded, without synthesizing or copying one state.
+The native font draw change is not asserted to solve the entire pixel
+difference until the user repeats comparison with actual archive assets.
+GS alpha/filter/UV remain open research items.
 
 ## All prompt dispatch layouts (M1 follow-up, 2026-11-18)
 
