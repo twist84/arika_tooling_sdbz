@@ -1,0 +1,7 @@
+{
+  "format": "sdbz-eu-beta-ee-factory-trace-v1",
+  "elf_sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+  "source": "synthetic-test-fixture",
+  "note": "EMPTY TEMPLATE ONLY. Replace source with pcsx2-ee-debugger after recording genuine paused EE state. No runtime observations are included.",
+  "events": []
+}
