@@ -124,7 +124,10 @@ def raster_press_start_copyright(font, font_data):
 
     images = []
     for line in COPYRIGHT_LINES:
-        bitmap = render_native_help_line(font, font_data, line)
+        # The ELF dispatch draws ASCII as 12-source-unit glyph quads.
+        # A 24-wide bitmap must not spill into its neighbour's cell.
+        bitmap = render_native_help_line(
+            font, font_data, line, clip_ascii_to_half_cell=True)
         width, height = bitmap.size
         raw = bitmap.tobytes()
         images.append(G.QImage(raw, width, height, width * 4,
