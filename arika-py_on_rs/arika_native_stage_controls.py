@@ -148,30 +148,37 @@ def inspect_native_initial_stage_state(scene):
     }
 
 
-def native_initial_preview_hidden_nodes(scene, document):
-    """Resolve STG secondary roots to glTF objects by stable source offset.
+def native_stage_preview_hidden_nodes(scene, document, suppressed_roots,
+                                      inspected):
+    """Map proposed STG root suppression to exact, unique glTF source nodes.
 
-    Missing or duplicated original STG offsets (e.g. after editor copy/delete)
-    do not cause arbitrary hiding. Collision wireframes are not hidden:
-    the native collision flag consumer has not been fully mapped.
+    Source offsets, kind and name must all match. This is deliberately shared
+    by the initial and phase-switched preview; neither mutates the document.
+    A collision duplicate is not a visually suppressed source object.
     """
-    inspected = inspect_native_initial_stage_state(scene)
+    if not isinstance(scene, dict) or scene.get('format') != 'ARIKA_STG':
+        raise ValueError('expected parsed ARIKA_STG document')
     doc_nodes = document.get('nodes', ())
     if not isinstance(doc_nodes, list):
         raise ValueError('expected glTF nodes list')
+    if not isinstance(suppressed_roots, (list, tuple)):
+        raise ValueError('expected preview root sequence')
     by_offset = {}
     for i, node in enumerate(doc_nodes):
         extras = node.get('extras', {})
         if not isinstance(extras, dict):
             continue
         offset = extras.get('stg_offset')
-        if (type(offset) is int and node.get('name', '').startswith('collision:')
-                is False):
+        if (type(offset) is int and
+                not node.get('name', '').startswith('collision:')):
             by_offset.setdefault(offset, []).append(i)
     hidden = set()
     skipped = []
-    for original in inspected['preview_suppressed_root_nodes']:
-        source = scene['nodes'][original]
+    original_nodes = scene['nodes']
+    for original in sorted(set(suppressed_roots)):
+        if type(original) is not int or not 0 <= original < len(original_nodes):
+            raise ValueError('invalid original stage target')
+        source = original_nodes[original]
         matches = [
             i for i in by_offset.get(source['offset'], ())
             if (doc_nodes[i].get('name') == source['name'] and
@@ -183,8 +190,21 @@ def native_initial_preview_hidden_nodes(scene, document):
                 (original, len(matches)))
             continue
         hidden.update(_descendants(doc_nodes, matches[0]))
-    return {'hidden_gltf_nodes': sorted(hidden),
-            'stage_state': inspected,
-            'skipped_mappings': skipped,
-            'preview_only': True,
-            'source_document_mutated': False}
+    return {
+        'hidden_gltf_nodes': sorted(hidden),
+        'stage_state': inspected,
+        'skipped_mappings': skipped,
+        'preview_only': True,
+        'source_document_mutated': False,
+    }
+
+
+def native_initial_preview_hidden_nodes(scene, document):
+    """Resolve original initial secondary target flags into a visual preview.
+
+    The native collision and GS consumers are not completely established.
+    A hidden object in this diagnostic is NOT an observed game visibility.
+    """
+    inspected = inspect_native_initial_stage_state(scene)
+    return native_stage_preview_hidden_nodes(
+        scene, document, inspected['preview_suppressed_root_nodes'], inspected)
