@@ -1,5 +1,6 @@
 """Regression tests for native stage kind-6 initial state mask diagnostics."""
 import copy
+import importlib.util
 import os
 from pathlib import Path
 import struct
@@ -164,6 +165,48 @@ class NativeStageInitialStateTests(unittest.TestCase):
         corrupt[0x240878-0xFFF80]^=1
         with self.assertRaisesRegex(ValueError,'SHA-256'):
             verify_native_stage_control_elf(bytes(corrupt))
+
+    @unittest.skipUnless(
+        all(importlib.util.find_spec(name) for name in
+            ('PySide6', 'wgpu', 'rendercanvas')),
+        'Qt/WebGPU scene-editor dependencies required')
+    def test_editor_toggle_is_read_only_and_restores_authored_hiding(self):
+        os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
+        from types import SimpleNamespace
+        from PySide6 import QtWidgets as W
+        from arika_scene_editor import c_scene_editor
+        app=W.QApplication.instance() or W.QApplication([])
+        editor=c_scene_editor()
+        scene=parse_stg(controlled_stage_fixture())
+        document=gltf_stage_nodes(scene)
+        # The preview must not depend on mesh resources or an active GPU.
+        project=SimpleNamespace(
+            m_stage=SimpleNamespace(m_scene=scene),
+            m_document=document,
+            m_background_preset=None,
+            background_rgba=lambda:None,
+        )
+        try:
+            editor.m_project=project
+            editor.m_view.set_project(project)
+            editor.m_object_view.set_project(project)
+            self.assertEqual(editor.m_view.m_native_stage_hidden,{4})
+            self.assertEqual(editor.m_view.effective_hidden_nodes(),set())
+            original=copy.deepcopy(document)
+            editor.m_native_stage_state_action.setChecked(True)
+            self.assertTrue(editor.m_view.m_native_initial_state_preview)
+            self.assertTrue(editor.m_object_view.m_native_initial_state_preview)
+            self.assertEqual(editor.m_view.effective_hidden_nodes(),{4})
+            self.assertEqual(editor.m_object_view.effective_hidden_nodes(),{4})
+            self.assertIn('Diagnostic only',editor.statusBar().currentMessage())
+            self.assertEqual(document,original)
+            editor.m_native_stage_state_action.setChecked(False)
+            self.assertEqual(editor.m_view.effective_hidden_nodes(),set())
+            self.assertEqual(editor.m_object_view.effective_hidden_nodes(),set())
+            self.assertEqual(document,original)
+        finally:
+            editor.close()
+            app.processEvents()
 
     def test_invalid_scene_and_cycles_rejected(self):
         with self.assertRaises(ValueError):
