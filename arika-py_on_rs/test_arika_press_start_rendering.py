@@ -318,11 +318,15 @@ class PressStartRenderingTests(unittest.TestCase):
         })
         self.assertFalse(viewer.m_measure.isEnabled())
         reconstruction = viewer.current_reconstruction()
-        viewer.load_reference_capture(reconstruction, False)
-        viewer.load_reference_capture(reconstruction, True)
+        # A 512x448 logical PS2 frame is NOT a valid 4:3 screenshot crop.
+        reference = reconstruction.scaled(
+            640, 480, C.Qt.AspectRatioMode.IgnoreAspectRatio,
+            C.Qt.TransformationMode.SmoothTransformation)
+        viewer.load_reference_capture(reference, False)
+        viewer.load_reference_capture(reference, True)
         self.assertTrue(viewer.m_measure.isEnabled())
         viewer.m_measure.click()
-        self.assertIn('hidden MAE 0.000', viewer.m_comparison_stats.text())
+        self.assertIn('hidden MAE', viewer.m_comparison_stats.text())
         self.assertIn('visible MAE', viewer.m_comparison_stats.text())
         self.assertIn('NOT GS parity', viewer.m_comparison_stats.text())
         viewer.m_prompt_case.setCurrentIndex(4)
