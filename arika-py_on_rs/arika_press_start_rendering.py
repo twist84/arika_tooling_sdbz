@@ -225,3 +225,47 @@ def press_start_comparison_image(reconstructed, reference):
     finally:
         painter.end()
     return canvas
+
+
+def press_start_comparison_metrics(images, hidden_reference,
+                                   visible_reference, copyright_images=None,
+                                   prompt_case=1, resampling='bilinear'):
+    """Measure both original PCSX2 states against rebuilt archive layers.
+
+    Each reconstruction uses the SAME original resources with only the
+    verified prompt visibility gate changed. No screenshot pixels are
+    ever used in reconstruction and no automatic alignment is performed.
+    Stats are descriptive, not a claim of GS pixel parity.
+    """
+    from PIL import Image
+    from arika_menu_pixel_comparison import compare_screenshot_pixels
+
+    def pillow_image(qimage):
+        if not isinstance(qimage, G.QImage) or qimage.isNull():
+            raise ValueError('expected nonempty QImage reference')
+        rgba = qimage.convertToFormat(G.QImage.Format.Format_RGBA8888)
+        data = bytes(rgba.bits())
+        return Image.frombytes(
+            'RGBA', (rgba.width(), rgba.height()), data,
+            'raw', 'RGBA', rgba.bytesPerLine(), 1)
+
+    if hidden_reference is None or visible_reference is None:
+        raise ValueError('both original PCSX2 reference states are required')
+    results = {}
+    for name, show_prompt, reference in (
+            ('hidden', False, hidden_reference),
+            ('visible', True, visible_reference)):
+        candidate = render_press_start_image(
+            images, copyright_images=copyright_images,
+            prompt_visible=show_prompt, prompt_case=prompt_case)
+        if candidate is None:
+            raise ValueError('original game texture layers are required')
+        metrics, _ = compare_screenshot_pixels(
+            pillow_image(reference), pillow_image(candidate),
+            resampling=resampling)
+        results[name] = metrics
+    return {
+        'prompt_case': prompt_case,
+        'reference_states': results,
+        'evidence': 'diagnostic only; GS and fade parity not established',
+    }
