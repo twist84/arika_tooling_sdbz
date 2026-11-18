@@ -131,6 +131,18 @@ class c_demo_main_update:
             'last_return': self.m_last_return,
         }
 
+    def set_captured_next_choice(self, index):
+        """Inject an observed +0x29 value at a native phase-0 boundary.
+
+        Enables investigating a captured session which starts on a later
+        child; this is NOT a claim that gameplay selects the given child.
+        """
+        if type(index) is not int or not 0 <= index < 4:
+            raise ValueError('captured choice must be 0..3')
+        if self.m_phase != 0 or self.m_finished:
+            raise ValueError('captured choice can only be set at phase 0')
+        self.m_next_choice = index
+
     def step(self, child_present=False, child_pending=True, external_exit=False):
         if any(type(value) is not bool for value in (
                 child_present, child_pending, external_exit)):
