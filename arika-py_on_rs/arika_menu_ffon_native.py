@@ -63,17 +63,26 @@ def native_help_glyph_origins(text, scale=NATIVE_MENU_FONT_SCALE):
     return tuple(origins), x
 
 
-def render_native_help_line(font, font_data, text):
+def render_native_help_line(font, font_data, text,
+                            clip_ascii_to_half_cell=False):
     """Host preview with native fixed-cell ASCII advances (source size).
 
     Return an RGBA bitmap in **unscaled source units**. The caller draws
     the entire run at the single native scale 0.75, not each glyph resized
     independently. Spaces take 12 units without drawing a glyph.
 
+    With clip_ascii_to_half_cell=True, each ASCII source glyph is
+    limited to the half-width 12-pixel native quad before compositing.
+    This prevents the unused right half of a 24px FFON record from
+    overlapping the next character; it does not alter native advances.
+    The default keeps existing main-menu previews unchanged.
+
     Bitmap-to-quad UVs and GS alpha remain a presentation approximation;
     no horizontal bbox-trim/kerning or authored 3px spacing is performed.
     """
     _validate_help_line(text)
+    if type(clip_ascii_to_half_cell) is not bool:
+        raise ValueError('native half-cell clipping flag must be boolean')
     if font.width != NATIVE_FONT_CELL_WIDTH or font.height != NATIVE_FONT_CELL_HEIGHT:
         raise ValueError('expected EU-beta 24x24 native menu font')
     cell_width = NATIVE_ASCII_ADVANCE
@@ -87,8 +96,10 @@ def render_native_help_line(font, font_data, text):
             continue
         source = decode_glyph(font_data, font.glyph_offset(glyph_id - 1),
                               font.width, font.height, font.row_stride)
-        # Native FFON uses four-bit coverage. The exact PS2 source-UV
-        # crop is not established; full bitmap placement is diagnostic.
-        # Preserve that distinction from the *verified* 12px advance.
+        # 0x19A030 establishes half-width ASCII advances (12 of 24).
+        # The original native per-glyph quad is half-width as well.
+        # Keep optional clipping separate from unverified sampler/GS alpha.
+        if clip_ascii_to_half_cell:
+            source = source.crop((0, 0, cell_width, font.height))
         image.alpha_composite(source, (index * cell_width, 0))
     return image

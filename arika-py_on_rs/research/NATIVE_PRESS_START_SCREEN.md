@@ -1,76 +1,446 @@
 # Native EU-beta Press Start (application ID 3)
 
-## Evidence and visual references
+## Scope and evidence
 
-The target is the **Super Dragon Ball Z (Europe) beta** ELF, SLES_541.61, SHA-256 **80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0**. EU retail uses the same filename and must not be substituted.
+M1 reconstructs the **existing Arika Editor → Menu → Press Start** tab.
+Target: Super Dragon Ball Z **Europe beta** `SLES_541.61`, exact ELF SHA-256
+`80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0`.
+EU retail has the same executable basename: **never infer region from filename**.
+No copyrighted ELF, PIX, FFON, or PCSX2 captures are embedded in this repository.
 
-The two user-provided PCSX2 screenshots show the same landscape/logo/copyright screen in two states: with and without the blue **PRESS START button** prompt. The captured PCSX2 window is 1920×1040; the measured gameplay picture in these particular captures is (307, 96, 1040, 778), displayed at 4:3. This crop is a screenshot-specific reference, not a GS viewport register. Neither image is committed.
+All recovery functions fail closed against the original ELF hash, then
+site-specific MIPS words/string pointers. CI uses synthetic source assets;
+local optional-ELF tests use `SDBZ_EU_BETA_ELF`.
 
-## Separate application factories
+The two user-provided 1920×1040 PCSX2 windows depict the Press Start prompt
+hidden and visible. **The complete gameplay picture is the crop
+`(357,111,1206,903)`**, measured on these captures. The previous
+`(307,96,1040,778)` rectangle was incorrect: it included window chrome
+and cut off the copyright text. The new crop preserves both copyright lines.
+It is a **screenshot-specific** viewport, not an extracted GS display register.
+The native logical canvas remains **512×448**, presented at **4:3**;
+native 512:448 coordinates must not be mistaken for a display aspect ratio.
 
-The ELF returns the same CAppTitleMain class-name string for distinct registered applications:
+## Application identity and native lifecycle
+
+Both application IDs 2 and 3 use the name `CAppTitleMain`, but are separate
+factories:
 
 | ID | Factory | Constructor | Phase vtable | Role |
-|---:|---|---|---|---|
-| 2 | 0x3F2D80 | 0x3F86E0 | 0x4F66F8 | Timed four-second title interval |
-| **3** | **0x3F2D20** | **0x3F7150** | **0x4F6698** | **Interactive Press Start** |
+|---|---|---|---|---|
+| 2 | `0x3F2D80` | `0x3F86E0` | `0x4F66F8` | Four-second title interval |
+| **3** | `0x3F2D20` | `0x3F7150` | `0x4F6698` | **Interactive Press Start** |
 
-The ID-3 phase vtable contains: init 0x3F71E0, loader 0x3F7320, begin 0x3F7680, **update 0x3F76A0**, release 0x3F79A0, draw 0x3F7AA0. App ID 3 is also the native parent requested on the ID-7 child completion path of Demo Main (ID 6). The editor navigation follows this verified ID, never a class-name-only match.
+App-ID-3 callbacks: init `0x3F71E0`, loader `0x3F7320`, begin
+`0x3F7680`, update **`0x3F76A0`**, release `0x3F79A0`,
+draw **`0x3F7AA0`**.
 
-## Native loader
+Loader phases 0→1→2→3→4 use `this+0x34`:
 
-Native loader phases are 0 → 1 → 2 → 3 → 4 (field this+0x34).
+- Register groups **2,3,4,5,7,8,10,11,15** through `0x2FBDC0`.
+- Poll `0x2FBEB0`, associate group 7 with `snd/etceff` and register group 8.
+- Poll `0x2FBE30(16)`.
+- Resolve resources through `0x3EF140`, construct sprites at
+  `this+0x40`, `this+0xA0`, `this+0x100`.
+- Begin transition, then report loader ready.
 
-- Phase 0 registers resource groups **2,3,4,5,7,8,10,11,15** through 0x2FBDC0.
-- Phase 1 polls 0x2FBEB0, associates group 7 with the original sound key **snd/etceff** at 0x4D7F80, and registers group 8.
-- Phase 2 polls 0x2FBE30(16).
-- Phase 3 fetches render resource pointers through 0x3EF140 and creates three sprite objects at this+0x40, +0xA0, +0x100. Draw callback uses a **512×448** logical rectangle.
-- Phase 4 begins the original transition and reports loader completion.
+The native app-local float32 elapsed age `this+0x2C` drives its 1-second
+one-shot callback and 20-second idle timeout; **it does not control prompt
+blinking**. Start input is controller word `+0x22`, bit `0x10`, subject
+to eligibility helper `0x2AFAD0`. Controller 1 is checked separately.
 
-The exact asset-group-to-PIX and complete GS compositing have **not** been recovered. The editor does not replace them with a guessed asset key or pretend the earlier d03t0202 splash texture is the Press Start background.
+| App phase | Verified transition |
+|---|---|
+| 0 | Eligible Start takes precedence over idle and enters phase 1; otherwise `0x2AFD30` may reset age, or age ≥20 seconds starts attract fade, phase 10 |
+| 1 | `0x2C0C90` and two `0x2C08A0` calls; enter phase 2 |
+| 2 | When `0x2C0C20` is no longer busy, request app ID **42** through `0x3DFB00` |
+| 10 | When fade finishes, `0x3E0B10(2)` and app ID **6** (`CAppDemoMain`) |
 
-## Native update: EE 0x3F76A0
+The editor records native call events; it does not execute the game factories.
+Follow-up investigation of app ID 42 remains **out of M1 scope**.
 
-The float32 elapsed clock is accumulated in this+0x2C each native update. A separate one-shot event at **at least 1.0 second** sets a latch at this+0x36 and invokes 0x2FC840. The input handler at 0x3F85A0 also executes, but its complete side effects remain out of scope.
+## Resource recovery, binding and draw order
 
-Start uses **controller word offset +0x22, bit 0x10**, subject to the native 0x2AFAD0 eligibility helper. The alternative controller word is checked separately.
+`0x3EF6C0` registers three exact ELF string keys through `0x2FB850`.
+`0x3F7320` resolves handles through `0x2FB960` and attaches original
+textures through `0x2FD8F0`.
 
-| Phase, this+0x34 | Native behavior |
-|---:|---|
-| 0 | When an eligible Start input is pressed, call 0x3EB040 plus UI/sound helpers, then enter phase 1. Otherwise call idle reset helper 0x2AFD30(0,2); if it returns true, reset the elapsed clock. If false and age is **at least 20.0 seconds**, start a fade and enter phase 10. Start takes precedence over the idle timeout on that tick. |
-| 1 | Start transition: invoke 0x2C0C90 and two 0x2C08A0 calls, then enter phase 2. |
-| 2 | When 0x2C0C20 is no longer busy, request native application **ID 42** through 0x3DFB00 and report completion. The class of app 42 is not assumed here. |
-| 10 | When 0x2C0C20 is no longer busy, call 0x3E0B10(2) and request **ID 6, CAppDemoMain**. Report completion. |
+| Wrapper handle | Sprite | Key pointer | Exact archive key | Native use |
+|---|---|---|---|---|
+| `+0x10` | `this+0x40` | `0x4D7740` | `dis/d03/d03t0101` | Foreground logo and prompt atlas |
+| `+0x14` | `this+0xA0` | `0x4D7760` | `dis/d03/d03t0103` | Landscape background |
+| `+0x18` | `this+0x100` | `0x4D7780` | `dis/d05/d05t0101` | Copyright symbol |
 
-All native calls in the editor are **trace events, not executed PS2 operations**.
+Known `0x3F7AA0` draw order:
 
-The original blink timing and exact sprite/alpha output are not established from these two screenshots or the recovered update code. The UI therefore exposes a **manual prompt-visible toggle**, not a guessed native blinking animation.
+1. Background sprite `+0xA0`, source/destination `(0,0,512,448)`,
+   initially tinted RGB **(0.6,0.6,0.6)**, alpha 1.
+2. Foreground sprite `+0x40`, source `(0,0,257,306)`, destination
+   `(128,28,257,306)`.
+3. Conditional prompt, drawn from the **foreground atlas** by
+   `0x3F7E10`. The two supplied captures match the native case-1
+   layout, with three source rectangles `(0,357,99,30)`,
+   `(204,357,74,30)`, `(99,357,105,30)`, placed at
+   x=`116,217,293` and y=`344`. **All five** ELF dispatch layouts
+   have now been recovered (see below); the controller-service state that
+   selects each case is still unobserved.
+4. Two copyright lines rendered using original FFON text, in shadow
+   and white passes; two copyright-symbol sprites from third resource.
 
-## Arika Editor integration
+All rects are logical native coordinates, not screenshot-calibrated
+coordinates. Exact GS source sampling, texture filtering and blending
+remain unverified. Current Qt composition is therefore an **asset-backed
+approximation**, not proven pixel parity.
 
-Within the existing Arika Editor Menu workspace, **Press Start** is a new tab beside Main menu, Startup / Splash, Warning / Video Mode, Title Screen and Demo Main. No separate viewer is launched.
+## Copyright and original game font
 
-After opening the EU-beta INFO.DAT/GAME.DAT archive, choose **Menu → Press Start**:
+Native original ELF pointer table at `0x4F9454` identifies the strings:
 
-- Start (controller 0) and Start (controller 1) use the verified input bit, with separate eligibility checkboxes.
-- Transition busy and external idle reset are explicitly supplied native observations.
-- Step one native update, Play/Pause and Reset preserve the native state machine. Autoplay uses measured QElapsedTimer deltas with a 16 ms **Qt scheduling target**, not a fabricated native frame duration.
-- Load PCSX2 capture: no prompt / prompt lets you select **local screenshots** or cropped 4:3 images, then toggle between the exact two reference frames. The screenshots are never bundled, written into an archive, or represented as GS output.
-- Inspect destination is enabled only on completion. For ID 6 it opens the existing Demo Main inspector; from Demo Main, Inspect returned parent can navigate back to the Press Start tab when the verified return ID is 3.
+- `0x4C9820`: `1989 BIRD STUDIO/SHUEISHA, TOEI ANIMATION`
+- `0x4C9850`: `2006 NAMCO BANDAI GAMES`
 
-Without capture images, the panel displays a clearly labeled diagnostic placeholder. Switching archives clears stale capture references. Switching tabs pauses playback.
+Using `0x2CDCA0`, the draw callback submits a dark pass RGB `0.25`
+at `(88,383)` and `(88,400)`, followed by white RGB `1.0` at
+`(86,381)`, `(86,398)`, with native float32 font scale
+`0x3F2B851F` (~0.67), alpha from the native fade helper
+`0x2C0C70`. The two copyright symbols use source rectangle
+`(15,97,17,17)` at x=68, with native fade-dependent y
+`383 - (1-alpha)` and `400 - (1-alpha)`.
+No generalized interpolation or invented asset key is used.
 
-## Validation
+The existing editor's exact `font/5-24-2.fon` **24×24, 4bpp**
+loader and native half-cell FFON raster path are reused.
+Unsupported/missing or ambiguous source fonts fail closed.
 
-Run locally:
+**2026-11-18 screenshot feedback — copyright shadow fix:** The editor
+previously used `painter.setOpacity(alpha * rgb)` for copyright text,
+turning native RGB `0.25` into a **25%-opaque white glyph**. That is
+not equivalent to the original dark-grey shadow: it produces bright
+double-letter edges over the landscape. `tint_press_start_ffon` now
+tints the original FFON alpha mask to native RGB `(0.25,0.25,0.25)`
+for the shadow and `(1,1,1)` for the foreground, preserving glyph
+coverage and applying the independently supplied native fade alpha
+only at composition. The verified native `(88,383)/(86,381)` offsets,
+source font, draw order and copyright-symbol sprites are unchanged.
+Synthetic tests verify full/half-coverage tint and shadow-only pixels;
+no screenshot-derived offsets or artwork are embedded.
 
-    cd arika-py_on_rs
-    python -m unittest test_arika_press_start_runtime test_arika_press_start_preview -v
+FFON source-cell placement and final PS2 GS alpha/UV still require
+runtime image comparison.
 
-When the exact user-owned EU beta ELF is available, set environment variable SDBZ_EU_BETA_ELF or run:
+## Prompt blink mechanism: independent global clock
 
-    python arika_press_start_runtime.py SLES_541.61
+The original native update `0x2CB710` drives a **shared UI clock**.
+`0x2E4E10` accumulates its float32 phase and sets it to **0** if the
+sum exceeds **3.0**; it does *not* use modulo arithmetic.
+`0x2E5510` returns prompt-visible if and only if phase is **>1.0**.
+`0x3F7AA0` checks this visibility gate before invoking
+`0x3F7E10` to draw the atlas sprites.
 
-The optional original-ELF oracle checks SHA-256, the phase vtable, original instructions for Start bit 0x10, 1-second latch, 20-second idle timeout, render dimensions and transition IDs. CI runs synthetic tests without original game assets.
+At continuous permitted updates this is approximately **1 second hidden,
+2 seconds visible**, with strict boundaries (phase 1 hidden, phase 3
+visible), then reset on next crossing update. The original global phase
+**when entering application ID 3** and the circumstances that suppress
+the external scheduler remain unknown.
 
-**Next:** recover group→texture mapping, exact native GS composition and prompt alpha/blink period, then compare rendered pixels against the two supplied PCSX2 captures.
+The embedded preview's `c_press_start_prompt_clock` uses deterministic
+float32 steps, discards >3-second overshoot, supports a diagnostic
+**Native UI clock updates** gate, and remains independent from
+`c_press_start_runtime`'s idle/transition age. The default phase 0 is
+a **deterministic diagnostic initial condition**, **not** an assertion
+about actual in-game entry phase. Play/Pause, Step and Reset use the
+existing editor UI. The manual Show PRESS START checkbox still switches
+only **PCSX2 reference capture state**, not the rebuilt clock.
+
+## Copyright FFON spacing/weight follow-up (2026-11-18)
+
+The user's side-by-side capture shows that reconstructed copyright glyphs
+are visually broader/brighter than PCSX2, leaving less visible space
+between letters. Character origins and total line width remain close.
+This should **not** be "fixed" by inventing a different advance, font
+scale, text offset, extra spacing, or hand-authored glyphs.
+
+The exact EU-beta ELF's font vtable at `0x4E3390`, glyph draw at
+`0x199EE0` and advance at `0x19A030` establish a **24px source
+FFON cell with 12px ASCII advance/quad width** before the copyright
+scale `0x3F2B851F` (~0.67). The existing shared menu helper used
+the **full 24px bitmap** at every 12px step, potentially allowing
+right-half source pixels to overpaint the next character. Press Start
+now opts into half-cell clipping while leaving the original main-menu
+default unchanged. Native character origins and ELF-derived two-pass
+copyright draw positions remain unchanged.
+
+The copyright passes also opt into **Qt smooth glyph sampling** at the
+fractionally downscaled text size; native sprite atlas draw sampling is
+unchanged. This addresses visible blockiness as a host preview
+approximation, **not** as an assertion about the original GS TEX1
+MMIN/MMAG or its alpha-test settings. The real font/glyph source bytes
+were not embedded into the repo; source-cell and synthetic alpha
+regressions are CI-tested but original-asset pixel equivalence remains
+unproven.
+
+The existing **Measure both PCSX2 states** now reports separate
+`copyright-only` MAEs for logical native rectangle
+`(60,375)-(480,416)`, in addition to full-frame statistics. No
+registration, forced alignment, colour correction or synthetic letter
+spacing is used. Recheck this screenshot-specific region after loading
+the genuine game archive and both captures; a lower local MAE and
+the original glyph shapes together are the acceptance criterion.
+The prompt-case selector (currently case 0 in the user's screenshot)
+does not influence FFON glyph advance.
+
+### Individual native glyph submissions — follow-up
+
+The next owner-supplied screenshot showed a **copyright-region MAE
+of 31.213 (hidden) and 32.827 (visible)** despite comparatively close
+line geometry. The comparison also shows roughly 38% more near-white
+copyright-region pixels in the Qt reconstruction than in the PCSX2
+capture at a fixed RGB threshold in the screenshot; this is descriptive
+and includes screenshot scaling and local background. A font run
+rendered as one enlarged/smoothed bitmap is not a literal model of
+the original font dispatcher.
+
+The original `0x2CDCA0` string renderer calls the font vtable
+`+0x20` glyph draw path `0x199EE0` per character; its advance
+comes from `0x19A030`. The editor now decodes each **12×24
+ASCII half-cell glyph** from the original `font/5-24-2.fon`, caches
+its shadow (RGB .25) and white (RGB 1.0) images on archive load, and
+submits a separate 12×24 source quad at the original
+`0x3F2B851F` scale. Pen origins come from the existing float32
+`native_help_glyph_origins` helper; actual submitted glyph positions
+and dimensions are **integer-quantized by the ELF** as documented below,
+not an invented inter-character spacing. The prior whole-line composition remains as
+an isolated legacy/synthetic fallback, and the main-menu font path
+does not change.
+
+The displayed glyphs may still differ from native GS due to alpha
+test, TEX1 filtering, half-pixel sample locations and blending. No
+screenshot-derived colour, font spacing, alignment or asset replacement
+has been hardcoded. Repeat the two capture comparisons with the same
+case-1 prompt selection after pulling this commit; the measurable
+copyright-only residual will determine whether the actual-per-glyph
+submission reduced the visual discrepancy.
+
+### Native font pixel-coordinate quantization (18:35 capture)
+
+Inspecting the user's newer 1920×1040 side-by-side screenshot directly
+instead of relying on the editor (which had **only 1/2 reference states
+loaded**) confirms copyright-region near-white pixels are substantially
+overrepresented in the reconstruction. At an RGB threshold of 180,
+the reconstruction's copyright rows contain approximately **1.38×**
+as many bright pixels as the reference; at threshold 245 the count is
+almost **3×**. Those pixel counts come from the displayed editor
+screenshot, not raw GS or decoded original texture data, and contain
+capture scaling/background effects.
+
+The exact original EU-beta ELF also reveals a specific host-raster
+mistake: `0x199EE0` converts the font-scaled **glyph width**
+(`0x199F58`), **height** (`0x199FAC`), **x** (`0x199FE0`),
+and **y** (`0x199FF0`) with `CVT.W.S` before submitting
+`0x112780`. The previous Qt implementation drew these at fractional
+positions. The new `native_press_start_ffon_rect` reproduces
+float32 intermediates and integer rectangle dimensions/positions,
+without modifying the proven 12-unit character advance or original
+ELF two-pass text positions. With the original ~0.67 scale, a 12×24
+source glyph becomes an **8×16 destination**, with occasional 9-pixel
+pen-origin jumps from accumulated fractional advances. Original
+FCR31 rounding mode at runtime still needs confirmation; default
+round-to-nearest is the current evidence-bounded assumption.
+
+A dedicated `verify_press_start_font_draw_elf` checks seven original
+machine words and exact EU-beta SHA-256; the synthetic tests check
+integer destination examples and reject malformed quads.
+
+**Comparison usability:** Press Start now allows pixel metrics from
+**either** original PCSX2 capture independently, explicitly marking
+the missing state as unavailable. It continues to measure both when
+both captures are loaded, without synthesizing or copying one state.
+The native font draw change is not asserted to solve the entire pixel
+difference until the user repeats comparison with actual archive assets.
+GS alpha/filter/UV remain open research items.
+
+### 18:47 comparison — isolated FFON coverage hypotheses
+
+After the native `CVT.W.S` glyph-quad correction, the owner's
+visible-state screenshot reports **full-frame MAE 12.393** and
+**copyright-region MAE 31.420**, versus the previous screenshot's
+visible copyright-region MAE **32.827** (roughly 4.3% better).
+Only one reference is loaded, so no hidden-state measurement is claimed.
+The copyright glyphs are still perceptibly brighter/thicker than PCSX2.
+The FFON cell advance, ELF positions, and tint values remain fixed.
+
+We can distinguish specific PS2 4-bit pixel-interpretation
+hypotheses without silently substituting artwork or screenshot colours:
+
+| Editor diagnostic model | RGB used for FFON glyph | FFON alpha |
+|---|---|---|
+| `coverage_alpha` (unchanged default) | Native constant tint | Existing nibble ×17 |
+| `coverage_alpha_4bit` | Native constant tint | Nibble ×16 |
+| `coverage_luminance` | Original decoded nibble luminance × native tint | Existing nibble ×17 |
+| `coverage_luminance_4bit` | Original decoded nibble luminance × native tint | Nibble ×16 |
+
+In the table, the native white/shadow RGB tint from the ELF remains
+`1.0`/`0.25` in **all four models**. All pixels come from the exact
+loaded `font/5-24-2.fon`, never from a reference screenshot. The
+`×16` model is implemented relative to the current `×17` alpha as
+a final alpha factor `16/17`; it is not asserted to match PS2 GS
+CLUT/TEXA semantics. The actual original alpha palette and GS texture
+state are **still unknown**.
+
+The existing Press Start tab now exposes an explicitly labelled
+**FFON diagnostic model** selector, defaulting to the previous
+`coverage_alpha` model and resetting to it on archive change.
+`Measure loaded PCSX2 state(s)` computes a copyright-only MAE for
+**all four** models from the same original assets and same reference
+capture, without registration, colour fitting, or reference-driven
+rendering. It also reports the lowest *diagnostic* MAE, not a verified
+GS setting; the preview selection stays manual and never automatically
+follows the reference. These results allow us to investigate whether
+glyph luminance or the 4-bit alpha conversion explains the remaining
+bright-pixel excess before changing native defaults.
+
+Next acceptance check: compare each model's copyright MAE and glyph
+appearance on the owner's actual opened EU-beta archive. A lower MAE
+alone is not sufficient for original GS parity; independently recover
+the font texture's original palette, TEXA/TEST/ALPHA state and source
+sampling before locking an interpretation as native.
+
+## All prompt dispatch layouts (M1 follow-up, 2026-11-18)
+
+A direct disassembly of exact EU-beta `0x3F7E10` shows five selector
+branches returned from `0x3F7D40` (controller service helpers
+`0x2AFB70`, `0x2AFB80`, `0x2AFAD0`, `0x2AFC80`).
+The cases are **not controller indices**. These source and destination
+rectangles are recovered from original instruction immediates and
+sprite-geometry return values, not hand positioned to match captures.
+
+| Case | Native branch | Initial logical x | Atlas source rectangles (x,y,w,h) |
+|---|---|---:|---|
+| 0 | `0x3F7E60` | 154 | `(0,357,99,30)`, `(99,357,105,30)` |
+| 1 | `0x3F7F2C` | 116 | `(0,357,99,30)`, `(204,357,74,30)`, `(99,357,105,30)` |
+| 2 | `0x3F8068` | 88 | `(278,357,92,30)`, `(0,387,39,30)`, `(80,387,90,30)`, `(170,387,110,30)` |
+| 3 | `0x3F8214` | 86 | `(278,357,92,30)`, `(39,387,41,30)`, `(80,387,90,30)`, `(170,387,110,30)` |
+| 4 | `0x3F83C0` | 118 | `(278,357,92,30)`, `(80,387,90,30)`, `(170,387,110,30)` |
+
+For every case, native y=`344`, height=`30`, and the next quad
+begins at the previous quad's destination x + width + **2 pixels**.
+Case destinations therefore have x sequences:
+`(154,255)`, `(116,217,293)`, `(88,182,223,315)`,
+`(86,180,223,315)`, and `(118,212,304)`.
+
+`arika_press_start_prompt_layout.py` supplies pure case-specific quad
+lists and a full-SHA-256 plus opcode-gated ELF oracle.
+The reconstruction now supports each case via a clearly labelled
+**manual diagnostic** selector in the existing Press Start tab. It
+defaults to case 1 (the variant observed in the screenshots), resets
+to case 1 on archive swaps and does **not** infer a case from the
+existing gamepad eligibility controls. Native prompt blink timing
+continues to come exclusively from the recovered global UI clock.
+All five variants are regression-tested on both CI platforms.
+
+### Native selector's helper-result decision tree
+
+The native selector at `0x3F7D40` was also recovered, not merely the
+five rendering cases. Its branch conditions depend on return values from
+`0x2AFB70`, `0x2AFB80`, `0x2AFAD0(0/1)` and
+`0x2AFC80(0/1)`. The actual meaning of the first two service returns
+must be established at runtime; labels such as "number of controllers"
+would currently be speculation.
+
+1. If `0x2AFB70()` is nonzero, select **4**.
+2. Otherwise, if `0x2AFB80()` is zero, select **4** if
+   `0x2AFAD0(0)` is nonzero; else select **1** if
+   `0x2AFC80(0)` is positive, otherwise **0**.
+3. If `0x2AFB80()` is nonzero, query both `0x2AFAD0` calls:
+   both nonzero ⇒ **4**; only input 0 nonzero ⇒ **2**;
+   only input 1 nonzero ⇒ **3**; both zero ⇒ **1** if the sum
+   `0x2AFC80(0) + 0x2AFC80(1)` is positive, else **0**.
+
+`native_prompt_case_from_service_results` reproduces this exact
+branch tree **only for explicitly supplied helper return observations**.
+This is separately unit-tested with all five outcomes, and the
+optional ELF oracle checks the additional callsites and branches.
+The editor deliberately retains a manual diagnostic case selector
+until those original helper outputs are actually observed during play.
+
+**Outstanding observation:** record the original return from
+`0x3F7D40` alongside the controller-service state and a GS prompt draw
+to establish when each case appears naturally. Without that capture,
+automatic selection or mapping case numbers to specific controller
+configurations would be guessed behavior.
+
+## Editor implementation and testing
+
+- `arika_press_start_resources.py` and
+  `arika_press_start_copyright.py` verify original keys, opcode
+  callsites, text pointers, draw arguments and case-1 atlas selectors.
+- `arika_press_start_rendering.py` loads the **exact three** resource
+  keys from the already opened archive, either extensionless or `.pix`;
+  accepts only a single unambiguous FPIX/XPIX/TIM2 or bare TIM2 texture;
+  rejects missing, ambiguous, undersized and unsupported files instead
+  of substituting guessed assets. It composites sprite layers, case-1
+  prompt, original font runs and copyright symbols.
+- `arika_press_start_preview.py` keeps all existing controller input,
+  lifecycle, traces, play/pause, manual stepping, tab-switch pause,
+  archive-change resets and two optional PCSX2 reference captures.
+  Reconstruction, capture-only, and side-by-side modes never copy
+  reference screenshot pixels into a native sprite layer.
+- Every archive swap discards old PIX, font and screenshot content and
+  resets native clocks to prevent stale or mismatched resources.
+
+Run CI-equivalent tests with:
+
+```sh
+cd arika-py_on_rs
+python -m unittest test_arika_press_start_runtime test_arika_press_start_resources test_arika_press_start_preview test_arika_press_start_rendering test_arika_press_start_animation test_arika_press_start_copyright test_arika_press_start_prompt_layout -v
+```
+
+On local original ELF builds set `SDBZ_EU_BETA_ELF` for additional
+SHA-256/opcode/string-gated tests. Windows and Ubuntu GitHub Actions
+execute the synthetic regression suites and compile all new modules.
+
+### Two-reference visual error measurement
+
+The existing Press Start tab now has **Measure both PCSX2 states**,
+enabled only with both reference captures and reconstructed game assets.
+It generates independent reconstructed hidden and visible frames from
+the **same** decoded game resources (with the verified prompt gate
+forced false/true for each comparison, independently of elapsed phase).
+The native prompt-layout case is an explicit diagnostic selection, not
+inferred from controller state.
+
+The measurement reuses the editor's
+`arika_menu_pixel_comparison.compare_screenshot_pixels` implementation:
+bilinear resize from logical 512×448 to each original 4:3 capture crop,
+**no registration, alignment, offset correction or fitted color grading**.
+The UI shows hidden and visible RGB mean absolute error and root mean
+square error. Underlying reports distinguish reference edge/flat areas.
+A prompt-case change, archive change or newly loaded reference invalidates
+the previously displayed metrics. No capture data is saved or committed.
+
+The metrics are strictly descriptive until an authentic EU-beta archive is
+available to decode and compare. Their existence **does not** demonstrate
+pixel parity, native GS blending/filter state or matching temporal phase.
+Real reference residual values remain unmeasured in this environment.
+
+## Unresolved evidence / completion blockers
+
+M1 is **not yet complete**. The archived `GAME EU BETA.zip` and
+`sdbz_eu_beta.7z` were discoverable in the owner's project files but
+their raw contents were not authorized for access from this environment.
+Consequently the three **actual game PIX payloads** and native FFON
+could not be decoded/visually inspected here. The two user PCSX2
+screenshots were inspected to correct the reference crop, but **no
+reconstructed-image-to-original pixel parity has been measured**.
+
+To complete M1, run the real archive through the integrated Qt tab,
+validate each texture's XPIX/TIM2 structure and palette/alpha, verify
+font glyphs and the case-1 prompt visually against *both* PCSX2
+reference states, recover measured GS filtering/blending/fade behavior,
+and document residual per-layer/pixel error. Exact native entry phase and the controller-service-state to
+prompt-case mapping still lack runtime capture evidence. Passing synthetic CI is necessary but **not**
+sufficient to claim original visual parity.
+
+Keep PR #25 in **draft/unmerged** until the evidence criteria are met.
+Do not expand the PR into app ID 42, unrelated screens, audio or a
+general-purpose PS2 emulator.

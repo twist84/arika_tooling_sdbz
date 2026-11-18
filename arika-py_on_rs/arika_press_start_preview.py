@@ -1,9 +1,7 @@
-"""Press Start (original EU-beta app ID 3) inside the existing editor.
+"""Asset-backed EU-beta Press Start inside the existing Arika Editor.
 
-The game scene is composed from dynamically streamed resources and GS
-draws. The editor does not claim to render them. Optionally load the
-user's two PCSX2 captures as exact visual references, one with and
-one without the PRESS START button prompt. No image is bundled.
+Known sprite layers use original game resources. Captures remain separate
+references rather than replacements for unsupported native GS operations.
 """
 from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
 
@@ -12,13 +10,22 @@ from arika_press_start_runtime import (
     PHASE_WAIT_FOR_START, c_press_start_runtime,
 )
 from arika_app_registry import resolve_app
+from arika_press_start_rendering import (
+    load_press_start_archive_images, load_press_start_archive_font,
+    raster_press_start_copyright,
+    raster_press_start_copyright_glyph_quads, render_press_start_image,
+    press_start_comparison_image, press_start_comparison_metrics,
+    FONT_COVERAGE_MODELS, press_start_font_model,
+)
+from arika_press_start_animation import c_press_start_prompt_clock
+from arika_press_start_prompt_layout import PRESS_START_PROMPT_CASES
 
 
 # Actual viewport bounds measured from the user's 1920x1040 PCSX2
 # screenshots. This only crops a reference; it is NOT a native
 # GS register/viewport assertion or a generally valid capture crop.
 PCSX2_REFERENCE_SIZE = (1920, 1040)
-PCSX2_REFERENCE_RECT = (307, 96, 1040, 778)
+PCSX2_REFERENCE_RECT = (357, 111, 1206, 903)
 
 
 def extract_press_start_reference(image):
@@ -86,6 +93,14 @@ class c_press_start_preview(W.QWidget):
         self.m_reference_hidden = None
         self.m_reference_visible = None
         self.m_reference_error = None
+        self.m_images = (None, None, None)
+        self.m_asset_errors = (
+            'Open an EU-beta INFO.DAT / GAME.DAT archive',) * 3
+        self.m_copyright_images = None
+        self.m_copyright_quads = None
+        self.m_copyright_quads_luminance = None
+        self.m_font_error = 'Original game FFON not loaded'
+        self.m_prompt_clock = c_press_start_prompt_clock()
 
         self.m_timer = C.QTimer(self)
         self.m_timer.setTimerType(C.Qt.TimerType.PreciseTimer)
@@ -105,13 +120,52 @@ class c_press_start_preview(W.QWidget):
         self.m_prompt_visible = W.QCheckBox('Show PRESS START prompt')
         self.m_prompt_visible.setChecked(True)
         self.m_prompt_visible.setToolTip(
-            'Choose the visible/hidden reference frame manually. '
-            'The native prompt blink timing is not yet verified.')
+            'Select the original visible/hidden PCSX2 reference independently '
+            'of the native shared prompt clock.')
         self.m_prompt_visible.toggled.connect(self.redraw)
+        self.m_clock_enabled = W.QCheckBox('Native UI clock updates')
+        self.m_clock_enabled.setChecked(True)
+        self.m_clock_enabled.setToolTip(
+            'Models the external 0x2CB710 scheduler gate using the supplied '
+            'step delta. The clock is global, not the application idle age.')
+        self.m_view_mode = W.QComboBox()
+        self.m_view_mode.addItems((
+            'Reconstruction', 'Side-by-side comparison', 'Reference capture'))
+        self.m_view_mode.setToolTip(
+            'Reference screenshots are never used as native sprite textures.')
+        self.m_view_mode.currentIndexChanged.connect(self.redraw)
+        self.m_prompt_case = W.QComboBox()
+        for case in sorted(PRESS_START_PROMPT_CASES):
+            self.m_prompt_case.addItem('Native prompt case %d' % case, case)
+        self.m_prompt_case.setCurrentIndex(1)
+        self.m_prompt_case.setToolTip(
+            'Manual diagnostic selection of ELF dispatch cases 0..4. '
+            'Actual controller-service state to case mapping is unverified.')
+        self.m_prompt_case.currentIndexChanged.connect(self.invalidate_comparison)
+        self.m_ffon_model = W.QComboBox()
+        for label, model in (
+                ('FFON: current coverage', 'coverage_alpha'),
+                ('FFON: 4-bit /16 alpha', 'coverage_alpha_4bit'),
+                ('FFON: source luminance', 'coverage_luminance'),
+                ('FFON: luminance + /16', 'coverage_luminance_4bit')):
+            self.m_ffon_model.addItem(label, model)
+        self.m_ffon_model.setToolTip(
+            'Unverified PS2 font coverage hypotheses for visual comparison. '
+            'The original archive FFON and ELF glyph geometry are unchanged; '
+            'the capture never supplies reconstruction pixels.')
+        self.m_ffon_model.currentIndexChanged.connect(self.redraw)
         self.m_load_hidden = W.QPushButton('Load PCSX2 capture: no prompt')
         self.m_load_visible = W.QPushButton('Load PCSX2 capture: prompt')
         self.m_load_hidden.clicked.connect(self.choose_hidden_capture)
         self.m_load_visible.clicked.connect(self.choose_visible_capture)
+        self.m_measure = W.QPushButton('Measure loaded PCSX2 state(s)')
+        self.m_measure.setToolTip(
+            'Compute unaligned pixel differences from original archive sprites; '
+            'this does not establish PS2 GS pixel parity.')
+        self.m_measure.clicked.connect(self.measure_both_captures)
+        self.m_comparison_stats = W.QLabel()
+        self.m_comparison_stats.setWordWrap(True)
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
 
         self.m_delta = W.QDoubleSpinBox()
         self.m_delta.setRange(0, 60)
@@ -149,11 +203,12 @@ class c_press_start_preview(W.QWidget):
         self.m_calls = W.QLabel()
         self.m_calls.setWordWrap(True)
         self.m_notice = W.QLabel(
-            'The original background, logo, and copyright graphics are '
-            'not synthesized. Loaded PCSX2 images are pixel-reference '
-            'captures, NOT recreated native GS rendering. '
-            'Prompt visibility is manually selectable; no blink rate '
-            'has been guessed.')
+            'Decoded original sprites, copyright symbols and FFON text are '
+            'placed using recovered ELF draw arguments. The shared native '
+            'clock gates the atlas-backed prompt. This is NOT recreated '
+            'native GS output. Global clock phase at screen entry, final '
+            'GS blending/filtering, other controller variants and pixel '
+            'parity remain unverified.')
         self.m_notice.setWordWrap(True)
 
         layout = W.QVBoxLayout(self)
@@ -162,6 +217,11 @@ class c_press_start_preview(W.QWidget):
         references.addWidget(self.m_load_hidden)
         references.addWidget(self.m_load_visible)
         references.addWidget(self.m_prompt_visible)
+        references.addWidget(self.m_clock_enabled)
+        references.addWidget(self.m_view_mode)
+        references.addWidget(self.m_measure)
+        references.addWidget(self.m_prompt_case)
+        references.addWidget(self.m_ffon_model)
         references.addStretch()
         layout.addLayout(references)
         inputs = W.QHBoxLayout()
@@ -186,6 +246,7 @@ class c_press_start_preview(W.QWidget):
         playback.addStretch()
         layout.addLayout(playback)
         layout.addWidget(self.m_status)
+        layout.addWidget(self.m_comparison_stats)
         layout.addWidget(self.m_calls)
         layout.addWidget(self.m_notice)
         self.redraw()
@@ -224,19 +285,70 @@ class c_press_start_preview(W.QWidget):
         else:
             self.m_reference_hidden = selected
         self.m_reference_error = None
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
         self.redraw()
         return selected
+
+    def invalidate_comparison(self):
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
+        self.redraw()
+
+    def measure_both_captures(self):
+        """Only report measurable differences; never auto-claim parity."""
+        try:
+            result = press_start_comparison_metrics(
+                self.m_images, self.m_reference_hidden,
+                self.m_reference_visible, self.m_copyright_images,
+                prompt_case=self.m_prompt_case.currentData(),
+                copyright_quads=self.m_copyright_quads,
+                copyright_quads_luminance=self.m_copyright_quads_luminance)
+            lines = [
+                'Baseline FFON comparison (bilinear resize, '
+                'no registration; NOT GS parity):'
+            ]
+            for state in ('hidden', 'visible'):
+                measurement = result['reference_states'].get(state)
+                if measurement is None:
+                    lines.append(state + ': no reference loaded')
+                    continue
+                full = measurement['all_pixels']
+                copyright_error = measurement['copyright_region']['all_pixels']
+                lines.append(
+                    '%s MAE %.3f RMSE %.3f | copyright-only MAE %.3f' %
+                    (state, full['mean_absolute_error'],
+                     full['root_mean_square_error'],
+                     copyright_error['mean_absolute_error']))
+                if 'copyright_coverage_models' in measurement:
+                    scores = measurement['copyright_coverage_models']
+                    lines.append(
+                        state + ' FFON hypotheses, copyright MAE: ' +
+                        ', '.join('%s %.3f' % (model, scores[model])
+                                  for model in FONT_COVERAGE_MODELS) +
+                        ' | lowest diagnostic error: ' +
+                        measurement['best_diagnostic_model'])
+            self.m_comparison_stats.setText(' | '.join(lines))
+        except (ValueError, TypeError) as error:
+            self.m_comparison_stats.setText(
+                'Comparison unavailable: ' + str(error))
 
     def clear_reference_captures(self):
         self.m_reference_hidden = None
         self.m_reference_visible = None
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
         self.m_reference_error = None
         self.redraw()
 
     def load_archive_assets(self, virtual_files):
-        # The original scene is a composite of streamed game objects,
-        # not a single proven PIX key. Never invent an archive key.
+        """Swap in only ELF-backed resources; discard stale archive state."""
         self.pause_playback()
+        self.m_images = (None, None, None)
+        self.m_asset_errors = ('Archive not loaded',) * 3
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
+        self.m_copyright_images = None
+        self.m_copyright_quads = None
+        self.m_copyright_quads_luminance = None
+        self.m_font_error = 'Archive not loaded'
+        self.m_prompt_clock = c_press_start_prompt_clock()
         self.m_reference_hidden = None
         self.m_reference_visible = None
         self.m_reference_error = None
@@ -245,18 +357,64 @@ class c_press_start_preview(W.QWidget):
         self.m_prompt_visible.setChecked(True)
         self.m_transition_busy.setChecked(False)
         self.m_idle_reset.setChecked(False)
+        self.m_view_mode.setCurrentIndex(0)
+        self.m_prompt_case.setCurrentIndex(1)
+        self.m_ffon_model.setCurrentIndex(0)
+        images, errors = load_press_start_archive_images(virtual_files)
+        self.m_images = tuple(images)
+        self.m_asset_errors = tuple(errors)
+        font, font_data, error = load_press_start_archive_font(virtual_files)
+        self.m_font_error = error
+        if font is not None:
+            try:
+                self.m_copyright_images = raster_press_start_copyright(
+                    font, font_data)
+                self.m_copyright_quads = (
+                    raster_press_start_copyright_glyph_quads(
+                        font, font_data))
+                self.m_copyright_quads_luminance = (
+                    raster_press_start_copyright_glyph_quads(
+                        font, font_data, preserve_luminance=True))
+            except (ValueError, TypeError) as failure:
+                self.m_font_error = str(failure)
         self.redraw()
+        return sum(image is not None for image in images)
+
+    def current_reconstruction(self):
+        """Render a chosen original-asset-backed FFON diagnostic model."""
+        keep_luminance, alpha_multiplier = press_start_font_model(
+            self.m_ffon_model.currentData())
+        selected_quads = (
+            self.m_copyright_quads_luminance if keep_luminance
+            else self.m_copyright_quads)
+        return render_press_start_image(
+            self.m_images, self.m_copyright_images,
+            prompt_visible=self.m_prompt_clock.visible, fade_alpha=1.0,
+            prompt_case=self.m_prompt_case.currentData(),
+            copyright_quads=selected_quads,
+            font_alpha_multiplier=alpha_multiplier)
 
     def draw_canvas(self):
         show_prompt = (self.m_prompt_visible.isChecked() and
                        self.m_runtime.snapshot()['phase'] ==
                        PHASE_WAIT_FOR_START)
-        image = (self.m_reference_visible if show_prompt else
-                 self.m_reference_hidden)
-        if image is None:
-            # The unmatched reference is NOT a substitute for native art.
+        reference = (self.m_reference_visible if show_prompt else
+                     self.m_reference_hidden)
+        reconstruction = self.current_reconstruction()
+        mode = self.m_view_mode.currentIndex()
+        if mode == 2 and reference is not None:
+            image = reference
+        elif mode == 1 and reference is not None and reconstruction is not None:
+            image = press_start_comparison_image(reconstruction, reference)
+        elif reconstruction is not None:
+            image = reconstruction
+        else:
+            # A reference frame must not fill in missing native game artwork.
             image = press_start_diagnostic_canvas(show_prompt)
-        size = C.QSize(640, 480).scaled(
+        comparison_ready = (mode == 1 and reference is not None and
+                            reconstruction is not None)
+        aspect = (C.QSize(1280, 480) if comparison_ready else C.QSize(640, 480))
+        size = aspect.scaled(
             self.m_canvas.size(), C.Qt.AspectRatioMode.KeepAspectRatio)
         pixmap = G.QPixmap.fromImage(image).scaled(
             size, C.Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -278,12 +436,25 @@ class c_press_start_preview(W.QWidget):
         self.m_status.setText(
             '%s | native app ID %d | phase %d | idle age %.4f s | '
             'updates %d | one-shot %s | destination %s | '
-            'reference captures %d/2%s' %
+            'reference captures %d/2 | decoded resources %d/3 | '
+            'native prompt %.4f s (%s) | prompt case %d | FFON %s%s' %
             (state, PRESS_START_APP_ID, snapshot['phase'],
              snapshot['elapsed_seconds'], snapshot['updates'],
              'done' if snapshot['one_shot'] else 'pending',
              target_name, capture_count,
+             sum(image is not None for image in self.m_images),
+             self.m_prompt_clock.phase,
+             'visible' if self.m_prompt_clock.visible else 'hidden',
+             self.m_prompt_case.currentData(),
+             'loaded' if self.m_copyright_images is not None else 'missing',
              ' | ' + self.m_reference_error if self.m_reference_error else ''))
+        self.m_measure.setEnabled(
+            (self.m_reference_hidden is not None or
+             self.m_reference_visible is not None) and
+            any(image is not None for image in self.m_images[:2]))
+        self.m_notice.setToolTip(
+            '\n'.join([error for error in self.m_asset_errors if error] +
+                      ([self.m_font_error] if self.m_font_error else [])))
         self.m_calls.setText(
             'Original calls (recorded, NOT executed): ' +
             (', '.join(call['address'] for call in self.m_last_calls)
@@ -309,6 +480,8 @@ class c_press_start_preview(W.QWidget):
             controller1_ready=self.m_controller1_ready.isChecked(),
             idle_reset=self.m_idle_reset.isChecked())
         self.m_last_calls = result['calls']
+        self.m_prompt_clock.advance(
+            delta_seconds, self.m_clock_enabled.isChecked())
         if result['finished']:
             self.pause_playback()
         self.redraw()
@@ -360,6 +533,7 @@ class c_press_start_preview(W.QWidget):
     def reset(self):
         self.pause_playback()
         self.m_runtime = c_press_start_runtime()
+        self.m_prompt_clock = c_press_start_prompt_clock()
         self.m_last_calls = self.m_runtime.begin()
         self.m_transition_busy.setChecked(False)
         self.m_idle_reset.setChecked(False)
