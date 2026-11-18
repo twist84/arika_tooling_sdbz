@@ -30,8 +30,9 @@ class c_demo_main_preview(W.QWidget):
         self.m_route.setWordWrap(True)
         self.m_factories = W.QLabel(
             'Lookup 0x3F1C40 → factory 0x3F2C00 → '
-            'constructor 0x3E03E0 → CAppDemoMain. '
-            'Child application ID 7 is CAppDemoMovie.')
+            'constructor 0x3E03E0 → CAppDemoMain (ID 6). '
+            'ID 8 is a separate CAppDemoMain implementation; '
+            'ID 9 is CAppDemoPlay; ID 7 is CAppDemoMovie.')
         self.m_factories.setWordWrap(True)
 
         self.m_ready = W.QCheckBox('External group loader ready (0x2FBEB0)')
@@ -60,6 +61,17 @@ class c_demo_main_preview(W.QWidget):
         for control in (self.m_child_present, self.m_child_pending,
                         self.m_exit_input):
             control.setToolTip('Supply an observed native input; not an emulated child.')
+        self.m_next_choice = W.QComboBox()
+        for index, app_id in enumerate(self.m_bootstrap.snapshot()['child_candidates']):
+            app = resolve_app(app_id)
+            self.m_next_choice.addItem(
+                '%d → ID %d (%s)' %
+                (index, app_id, app['class_name']), index)
+        self.m_set_choice = W.QPushButton('Set captured next choice')
+        self.m_set_choice.setToolTip(
+            'Inject the native this+0x29 field at phase 0 for captured '
+            'state inspection. Not a gameplay selection or child launch.')
+        self.m_set_choice.clicked.connect(self.set_captured_choice)
         self.m_update_step = W.QPushButton('Step native update')
         self.m_update_play = W.QPushButton('Play')
         self.m_update_reset = W.QPushButton('Reset update')
@@ -74,9 +86,10 @@ class c_demo_main_preview(W.QWidget):
         self.m_status = W.QLabel()
         self.m_status.setWordWrap(True)
         self.m_notice = W.QLabel(
-            'This is a verified app-manager/loader inspector, not an '
-            'emulated movie player or guessed menu screen. '
-            'No game-global allocations, streaming or app switches run.')
+            'The child/pending/global-exit checkboxes are observed inputs. '
+            'Play uses a 100 ms Qt diagnostic update cadence (not an '
+            'asserted PS2 rate). No movie, streaming, app factory, '
+            'rendering or game-global side effects are executed.')
         self.m_notice.setWordWrap(True)
 
         layout = W.QVBoxLayout(self)
@@ -117,6 +130,12 @@ class c_demo_main_preview(W.QWidget):
         update_controls.addWidget(self.m_update_reset)
         update_controls.addStretch()
         layout.addLayout(update_controls)
+        choice_controls = W.QHBoxLayout()
+        choice_controls.addWidget(W.QLabel('Captured +0x29'))
+        choice_controls.addWidget(self.m_next_choice)
+        choice_controls.addWidget(self.m_set_choice)
+        choice_controls.addStretch()
+        layout.addLayout(choice_controls)
         layout.addWidget(self.m_update_status)
         layout.addWidget(self.m_update_trace)
         layout.addWidget(self.m_notice)
@@ -163,6 +182,12 @@ class c_demo_main_preview(W.QWidget):
         self.m_child_pending.setChecked(True)
         self.m_exit_input.setChecked(False)
         self.redraw()
+
+    def set_captured_choice(self):
+        runtime = self.m_bootstrap.m_update
+        if runtime.snapshot()['phase'] == 0 and not runtime.snapshot()['finished']:
+            runtime.set_captured_next_choice(self.m_next_choice.currentData())
+            self.redraw()
 
     def step_update(self):
         runtime = self.m_bootstrap.m_update
@@ -264,3 +289,6 @@ class c_demo_main_preview(W.QWidget):
             not update['finished'] and not self.m_update_timer.isActive())
         self.m_update_play.setText(
             'Pause' if self.m_update_timer.isActive() else 'Play')
+        self.m_set_choice.setEnabled(
+            not update['finished'] and update['phase'] == 0
+            and not self.m_update_timer.isActive())
