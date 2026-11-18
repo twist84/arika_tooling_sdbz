@@ -1238,6 +1238,8 @@ class c_scene_editor(W.QMainWindow):
             from arika_demo_main_preview import c_demo_main_preview
             self.m_demo_view=c_demo_main_preview()
             self.m_menu_tabs.addTab(self.m_demo_view,'Demo Main')
+            if hasattr(self.m_demo_view,'parent_requested'):
+                self.m_demo_view.parent_requested.connect(self.inspect_demo_parent)
             if hasattr(self.m_title_view,'handoff_requested'):
                 self.m_title_view.handoff_requested.connect(self.inspect_title_handoff)
         except Exception as error:
@@ -3328,6 +3330,20 @@ class c_scene_editor(W.QMainWindow):
         if not self.m_project or self.m_material<0:return
         from types import SimpleNamespace
         self.m_material_view.set_project(SimpleNamespace(m_document=material_preview_document(self.m_project.m_document,self.m_material)),fit=True)
+    def inspect_demo_parent(self,app_id):
+        # ID 3 is the distinct Press Start CAppTitleMain, not ID 2's
+        # timed title splash. This is explicit editor navigation only.
+        if app_id==3 and hasattr(self.m_press_start_view,'reset'):
+            self.m_press_start_view.reset()
+            self.m_menu_tabs.setCurrentWidget(self.m_press_start_view)
+            self.statusBar().showMessage(
+                'Demo Main requested Press Start CAppTitleMain (ID 3). '
+                'Showing a diagnostic app state, not executing the PS2 factory.')
+        else:
+            self.statusBar().showMessage(
+                'Demo Main requested parent application ID %d; '
+                'no native factory executed.'%app_id)
+
     def inspect_press_start_destination(self,app_id):
         # A navigation aid only; never execute the original game factory.
         if app_id == 6 and hasattr(self.m_demo_view,'reset'):
