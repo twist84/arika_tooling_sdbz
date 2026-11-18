@@ -27,10 +27,13 @@ class RegistryTests(unittest.TestCase):
     def test_original_ids_are_not_zero_based_list_offsets(self):
         expected = {
             2: 'CAppTitleMain',
+            3: 'CAppTitleMain',
             4: 'CAppLogoMain',
             5: 'CAppWarning',
             6: 'CAppDemoMain',
             7: 'CAppDemoMovie',
+            8: 'CAppDemoMain',
+            9: 'CAppDemoPlay',
         }
         self.assertEqual(set(record[0] for record in APP_FACTORIES),
                          set(expected))
@@ -39,8 +42,18 @@ class RegistryTests(unittest.TestCase):
                 self.assertEqual(resolve_app(app_id)['class_name'], name)
         self.assertIsNone(resolve_app(0))
         self.assertIsNone(resolve_app(1))
-        self.assertIsNone(resolve_app(8))
-        self.assertIsNone(resolve_app(9))
+        self.assertNotEqual(resolve_app(2)['constructor'],
+                            resolve_app(3)['constructor'])
+        self.assertEqual(resolve_app(3)['factory'], 0x3f2d20)
+        self.assertEqual(resolve_app(3)['constructor'], 0x3f7150)
+        self.assertNotEqual(resolve_app(8)['factory'],
+                            resolve_app(6)['factory'])
+        self.assertNotEqual(resolve_app(8)['constructor'],
+                            resolve_app(6)['constructor'])
+        self.assertNotEqual(resolve_app(8)['name_address'],
+                            resolve_app(6)['name_address'])
+        self.assertEqual(resolve_app(8)['name_getter'], 0x3e26b0)
+        self.assertEqual(resolve_app(9)['name_getter'], 0x3e1ae0)
         self.assertEqual(resolve_app(6)['factory'], 0x3f2c00)
         self.assertEqual(resolve_app(7)['factory'], 0x3f2ba0)
         self.assertEqual(APP_FACTORY_TABLE, 0x6217e0)
@@ -136,8 +149,10 @@ class RegistryTests(unittest.TestCase):
                     self.assertEqual(child['registered_class'], 'CAppLogoMain')
                 elif app_id == 7:
                     self.assertEqual(child['registered_class'], 'CAppDemoMovie')
+                elif app_id == 8:
+                    self.assertEqual(child['registered_class'], 'CAppDemoMain')
                 else:
-                    self.assertIsNone(child['registered_class'])
+                    self.assertEqual(child['registered_class'], 'CAppDemoPlay')
         for index in (-1, 4, True, '0'):
             with self.subTest(index=index):
                 with self.assertRaises(ValueError):
@@ -153,7 +168,9 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(result['title_handoff']['destination'], 'CAppDemoMain')
         self.assertEqual(result['title_handoff']['next_child_choices'],
                          [4, 7, 8, 9])
-        self.assertEqual(result['registered'][3]['id'], 6)
+        self.assertEqual(result['registered'][4]['id'], 6)
+        self.assertEqual(result['registered'][6]['id'], 8)
+        self.assertEqual(result['registered'][7]['id'], 9)
         proc = subprocess.run([
             sys.executable,
             str(Path(__file__).with_name('arika_app_registry.py')), path,
