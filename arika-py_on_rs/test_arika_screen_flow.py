@@ -1,4 +1,7 @@
 """Asset-free cross-platform tests of the six-screen integrated editor tour."""
+import json
+from pathlib import Path
+import tempfile
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
@@ -7,7 +10,8 @@ import unittest
 
 from PySide6 import QtWidgets as W
 
-from arika_app_registry import resolve_app
+from arika_app_registry import resolve_app, APP_ENTRIES
+from arika_native_ee_trace import TRACE_FORMAT, ELF_SHA256, ROOT_SLOT
 from arika_screen_flow import (
     SCREEN_SEQUENCE, SCREEN_TAB_ORDER, SCREEN_APP_IDS, SCREEN_LABELS,
     NATIVE_VIEW_ROUTES, OBSERVED_SCREEN_COMPLETIONS,
@@ -154,6 +158,50 @@ class ScreenFlowWidgetTests(unittest.TestCase):
         if shiboken6.isValid(self.m_flow):
             shiboken6.delete(self.m_flow)
         self.m_app.processEvents()
+
+    def test_import_original_ee_trace_does_not_switch_or_run_previews(self):
+        flow = self.m_flow
+        flow.start_tour()
+        before = flow.active_screen()
+        sample = {
+            'format': TRACE_FORMAT,
+            'elf_sha256': ELF_SHA256,
+            'source': 'synthetic-test-fixture',
+            'events': [
+                {'sequence': 1, 'kind': 'factory_dispatch',
+                 'pc': '0x3f1be0', 'registers': {
+                     's0': 3, 'v0': APP_ENTRIES[3]['factory']}},
+                {'sequence': 2, 'kind': 'factory_entry',
+                 'pc': APP_ENTRIES[3]['factory'],
+                 'registers': {'ra': '0x3f1be8'}},
+                {'sequence': 3, 'kind': 'factory_return',
+                 'pc': '0x3f1be8', 'registers': {'v0': '0x123450'}},
+                {'sequence': 4, 'kind': 'root_write',
+                 'store_pc': '0x3f1c04', 'address': ROOT_SLOT,
+                 'value': '0x123450',
+                 'registers': {'a0': '0x123450'},
+                 'post_write': True},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'observations.json'
+            path.write_text(json.dumps(sample), encoding='utf-8')
+            result = flow.import_ee_trace(path)
+            self.assertIsNotNone(result)
+            self.assertEqual(result['factory_entry_count'], 1)
+            self.assertEqual(result['root_write_count'], 1)
+            self.assertIs(flow.m_trace_summary, result)
+            self.assertIn('synthetic fixture', flow.m_status.text())
+            self.assertIn('No screen transition', flow.m_status.text())
+            self.assertEqual(flow.active_screen(), before)
+            self.assertFalse(flow.m_runner_timer.isActive())
+            self.assertTrue(flow.m_import_ee_trace.isEnabled())
+            # Rejected input cannot fabricate new trace evidence.
+            path.write_text('{"format": "invalid"}', encoding='utf-8')
+            self.assertIsNone(flow.import_ee_trace(path))
+            self.assertIn('EE trace rejected', flow.m_status.text())
+            self.assertIs(flow.m_trace_summary, result)
+            self.assertEqual(flow.active_screen(), before)
 
     def test_manual_preview_tour_uses_existing_widgets_without_loading_art(self):
         flow = self.m_flow

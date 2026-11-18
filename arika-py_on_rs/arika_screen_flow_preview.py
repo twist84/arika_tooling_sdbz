@@ -9,6 +9,7 @@ import math
 from PySide6 import QtCore as C, QtWidgets as W
 
 from arika_app_registry import title_handoff_request
+from arika_native_ee_trace import load_native_ee_trace
 from arika_screen_flow import (
     SCREEN_SEQUENCE, SCREEN_TAB_ORDER, SCREEN_LABELS,
     native_view_request, observed_screen_completion, screen_step,
@@ -73,6 +74,14 @@ class c_native_screen_flow(W.QWidget):
             'This does not run the original factory or inject a controller.')
         self.m_cancel.clicked.connect(self.menu_cancel)
         controls.addWidget(self.m_cancel)
+        self.m_trace_summary = None
+        self.m_import_ee_trace = W.QPushButton('Import EE trace')
+        self.m_import_ee_trace.setToolTip(
+            'Read a user-captured original EU-beta EE debugger trace. '
+            'Show factory-entry and root-write evidence without executing '
+            'the game or switching preview tabs.')
+        self.m_import_ee_trace.clicked.connect(self.choose_ee_trace)
+        controls.addWidget(self.m_import_ee_trace)
         self.m_status = W.QLabel()
         self.m_status.setWordWrap(True)
         self.m_status.setMinimumWidth(140)
@@ -140,6 +149,35 @@ class c_native_screen_flow(W.QWidget):
             'Manual preview order is NOT a claim of native boot order. '
             'A native request only switches to a registered preview; '
             'original application factories, streaming and GS are not run.')
+
+    def import_ee_trace(self, path):
+        """Inspect a PCSX2 EE capture without altering the editor tour."""
+        try:
+            result = load_native_ee_trace(path)
+        except (OSError, ValueError) as error:
+            self.m_reason = 'EE trace rejected: %s' % error
+            self.refresh()
+            return None
+        self.m_trace_summary = result
+        description = 'synthetic fixture' if result['synthetic_fixture'] else (
+            'user-reported debugger evidence')
+        self.m_reason = (
+            'EE trace imported (%s): %d matched factory entry hits, '
+            '%d post-write active-root observations. '
+            'No screen transition or allocation is inferred.' %
+            (description, result['factory_entry_count'],
+             result['root_write_count']))
+        self.refresh()
+        return result
+
+    def choose_ee_trace(self):
+        """Open an explicitly selected debugger JSON capture for read-only use."""
+        path, _filter = W.QFileDialog.getOpenFileName(
+            self, 'Open original EU-beta EE trace', '',
+            'EE debugger captures (*.json);;All files (*)')
+        if not path:
+            return None
+        return self.import_ee_trace(path)
 
     def on_tab_changed(self, _index):
         if not self.m_switching:
