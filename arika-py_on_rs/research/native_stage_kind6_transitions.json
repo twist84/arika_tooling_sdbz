@@ -1,0 +1,355 @@
+{
+  "schema_version": 1,
+  "target": {
+    "region": "EU beta",
+    "elf": "SLES_541.61",
+    "sha256": "80499dc1456e57ce939b150520069b413a6c9b18e529bb2cc8e608c48c031bd0",
+    "bias": "0xFFF80"
+  },
+  "provenance": {
+    "source": "Existing SHA-256-guarded opcode tables in arika_native_stage_controls.py and arika_native_stage_state_switch.py",
+    "live_ee_trace": false,
+    "exhaustive_cfg_verified": false,
+    "exact_elf_rechecked_in_this_batch": false
+  },
+  "fields": {
+    "controller_phase": {
+      "offset": "0x54",
+      "initial": 0,
+      "ready": 1,
+      "post_switch": 2,
+      "confidence": "verified opcode signatures"
+    },
+    "countdown_source": {
+      "offset": "0x5C",
+      "initial": "unknown",
+      "confidence": "read by reset path; construction/assignment unresolved"
+    },
+    "countdown": {
+      "offset": "0x60",
+      "initial": "unknown",
+      "confidence": "store at 0x2403F4; decrement predicate unresolved"
+    },
+    "primary": {
+      "offset": "0x6C",
+      "confidence": "verified loader/controller target field"
+    },
+    "secondary": {
+      "offset": "0x70",
+      "confidence": "verified loader/controller target field"
+    },
+    "object_flags": {
+      "offset": "0x28",
+      "mask": "0x300",
+      "confidence": "verified 0x100/0x200 writes, consumer unknown"
+    },
+    "event_flags": {
+      "offset": "0x24",
+      "mask": "0x08000020",
+      "confidence": "verified gates; origin unknown"
+    }
+  },
+  "transitions": [
+    {
+      "id": "construct",
+      "entry": "0x240C20",
+      "via": "constructor",
+      "predicate": "allocated kind-6 runtime control",
+      "effects": [
+        {
+          "field": "controller+0x54",
+          "operation": "assign",
+          "value": 0,
+          "pc": "0x240C78"
+        },
+        {
+          "field": "object+0",
+          "operation": "assign",
+          "value": "0x4E7110",
+          "pc": "0x240C40"
+        }
+      ],
+      "evidence": [
+        "0x240C20",
+        "0x240C38",
+        "0x240C40",
+        "0x240C78"
+      ],
+      "confidence": "opcode-verified",
+      "unknowns": [
+        "constructor setup of countdown source"
+      ]
+    },
+    {
+      "id": "initial",
+      "entry": "0x240290",
+      "via": "loader JAL at 0x23CCF4",
+      "predicate": "target pointers are non-null per target",
+      "effects": [
+        {
+          "field": "primary+0x28",
+          "operation": "and_not",
+          "mask": "0x300",
+          "pc": "0x2402C0"
+        },
+        {
+          "field": "secondary+0x28",
+          "operation": "or",
+          "mask": "0x300",
+          "pc": "0x2402F4"
+        }
+      ],
+      "evidence": [
+        "0x23CCF4",
+        "0x2402B4",
+        "0x2402C0",
+        "0x2402C4",
+        "0x2402F4",
+        "0x2402F8"
+      ],
+      "confidence": "opcode-verified",
+      "unknowns": [
+        "exact point in stage creation relative to other controls"
+      ]
+    },
+    {
+      "id": "timer_write",
+      "entry": "0x2403D0",
+      "predicate": "unknown branch conditions",
+      "effects": [
+        {
+          "field": "controller+0x60",
+          "operation": "write",
+          "value": "unknown derived value",
+          "pc": "0x2403F4"
+        }
+      ],
+      "evidence": [
+        "0x2403F4"
+      ],
+      "confidence": "partial",
+      "unknowns": [
+        "timebase",
+        "countdown decrement",
+        "source value",
+        "precondition"
+      ]
+    },
+    {
+      "id": "timer_ready",
+      "entry": "0x2403D0",
+      "predicate": "unrecovered predecessor branch",
+      "effects": [
+        {
+          "field": "controller+0x54",
+          "operation": "assign",
+          "value": 1,
+          "pc": "0x2404B0"
+        }
+      ],
+      "evidence": [
+        "0x2404AC",
+        "0x2404B0"
+      ],
+      "confidence": "effect-only",
+      "unknowns": [
+        "countdown expiry predicate",
+        "original callback dispatch",
+        "frame delta"
+      ]
+    },
+    {
+      "id": "phase_gated_switch",
+      "entry": "0x240710",
+      "via": "vtable 0x4E7110 + 0x18",
+      "predicate": "controller+0x54 == 1",
+      "effects": [
+        {
+          "field": "primary+0x28",
+          "operation": "or",
+          "mask": "0x300",
+          "pc": "0x240750"
+        },
+        {
+          "field": "secondary+0x28",
+          "operation": "and_not",
+          "mask": "0x300",
+          "pc": "0x240788"
+        },
+        {
+          "field": "controller+0x54",
+          "operation": "increment",
+          "value": 1,
+          "pc": "0x240840"
+        }
+      ],
+      "evidence": [
+        "0x4E7128",
+        "0x240720",
+        "0x240724",
+        "0x240750",
+        "0x240754",
+        "0x240788",
+        "0x24078C",
+        "0x240838",
+        "0x240840"
+      ],
+      "confidence": "opcode-verified",
+      "unknowns": [
+        "virtual dispatch source",
+        "event cause"
+      ]
+    },
+    {
+      "id": "switch_gate_reject",
+      "entry": "0x240710",
+      "predicate": "controller+0x54 != 1",
+      "effects": [],
+      "evidence": [
+        "0x240720",
+        "0x240724"
+      ],
+      "confidence": "opcode-verified"
+    },
+    {
+      "id": "restore",
+      "entry": "0x240910",
+      "predicate": "called; each target pointer non-null",
+      "effects": [
+        {
+          "field": "primary+0x28",
+          "operation": "and_not",
+          "mask": "0x300",
+          "pc": "0x240940"
+        },
+        {
+          "field": "secondary+0x28",
+          "operation": "or",
+          "mask": "0x300",
+          "pc": "0x240970"
+        }
+      ],
+      "evidence": [
+        "0x240928",
+        "0x240940",
+        "0x240944",
+        "0x240970",
+        "0x240974"
+      ],
+      "confidence": "effect-only",
+      "unknowns": [
+        "direct callers",
+        "phase mutations elsewhere",
+        "activation event"
+      ]
+    },
+    {
+      "id": "reset_countdown",
+      "entry": "0x240860",
+      "predicate": "callback path after 0x300 gate; full CFG unresolved",
+      "effects": [
+        {
+          "field": "controller+0x54",
+          "operation": "assign",
+          "value": 0,
+          "pc": "0x2408DC"
+        },
+        {
+          "field": "controller+0x60",
+          "operation": "copy",
+          "from": "controller+0x5C",
+          "pc": "0x2408E0"
+        }
+      ],
+      "evidence": [
+        "0x240864",
+        "0x240874",
+        "0x240878",
+        "0x24087C",
+        "0x2408DC",
+        "0x2408E0"
+      ],
+      "confidence": "partial",
+      "unknowns": [
+        "object argument identity",
+        "branch ordering and return paths"
+      ]
+    },
+    {
+      "id": "event_restore",
+      "entry": "0x2409F0",
+      "predicate": "event object+0x24 & 0x08000000 != 0",
+      "effects": [
+        {
+          "field": "primary+0x28",
+          "operation": "and_not",
+          "mask": "0x300",
+          "pc": "0x240A6C"
+        },
+        {
+          "field": "secondary+0x28",
+          "operation": "or",
+          "mask": "0x300",
+          "pc": "0x240A9C"
+        }
+      ],
+      "evidence": [
+        "0x240A00",
+        "0x240A04",
+        "0x240A08",
+        "0x240A64",
+        "0x240A6C",
+        "0x240A70",
+        "0x240A9C",
+        "0x240AA0"
+      ],
+      "confidence": "opcode-verified",
+      "unknowns": [
+        "caller and gameplay event source"
+      ]
+    },
+    {
+      "id": "event_secondary",
+      "entry": "0x2409F0",
+      "predicate": "(event object+0x24 & 0x08000000) == 0 and (event object+0x24 & 0x20) != 0",
+      "effects": [
+        {
+          "field": "external helper",
+          "operation": "invoke",
+          "value": "0x1ABD30 or 0x1ABD70 with mask 0x10; branch depends on argument a1"
+        }
+      ],
+      "evidence": [
+        "0x240A10",
+        "0x240A14"
+      ],
+      "confidence": "partial",
+      "unknowns": [
+        "helper callsites not reverified",
+        "render/collision/destruction semantics"
+      ]
+    }
+  ],
+  "consumers": {
+    "bit_0x100": {
+      "rendering": "unverified",
+      "collision": "unverified",
+      "update": "unverified"
+    },
+    "bit_0x200": {
+      "rendering": "unverified",
+      "collision": "unverified",
+      "update": "unverified"
+    },
+    "bit_0x300": {
+      "known_read": "0x240878",
+      "meaning": "0x240860 callback completion gate; not proof of GS/collision suppression"
+    }
+  },
+  "unresolved": [
+    "Full 0x2403D0 timer CFG and countdown source",
+    "Caller graph for 0x240710, 0x240910, 0x2409F0",
+    "Original flag consumers around 0x1BE040, GS submission and collision",
+    "Actual gameplay damage/destruction trigger and timebase"
+  ]
+}
