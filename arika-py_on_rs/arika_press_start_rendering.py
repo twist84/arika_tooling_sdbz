@@ -15,8 +15,10 @@ from arika_press_start_resources import (
     PRESS_START_THIRD_SOURCE_RECT,
 )
 from arika_press_start_copyright import (
-    COPYRIGHT_LINES, PRESS_START_CAPTURE_PROMPT_SOURCES,
-    native_copyright_draws, native_prompt_case_one,
+    COPYRIGHT_LINES, native_copyright_draws,
+)
+from arika_press_start_prompt_layout import (
+    PRESS_START_PROMPT_CASES, native_prompt_layout,
 )
 
 
@@ -61,11 +63,13 @@ def load_press_start_archive_images(virtual_files):
             PRESS_START_BACKGROUND_RECT[2], PRESS_START_BACKGROUND_RECT[3]),
         PRESS_START_FOREGROUND_KEY: (
             max([PRESS_START_FOREGROUND_SOURCE_RECT[2]] +
-                [rect[0] + rect[2] for rect in
-                 PRESS_START_CAPTURE_PROMPT_SOURCES]),
+                [rect[0] + rect[2]
+                 for _, sources in PRESS_START_PROMPT_CASES.values()
+                 for rect in sources]),
             max([PRESS_START_FOREGROUND_SOURCE_RECT[3]] +
-                [rect[1] + rect[3] for rect in
-                 PRESS_START_CAPTURE_PROMPT_SOURCES])),
+                [rect[1] + rect[3]
+                 for _, sources in PRESS_START_PROMPT_CASES.values()
+                 for rect in sources])),
         PRESS_START_RESOURCE_KEYS[2]: (
             PRESS_START_THIRD_SOURCE_RECT[0] + PRESS_START_THIRD_SOURCE_RECT[2],
             PRESS_START_THIRD_SOURCE_RECT[1] + PRESS_START_THIRD_SOURCE_RECT[3]),
@@ -130,7 +134,8 @@ def raster_press_start_copyright(font, font_data):
 
 
 def render_press_start_image(images, copyright_images=None,
-                             prompt_visible=False, fade_alpha=1.0):
+                             prompt_visible=False, fade_alpha=1.0,
+                             prompt_case=1):
     """Compose original static sprites, proven text/icon calls and prompt case.
 
     Copyright glyph pixels are rasterised with the existing game FFON helper.
@@ -148,6 +153,8 @@ def render_press_start_image(images, copyright_images=None,
             raise ValueError('invalid original texture image')
     if type(prompt_visible) is not bool:
         raise ValueError('prompt visibility must be boolean')
+    if type(prompt_case) is not int or prompt_case not in PRESS_START_PROMPT_CASES:
+        raise ValueError('unsupported native prompt dispatch case')
     if copyright_images is not None:
         if len(copyright_images) != len(COPYRIGHT_LINES) or any(
                 not isinstance(image, G.QImage) or image.isNull()
@@ -171,7 +178,7 @@ def render_press_start_image(images, copyright_images=None,
                               images[0],
                               C.QRectF(*PRESS_START_FOREGROUND_SOURCE_RECT))
             if prompt_visible:
-                for source, destination in native_prompt_case_one():
+                for source, destination in native_prompt_layout(prompt_case):
                     if (images[0].width() >= source[0] + source[2] and
                             images[0].height() >= source[1] + source[3]):
                         painter.drawImage(C.QRectF(*destination), images[0],
