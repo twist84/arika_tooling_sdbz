@@ -211,6 +211,71 @@ def raster_press_start_copyright_glyph_quads(font, font_data):
     return tuple(lines)
 
 
+
+# 0x199EE0 applies cvt.w.s separately to glyph width/height and the
+# incoming pen x/y before 0x112780. Source-cell advances remain float32.
+PRESS_START_FONT_DRAW_QUANTIZATION = {
+    0x00199F3C: 0x4600B842,  # scaled ASCII font width (MUL.S)
+    0x00199F58: 0x46000824,  # glyph width CVT.W.S
+    0x00199F90: 0x4600B842,  # scaled font height (MUL.S)
+    0x00199FAC: 0x46000824,  # glyph height CVT.W.S
+    0x00199FE0: 0x4600B024,  # incoming x CVT.W.S
+    0x00199FF0: 0x4600A824,  # incoming y CVT.W.S
+    0x00199FF8: 0x0C0449E0,  # submit glyph via 0x112780
+}
+
+
+def native_press_start_ffon_rect(operation, glyph_origin, glyph):
+    """Original per-glyph integer destination, before GS UV/filtering.
+
+    Original code rounds each float32 coordinate/dimension with CVT.W.S.
+    EE FPU round-to-nearest is assumed here; nondefault FCR31 modes remain
+    a runtime observation item, not a hardcoded screenshot compensation.
+    """
+    from arika_menu_ffon_native import f32
+
+    if not isinstance(glyph, G.QImage) or glyph.isNull():
+        raise ValueError('expected an original FFON glyph image')
+    if (type(glyph_origin) not in (int, float)
+            or not math.isfinite(glyph_origin)):
+        raise ValueError('invalid native FFON glyph origin')
+    if (not hasattr(operation, 'get') or
+            any(type(operation.get(field)) not in (int, float)
+                or not math.isfinite(operation[field])
+                for field in ('x', 'y', 'scale')) or
+            operation['scale'] <= 0):
+        raise ValueError('invalid original FFON draw operation')
+
+    # Round the EE's intermediate ADD.S and MUL.S to single precision,
+    # then use integer CVT.W.S rather than Qt's subpixel positioning.
+    x = int(round(f32(f32(operation['x']) + f32(glyph_origin))))
+    y = int(round(f32(operation['y'])))
+    width = int(round(f32(float(glyph.width()) *
+                          f32(operation['scale']))))
+    height = int(round(f32(float(glyph.height()) *
+                           f32(operation['scale']))))
+    return C.QRect(x, y, width, height)
+
+
+def verify_press_start_font_draw_elf(elf):
+    """Gate integer-quad assertions against original EU-beta opcodes."""
+    from arika_press_start_runtime import verify_press_start_elf
+    from arika_app_registry import _word
+
+    verify_press_start_elf(elf)
+    for address, expected in PRESS_START_FONT_DRAW_QUANTIZATION.items():
+        if _word(elf, address) != expected:
+            raise ValueError(
+                'Press Start native FFON quad mismatch at 0x%08X' % address)
+    return {
+        'glyph_draw': '0x199ee0',
+        'submit': '0x112780',
+        'source_character_advance': 12,
+        'quantized_positions_and_dimensions': True,
+        'verified_words': len(PRESS_START_FONT_DRAW_QUANTIZATION),
+    }
+
+
 def render_press_start_image(images, copyright_images=None,
                              prompt_visible=False, fade_alpha=1.0,
                              prompt_case=1, copyright_quads=None):
@@ -298,10 +363,8 @@ def render_press_start_image(images, copyright_images=None,
                 for origin, shadow, foreground in copyright_quads[index]:
                     image = shadow if tint_index == 0 else foreground
                     painter.drawImage(
-                        C.QRectF(
-                            operation['x'] + origin, operation['y'],
-                            image.width() * operation['scale'],
-                            image.height() * operation['scale']),
+                        native_press_start_ffon_rect(
+                            operation, origin, image),
                         image, C.QRectF(0, 0, image.width(), image.height()))
             elif operation['kind'] == 'text' and copyright_images is not None:
                 index = COPYRIGHT_LINES.index(operation['text'])
