@@ -11,6 +11,7 @@ from arika_press_start_preview import c_press_start_preview
 from arika_press_start_rendering import (
     decode_press_start_texture, load_press_start_archive_images,
     render_press_start_image, press_start_comparison_image,
+    press_start_comparison_metrics,
     raster_press_start_copyright, load_press_start_archive_font,
 )
 from arika_press_start_resources import PRESS_START_RESOURCE_KEYS
@@ -277,6 +278,57 @@ class PressStartRenderingTests(unittest.TestCase):
         self.assertEqual(viewer.m_prompt_case.currentData(), 3)
         self.assertEqual(viewer.load_archive_assets({}), 0)
         self.assertEqual(viewer.m_prompt_case.currentData(), 1)
+
+
+
+    def test_both_pcsx2_states_have_explicit_pixel_error_metrics(self):
+        foreground = self.texture((0, 0, 0, 0))
+        background = self.texture((100, 40, 20, 255))
+        hidden = render_press_start_image((foreground, background, None),
+                                          prompt_visible=False)
+        visible = render_press_start_image((foreground, background, None),
+                                           prompt_visible=True)
+        result = press_start_comparison_metrics(
+            (foreground, background, None), hidden, visible)
+        self.assertEqual(result['prompt_case'], 1)
+        for state in ('hidden', 'visible'):
+            data = result['reference_states'][state]
+            self.assertEqual(data['all_pixels']['mean_absolute_error'], 0)
+            self.assertEqual(data['all_pixels']['root_mean_square_error'], 0)
+            self.assertEqual(data['registration'], 'none')
+        shifted = self.texture((0, 0, 0, 255), 512, 448)
+        errors = press_start_comparison_metrics(
+            (foreground, background, None), hidden, shifted)
+        self.assertEqual(
+            errors['reference_states']['hidden']['all_pixels']
+            ['mean_absolute_error'], 0)
+        self.assertGreater(
+            errors['reference_states']['visible']['all_pixels']
+            ['mean_absolute_error'], 0)
+        with self.assertRaisesRegex(ValueError, 'both original'):
+            press_start_comparison_metrics(
+                (foreground, background, None), hidden, None)
+
+    def test_editor_measurement_is_explicit_and_invalidated_by_case_change(self):
+        viewer = c_press_start_preview()
+        self.m_views.append(viewer)
+        pix = synthetic_tim2_rgba32()
+        viewer.load_archive_assets({
+            key + '.pix': pix for key in PRESS_START_RESOURCE_KEYS
+        })
+        self.assertFalse(viewer.m_measure.isEnabled())
+        reconstruction = viewer.current_reconstruction()
+        viewer.load_reference_capture(reconstruction, False)
+        viewer.load_reference_capture(reconstruction, True)
+        self.assertTrue(viewer.m_measure.isEnabled())
+        viewer.m_measure.click()
+        self.assertIn('hidden MAE 0.000', viewer.m_comparison_stats.text())
+        self.assertIn('visible MAE', viewer.m_comparison_stats.text())
+        self.assertIn('NOT GS parity', viewer.m_comparison_stats.text())
+        viewer.m_prompt_case.setCurrentIndex(4)
+        self.assertIn('not measured', viewer.m_comparison_stats.text())
+        viewer.load_archive_assets({})
+        self.assertFalse(viewer.m_measure.isEnabled())
 
 
 
