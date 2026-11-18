@@ -68,6 +68,27 @@ class NativeMenuFfonAdvanceTests(unittest.TestCase):
         self.assertEqual(image.getpixel((23, 0))[3], 0)
         self.assertEqual(render_native_help_line(font, data, '').size, (1, 24))
 
+    def test_half_cell_clip_prevents_hidden_ffon_overdraw(self):
+        font, data = synthetic_font()
+        data = bytearray(data)
+        # Second 12-pixel half of the A bitmap must NOT be composited
+        # over a subsequent ASCII cell. x=13 is byte 6, upper nibble.
+        data[6] = 0xf0
+        legacy = render_native_help_line(font, bytes(data), 'A B')
+        clipped = render_native_help_line(
+            font, bytes(data), 'A B', clip_ascii_to_half_cell=True)
+        self.assertEqual(clipped.size, (36, 24))
+        self.assertEqual(legacy.getpixel((13, 0))[3], 255)
+        self.assertEqual(clipped.getpixel((13, 0))[3], 0)
+        self.assertEqual(clipped.getpixel((0, 0))[3], 255)
+        self.assertEqual(clipped.getpixel((24, 0))[3], 255)
+        # A 12-unit character pitch is invariant under source clipping.
+        self.assertEqual(native_help_glyph_origins('A B', 1.0),
+                         ((0.0, 12.0, 24.0), 36.0))
+        with self.assertRaisesRegex(ValueError, 'clipping flag'):
+            render_native_help_line(
+                font, bytes(data), 'A', clip_ascii_to_half_cell=1)
+
     def test_native_raster_refuses_unproven_font_dimensions(self):
         font, data = synthetic_font()
         font.width = 12
