@@ -23,6 +23,7 @@ from arika_scene_state import node_state,hidden_nodes,selection_nodes,transform_
 from arika_native_stage_state_switch import (
     SCENARIO_NAMES, native_stage_scenario_preview_hidden_nodes,
 )
+from arika_native_stage_state_runtime import c_native_stage_state_runtime
 
 NAVIGATION_HELP='MMB orbit · Shift+MMB pan · Ctrl+MMB zoom · Wheel zoom · Home frame all · Numpad . frame selected · Numpad 1/3/7 views · Numpad 5 perspective/ortho'
 
@@ -137,6 +138,9 @@ class c_viewport(QRenderWidget):
         self.m_native_stage_report=None
         self.m_native_stage_state_hidden={}
         self.m_native_stage_state_reports={}
+        self.m_native_runtime_active=False
+        self.m_native_runtime_model=None
+        self.m_native_runtime_hidden=set()
         self.m_authored_hidden=set()
         self.m_center=[0,0,0];self.m_distance=1000.;self.m_yaw=35.;self.m_pitch=30.;self.m_selected=-1
         self.m_selection=set()
@@ -168,6 +172,11 @@ class c_viewport(QRenderWidget):
         if nav is not None:nav.move(max(4,self.width()-nav.width()-12),12);nav.raise_()
 
     def set_project(self,project,fit=False,geometry=True):
+        if project is not self.m_project:
+            # Never carry an old stage's diagnostic overlay into a new project.
+            self.m_native_runtime_active=False
+            self.m_native_runtime_model=None
+            self.m_native_runtime_hidden=set()
         # Apply native stage RGB on a new scene or a changed runtime preset,
         # without discarding a user's temporary viewport colour on every edit.
         key=(id(project),getattr(project,'m_background_preset',None))
@@ -197,14 +206,20 @@ class c_viewport(QRenderWidget):
                 self.m_native_stage_state_reports['initial'])
             self.m_native_stage_hidden=set(
                 self.m_native_stage_state_hidden['initial'])
+            if self.m_native_runtime_active and self.m_native_runtime_model:
+                current=self.m_native_runtime_model.preview(project.m_document)
+                self.m_native_runtime_hidden=set(current['hidden_gltf_nodes'])
         self.m_project=project;self.m_world_cache=None;self.m_upload=True;self.m_geometry=geometry;self.m_fit=fit or self.m_fit;self.request_draw()
 
     def effective_hidden_nodes(self):
         """Combine authored state with optional nonpersistent native preview."""
-        return self.m_authored_hidden | (
-            self.m_native_stage_state_hidden.get(
-                self.m_native_stage_scenario,set())
-            if self.m_native_initial_state_preview else set())
+        if not self.m_native_initial_state_preview:
+            return set(self.m_authored_hidden)
+        overlay=(self.m_native_runtime_hidden
+                 if self.m_native_runtime_active else
+                 self.m_native_stage_state_hidden.get(
+                     self.m_native_stage_scenario,set()))
+        return self.m_authored_hidden | overlay
 
     def draw_frame(self):
         if not self.isVisible():return
@@ -840,6 +855,8 @@ class c_scene_editor(W.QMainWindow):
         super().__init__();self.m_settings=c_editor_settings();self.m_project=None;self.m_project_path=None;self.m_index=None;self.m_material=-1;self.m_items={};self.m_color=[1,1,1,1];self.m_audio=-1
         self.m_transform_orientation='local';self.m_pivot_mode='median';self.m_cursor_location=[0.0,0.0,0.0];self.m_cursor_axes=[[1.,0.,0.],[0.,1.,0.],[0.,0.,1.]];self.m_custom_orientation_axes=None;self.m_snap_steps={'move':1.0,'rotate':15.0,'scale':0.1}
         self.m_audio_buffer=None;self.m_audio_playing=False;self.m_audio_timer=None;self.m_audio_duration_ms=0
+        self.m_native_stage_runtime=None
+        self.m_native_runtime_project=None
         self.m_animation_preview=None;self.m_animation_timer=C.QTimer(self);self.m_animation_timer.timeout.connect(self.animation_tick)
         self.m_animation_clock=C.QElapsedTimer();self.m_animation_start=0.0
         self.setWindowTitle('Arika WebGPU scene editor');self.resize(1400,900);self.m_view=c_viewport();self.m_view.selection_requested.connect(self.select_view);self.m_view.selection_all.connect(self.select_all);self.m_view.delete_requested.connect(self.delete_selected);self.m_view.transform_changed.connect(self.sync_selection);self.m_view.gizmo_mode_requested.connect(self.set_gizmo_mode)
@@ -932,6 +949,28 @@ class c_scene_editor(W.QMainWindow):
                 lambda checked=False,mode=scenario:
                     self.set_native_stage_scenario(mode))
             self.m_native_state_actions[scenario]=action
+        options.addSeparator()
+        runtime_menu=options.addMenu('Native stage runtime (diagnostic)')
+        self.m_native_runtime_action=runtime_menu.addAction(
+            'Use controller runtime preview')
+        self.m_native_runtime_action.setCheckable(True)
+        self.m_native_runtime_action.setToolTip(
+            'RAM-only model. Native clock, GS/collision effects and callback '
+            'dispatch remain unresolved; never changes saved project data.')
+        self.m_native_runtime_action.toggled.connect(
+            self.toggle_native_stage_runtime)
+        for label,event in (
+                ('Reset controller state (editor)','reset'),
+                ('Advance one frame (unresolved native timer)','advance'),
+                ('Inject phase-ready branch (diagnostic)','timer_ready'),
+                ('Invoke gated switch callback','switch'),
+                ('Invoke direct restore helper','restore'),
+                ('Invoke event reset-mask branch','event_reset'),
+                ('Inspect controller phases and flags','inspect')):
+            action=runtime_menu.addAction(label)
+            action.triggered.connect(
+                lambda checked=False,event=event:
+                    self.native_stage_runtime_event(event))
         options.addAction('Stage background…').triggered.connect(self.stage_background)
         options.addAction('Background color…').triggered.connect(self.background_color)
         options.aboutToShow.connect(self.sync_view_controls)
@@ -1774,6 +1813,10 @@ class c_scene_editor(W.QMainWindow):
             action.blockSignals(True)
             action.setChecked(scenario==self.m_view.m_native_stage_scenario)
             action.blockSignals(False)
+        self.m_native_runtime_action.blockSignals(True)
+        self.m_native_runtime_action.setChecked(
+            self.m_view.m_native_runtime_active)
+        self.m_native_runtime_action.blockSignals(False)
 
     def viewport_option(self,key,value):
         view=self.active_view();view.m_options[key]=value;view.request_draw()
@@ -1788,6 +1831,8 @@ class c_scene_editor(W.QMainWindow):
         """Change *hypothetical* original mask state, without editing assets."""
         if scenario not in SCENARIO_NAMES:
             raise ValueError('unknown native stage state scenario')
+        if self.m_native_runtime_action.isChecked():
+            self.m_native_runtime_action.setChecked(False)
         for view in (self.m_view,self.m_object_view):
             view.m_native_stage_scenario=scenario
             view.request_draw()
@@ -1798,6 +1843,9 @@ class c_scene_editor(W.QMainWindow):
         self._report_native_stage_preview()
 
     def _report_native_stage_preview(self):
+        if self.m_view.m_native_runtime_active:
+            self._report_native_stage_runtime()
+            return
         if not self.m_view.m_native_initial_state_preview:
             self.statusBar().showMessage(
                 'Native stage-state preview disabled; original STG and '
@@ -1828,6 +1876,121 @@ class c_scene_editor(W.QMainWindow):
             view.m_native_initial_state_preview=checked
             view.request_draw()
         self._report_native_stage_preview()
+
+    def _native_stage_runtime_session(self):
+        project=self.m_project
+        stage=getattr(project,'m_stage',None) if project else None
+        scene=getattr(stage,'m_scene',None) if stage else None
+        if scene is None:
+            self.statusBar().showMessage(
+                'No parsed STG stage for kind-6 runtime diagnostics.')
+            return None
+        if (self.m_native_stage_runtime is None or
+                self.m_native_runtime_project is not project):
+            self.m_native_stage_runtime=c_native_stage_state_runtime(scene)
+            self.m_native_runtime_project=project
+        return self.m_native_stage_runtime
+
+    def _report_native_stage_runtime(self,extra=''):
+        runtime=self.m_native_stage_runtime
+        if runtime is None:
+            return
+        state=runtime.snapshot()
+        phases=', '.join(
+            '%d:phase=%d,count=%s' %
+            (key,value['phase'],str(value['countdown']))
+            for key,value in state['controllers'].items())
+        self.statusBar().showMessage(
+            'Diagnostic kind-6 runtime [%s]; %s '
+            'Native timer and GS/collision flags unresolved; not saved.' %
+            (phases or 'no controls',extra))
+
+    def refresh_native_stage_runtime(self):
+        runtime=self._native_stage_runtime_session()
+        if runtime is None:
+            return None
+        report=runtime.preview(self.m_project.m_document)
+        for view in (self.m_view,self.m_object_view):
+            view.m_native_runtime_model=runtime
+            view.m_native_runtime_active=bool(
+                self.m_native_runtime_action.isChecked())
+            view.m_native_runtime_hidden=set(report['hidden_gltf_nodes'])
+            view.request_draw()
+        self._report_native_stage_runtime(
+            '%d visually suppressed, %d ambiguous source mappings.' %
+            (len(report['hidden_gltf_nodes']),
+             len(report['skipped_mappings'])))
+        return report
+
+    def toggle_native_stage_runtime(self,enabled):
+        if enabled:
+            if not self.m_native_stage_state_action.isChecked():
+                self.m_native_stage_state_action.setChecked(True)
+            self.refresh_native_stage_runtime()
+        else:
+            for view in (self.m_view,self.m_object_view):
+                view.m_native_runtime_active=False
+                view.request_draw()
+            self._report_native_stage_preview()
+
+    def _native_stage_runtime_controller(self,runtime):
+        keys=sorted(runtime.m_controllers)
+        if not keys:
+            self.statusBar().showMessage('No live kind-6 controllers in stage.')
+            return None
+        if len(keys)==1:
+            return keys[0]
+        names=['%d — %s' %
+               (key,self.m_project.m_stage.m_scene['nodes'][key]['name'])
+               for key in keys]
+        selected,ok=W.QInputDialog.getItem(
+            self,'Native kind-6 controller','Control:',names,0,False)
+        return keys[names.index(selected)] if ok else None
+
+    def native_stage_runtime_event(self,event):
+        """Dispatch an explicit diagnostic; never touch STG or glTF state."""
+        runtime=self._native_stage_runtime_session()
+        if runtime is None:
+            return None
+        if event=='inspect':
+            info=runtime.snapshot()
+            message='\\n'.join(
+                '%d: phase=%d, countdown=%s, source=%s' %
+                (key,value['phase'],str(value['countdown']),
+                 str(value['countdown_source']))
+                for key,value in info['controllers'].items())
+            W.QMessageBox.information(
+                self,'Native stage runtime (diagnostic)',
+                (message or 'No live controllers')+
+                '\\n\\nNative timer, rendering and collision are unresolved.')
+            return info
+        if event=='reset':
+            result=runtime.reset_to_initial()
+        elif event=='advance':
+            result=runtime.advance(1)
+        else:
+            controller=self._native_stage_runtime_controller(runtime)
+            if controller is None:
+                return None
+            if event=='timer_ready':
+                result=runtime.observe_timer_ready(
+                    controller,diagnostic=True)
+            elif event=='switch':
+                result=runtime.switch(controller)
+            elif event=='restore':
+                result=runtime.restore(controller)
+            elif event=='event_reset':
+                result=runtime.callback(controller,0x08000000)
+            else:
+                raise ValueError('unknown diagnostic kind-6 event')
+        if not self.m_native_runtime_action.isChecked():
+            self.m_native_runtime_action.setChecked(True)
+        self.refresh_native_stage_runtime()
+        self._report_native_stage_runtime(
+            ('event %s: %s' %
+             (event,result.get('reason') or
+              ('applied' if result.get('applied') else 'reset'))))
+        return result
 
     def stage_background(self):
         project=self.m_project
