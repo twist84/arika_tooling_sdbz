@@ -10,7 +10,8 @@ import unittest
 from PySide6 import QtGui as G, QtWidgets as W
 
 from arika_logo_preview import (
-    c_logo_preview, decode_logo_texture, load_logo_images, render_logo_image,
+    c_logo_preview, decode_logo_texture, load_logo_images,
+    load_logo_archive_images, render_logo_image,
 )
 from arika_logo_resources import LOGO_RESOURCE_NAMES, logo_asset_paths
 
@@ -108,6 +109,72 @@ class LogoPreviewTests(unittest.TestCase):
         widget.m_reset.click()
         self.assertEqual(widget.m_runtime.snapshot()['phase'], 0)
         widget.close()
+
+    def test_archive_mapping_accepts_exact_and_pix_suffixed_native_keys(self):
+        payload = synthetic_fpix(synthetic_tim2_rgba32())
+        archive = {
+            'DIS\\D03\\D03T0205.PIX': payload,
+            '/dis/d03/d03t0203': payload,
+            'dis/d03/d03t0202.pix': payload,
+            'dis/main_menu.pix': b'ignored',
+        }
+        images, errors = load_logo_archive_images(archive)
+        self.assertTrue(all(image is not None for image in images))
+        self.assertEqual(errors, [None, None, None])
+        self.assertEqual(images[0].pixelColor(0, 0).red(), 111)
+
+    def test_archive_mapping_rejects_duplicate_and_wrong_native_assets(self):
+        payload = synthetic_tim2_rgba32()
+        images, errors = load_logo_archive_images({
+            'dis/d03/d03t0205': payload,
+            'dis/d03/d03t0205.pix': payload,
+            'other/d03t0203.pix': payload,
+            'dis/d03/d03t0202.pix': b'invalid',
+        })
+        self.assertIsNone(images[0])
+        self.assertIn('ambiguous', errors[0])
+        self.assertIsNone(images[1])
+        self.assertIn('not found', errors[1])
+        self.assertIsNone(images[2])
+        self.assertIn('unsupported', errors[2])
+        with self.assertRaises(TypeError):
+            load_logo_archive_images([])
+
+    def test_embedded_widget_clears_previous_archive_and_resets_clock(self):
+        payload = synthetic_tim2_rgba32()
+        widget = c_logo_preview()
+        self.assertIsNone(widget.m_images[0])
+        self.assertEqual(widget.load_archive_assets({
+            'dis/d03/d03t0205.pix': payload,
+        }), 1)
+        self.assertIsNotNone(widget.m_canvas.pixmap())
+        widget.m_step.click()
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 2)
+        self.assertEqual(widget.load_archive_assets({}), 0)
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 0)
+        self.assertTrue(all(image is None for image in widget.m_images))
+        self.assertTrue(widget.m_canvas.pixmap() is None or
+                        widget.m_canvas.pixmap().isNull())
+        self.assertIn('not found', widget.m_status.text())
+        widget.close()
+
+    def test_embedded_tab_resizes_4_by_3_display(self):
+        texture = G.QImage(512, 512, G.QImage.Format.Format_ARGB32)
+        texture.fill(G.QColor(4, 9, 17))
+        tabs = W.QTabWidget()
+        widget = c_logo_preview([texture, None, None],
+                                [None, 'missing', 'missing'])
+        tabs.addTab(widget, 'Startup / Splash')
+        tabs.resize(600, 540)
+        tabs.show()
+        self.m_app.processEvents()
+        self.assertIsNotNone(widget.m_canvas.pixmap())
+        pixmap = widget.m_canvas.pixmap()
+        self.assertLessEqual(pixmap.width(), widget.m_canvas.width())
+        self.assertLessEqual(pixmap.height(), widget.m_canvas.height())
+        self.assertAlmostEqual(pixmap.width() / pixmap.height(), 4 / 3,
+                               delta=0.02)
+        tabs.close()
 
 
 if __name__ == '__main__':
