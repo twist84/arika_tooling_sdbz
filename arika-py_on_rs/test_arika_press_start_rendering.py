@@ -229,5 +229,56 @@ class PressStartRenderingTests(unittest.TestCase):
         self.assertIsNone(viewer.m_copyright_images)
 
 
+    def test_all_prompt_cases_render_from_original_atlas(self):
+        foreground = self.texture((0, 0, 0, 0))
+        painter = G.QPainter(foreground)
+        try:
+            painter.fillRect(C.QRect(278, 357, 92, 30),
+                             G.QColor(255, 40, 80, 255))
+            painter.fillRect(C.QRect(0, 357, 99, 30),
+                             G.QColor(20, 255, 50, 255))
+        finally:
+            painter.end()
+        background = self.texture((100, 0, 0, 255))
+        for case, initial_x in ((0, 154), (1, 116), (2, 88),
+                                (3, 86), (4, 118)):
+            with self.subTest(case=case):
+                rendered = render_press_start_image(
+                    (foreground, background, None),
+                    prompt_visible=True, prompt_case=case)
+                pixel = rendered.pixelColor(initial_x, 344)
+                if case < 2:
+                    self.assertGreater(pixel.green(), 240)
+                else:
+                    self.assertEqual(pixel.red(), 255)
+                self.assertEqual(pixel.alpha(), 255)
+        with self.assertRaisesRegex(ValueError, 'unsupported native prompt'):
+            render_press_start_image(
+                (foreground, background, None),
+                prompt_visible=True, prompt_case=5)
+
+    def test_native_prompt_case_selector_is_diagnostic(self):
+        viewer = c_press_start_preview()
+        self.m_views.append(viewer)
+        pix = synthetic_tim2_rgba32()
+        viewer.load_archive_assets({
+            key + '.pix': pix for key in PRESS_START_RESOURCE_KEYS
+        })
+        self.assertEqual(viewer.m_prompt_case.currentData(), 1)
+        self.assertIn('diagnostic', viewer.m_prompt_case.toolTip().lower())
+        viewer.m_prompt_case.setCurrentIndex(3)
+        self.assertEqual(viewer.m_prompt_case.currentData(), 3)
+        self.assertIn('prompt case 3', viewer.m_status.text())
+        viewer.m_delta.setValue(1.25)
+        viewer.m_step.click()
+        self.assertTrue(viewer.m_prompt_clock.visible)
+        self.assertEqual(viewer.m_prompt_case.currentData(), 3)
+        viewer.reset()
+        self.assertEqual(viewer.m_prompt_case.currentData(), 3)
+        self.assertEqual(viewer.load_archive_assets({}), 0)
+        self.assertEqual(viewer.m_prompt_case.currentData(), 1)
+
+
+
 if __name__ == '__main__':
     unittest.main()
