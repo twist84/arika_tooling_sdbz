@@ -16,6 +16,7 @@ from arika_press_start_rendering import (
     press_start_comparison_image,
 )
 from arika_press_start_animation import c_press_start_prompt_clock
+from arika_press_start_prompt_layout import PRESS_START_PROMPT_CASES
 
 
 # Actual viewport bounds measured from the user's 1920x1040 PCSX2
@@ -129,6 +130,14 @@ class c_press_start_preview(W.QWidget):
         self.m_view_mode.setToolTip(
             'Reference screenshots are never used as native sprite textures.')
         self.m_view_mode.currentIndexChanged.connect(self.redraw)
+        self.m_prompt_case = W.QComboBox()
+        for case in sorted(PRESS_START_PROMPT_CASES):
+            self.m_prompt_case.addItem('Native prompt case %d' % case, case)
+        self.m_prompt_case.setCurrentIndex(1)
+        self.m_prompt_case.setToolTip(
+            'Manual diagnostic selection of ELF dispatch cases 0..4. '
+            'Actual controller-service state to case mapping is unverified.')
+        self.m_prompt_case.currentIndexChanged.connect(self.redraw)
         self.m_load_hidden = W.QPushButton('Load PCSX2 capture: no prompt')
         self.m_load_visible = W.QPushButton('Load PCSX2 capture: prompt')
         self.m_load_hidden.clicked.connect(self.choose_hidden_capture)
@@ -186,6 +195,7 @@ class c_press_start_preview(W.QWidget):
         references.addWidget(self.m_prompt_visible)
         references.addWidget(self.m_clock_enabled)
         references.addWidget(self.m_view_mode)
+        references.addWidget(self.m_prompt_case)
         references.addStretch()
         layout.addLayout(references)
         inputs = W.QHBoxLayout()
@@ -274,6 +284,7 @@ class c_press_start_preview(W.QWidget):
         self.m_transition_busy.setChecked(False)
         self.m_idle_reset.setChecked(False)
         self.m_view_mode.setCurrentIndex(0)
+        self.m_prompt_case.setCurrentIndex(1)
         images, errors = load_press_start_archive_images(virtual_files)
         self.m_images = tuple(images)
         self.m_asset_errors = tuple(errors)
@@ -292,7 +303,8 @@ class c_press_start_preview(W.QWidget):
         """Return decoded original sprite pixels, never screenshot pixels."""
         return render_press_start_image(
             self.m_images, self.m_copyright_images,
-            prompt_visible=self.m_prompt_clock.visible, fade_alpha=1.0)
+            prompt_visible=self.m_prompt_clock.visible, fade_alpha=1.0,
+            prompt_case=self.m_prompt_case.currentData())
 
     def draw_canvas(self):
         show_prompt = (self.m_prompt_visible.isChecked() and
@@ -337,7 +349,7 @@ class c_press_start_preview(W.QWidget):
             '%s | native app ID %d | phase %d | idle age %.4f s | '
             'updates %d | one-shot %s | destination %s | '
             'reference captures %d/2 | decoded resources %d/3 | '
-            'native prompt %.4f s (%s) | FFON %s%s' %
+            'native prompt %.4f s (%s, case %d) | FFON %s%s' %
             (state, PRESS_START_APP_ID, snapshot['phase'],
              snapshot['elapsed_seconds'], snapshot['updates'],
              'done' if snapshot['one_shot'] else 'pending',
@@ -345,6 +357,7 @@ class c_press_start_preview(W.QWidget):
              sum(image is not None for image in self.m_images),
              self.m_prompt_clock.phase,
              'visible' if self.m_prompt_clock.visible else 'hidden',
+             self.m_prompt_case.currentData(),
              'loaded' if self.m_copyright_images is not None else 'missing',
              ' | ' + self.m_reference_error if self.m_reference_error else ''))
         self.m_notice.setToolTip(
