@@ -78,11 +78,12 @@ Known `0x3F7AA0` draw order:
 2. Foreground sprite `+0x40`, source `(0,0,257,306)`, destination
    `(128,28,257,306)`.
 3. Conditional prompt, drawn from the **foreground atlas** by
-   `0x3F7E10`. The captured prompt matches the native controller case-1
-   layout: three source rectangles `(0,357,99,30)`,
-   `(204,357,74,30)`, `(99,357,105,30)`; first destination
-   `(116,344)`, subsequent x positions `217`, `293`
-   with a 2-pixel gap. Other native cases **remain unsupported**.
+   `0x3F7E10`. The two supplied captures match the native case-1
+   layout, with three source rectangles `(0,357,99,30)`,
+   `(204,357,74,30)`, `(99,357,105,30)`, placed at
+   x=`116,217,293` and y=`344`. **All five** ELF dispatch layouts
+   have now been recovered (see below); the controller-service state that
+   selects each case is still unobserved.
 4. Two copyright lines rendered using original FFON text, in shadow
    and white passes; two copyright-symbol sprites from third resource.
 
@@ -137,6 +138,45 @@ about actual in-game entry phase. Play/Pause, Step and Reset use the
 existing editor UI. The manual Show PRESS START checkbox still switches
 only **PCSX2 reference capture state**, not the rebuilt clock.
 
+## All prompt dispatch layouts (M1 follow-up, 2026-11-18)
+
+A direct disassembly of exact EU-beta `0x3F7E10` shows five selector
+branches returned from `0x3F7D40` (controller service helpers
+`0x2AFB70`, `0x2AFB80`, `0x2AFAD0`, `0x2AFC80`).
+The cases are **not controller indices**. These source and destination
+rectangles are recovered from original instruction immediates and
+sprite-geometry return values, not hand positioned to match captures.
+
+| Case | Native branch | Initial logical x | Atlas source rectangles (x,y,w,h) |
+|---|---|---:|---|
+| 0 | `0x3F7E60` | 154 | `(0,357,99,30)`, `(99,357,105,30)` |
+| 1 | `0x3F7F2C` | 116 | `(0,357,99,30)`, `(204,357,74,30)`, `(99,357,105,30)` |
+| 2 | `0x3F8068` | 88 | `(278,357,92,30)`, `(0,387,39,30)`, `(80,387,90,30)`, `(170,387,110,30)` |
+| 3 | `0x3F8214` | 86 | `(278,357,92,30)`, `(39,387,41,30)`, `(80,387,90,30)`, `(170,387,110,30)` |
+| 4 | `0x3F83C0` | 118 | `(278,357,92,30)`, `(80,387,90,30)`, `(170,387,110,30)` |
+
+For every case, native y=`344`, height=`30`, and the next quad
+begins at the previous quad's destination x + width + **2 pixels**.
+Case destinations therefore have x sequences:
+`(154,255)`, `(116,217,293)`, `(88,182,223,315)`,
+`(86,180,223,315)`, and `(118,212,304)`.
+
+`arika_press_start_prompt_layout.py` supplies pure case-specific quad
+lists and a full-SHA-256 plus opcode-gated ELF oracle.
+The reconstruction now supports each case via a clearly labelled
+**manual diagnostic** selector in the existing Press Start tab. It
+defaults to case 1 (the variant observed in the screenshots), resets
+to case 1 on archive swaps and does **not** infer a case from the
+existing gamepad eligibility controls. Native prompt blink timing
+continues to come exclusively from the recovered global UI clock.
+All five variants are regression-tested on both CI platforms.
+
+**Outstanding observation:** record the original return from
+`0x3F7D40` alongside the controller-service state and a GS prompt draw
+to establish when each case appears naturally. Without that capture,
+automatic selection or mapping case numbers to specific controller
+configurations would be guessed behavior.
+
 ## Editor implementation and testing
 
 - `arika_press_start_resources.py` and
@@ -160,7 +200,7 @@ Run CI-equivalent tests with:
 
 ```sh
 cd arika-py_on_rs
-python -m unittest test_arika_press_start_runtime test_arika_press_start_resources test_arika_press_start_preview test_arika_press_start_rendering test_arika_press_start_animation test_arika_press_start_copyright -v
+python -m unittest test_arika_press_start_runtime test_arika_press_start_resources test_arika_press_start_preview test_arika_press_start_rendering test_arika_press_start_animation test_arika_press_start_copyright test_arika_press_start_prompt_layout -v
 ```
 
 On local original ELF builds set `SDBZ_EU_BETA_ELF` for additional
@@ -181,9 +221,8 @@ To complete M1, run the real archive through the integrated Qt tab,
 validate each texture's XPIX/TIM2 structure and palette/alpha, verify
 font glyphs and the case-1 prompt visually against *both* PCSX2
 reference states, recover measured GS filtering/blending/fade behavior,
-and document residual per-layer/pixel error. Exact native entry phase
-and other controller-specific prompt variants still lack runtime
-capture evidence. Passing synthetic CI is necessary but **not**
+and document residual per-layer/pixel error. Exact native entry phase and the controller-service-state to
+prompt-case mapping still lack runtime capture evidence. Passing synthetic CI is necessary but **not**
 sufficient to claim original visual parity.
 
 Keep PR #25 in **draft/unmerged** until the evidence criteria are met.
