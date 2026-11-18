@@ -1223,6 +1223,15 @@ class c_scene_editor(W.QMainWindow):
         except Exception as error:
             self.m_title_view=W.QLabel('Title screen unavailable: %s'%error)
             self.m_menu_tabs.addTab(self.m_title_view,'Title Screen')
+        try:
+            from arika_demo_main_preview import c_demo_main_preview
+            self.m_demo_view=c_demo_main_preview()
+            self.m_menu_tabs.addTab(self.m_demo_view,'Demo Main')
+            if hasattr(self.m_title_view,'handoff_requested'):
+                self.m_title_view.handoff_requested.connect(self.inspect_title_handoff)
+        except Exception as error:
+            self.m_demo_view=W.QLabel('Demo Main inspector unavailable: %s'%error)
+            self.m_menu_tabs.addTab(self.m_demo_view,'Demo Main')
         self.m_object_view=c_viewport();self.m_object_view.m_isolated=set();self.m_object_view.selection_requested.connect(self.select_view);self.m_object_view.selection_all.connect(self.select_all);self.m_object_view.delete_requested.connect(self.delete_selected);self.m_object_view.transform_changed.connect(self.sync_selection);self.m_object_view.gizmo_mode_requested.connect(self.set_gizmo_mode);self.m_views.addWidget(self.m_object_view)
         self.m_views.addWidget(menu_panel)
         audio_panel=W.QWidget();al=W.QVBoxLayout(audio_panel);al.setContentsMargins(8,8,8,8);al.setSpacing(6)
@@ -1768,6 +1777,8 @@ class c_scene_editor(W.QMainWindow):
             self.m_warning_view.load_archive_assets({})
         if hasattr(self.m_title_view, 'load_archive_assets'):
             self.m_title_view.load_archive_assets({})
+        if hasattr(self.m_demo_view, 'load_archive_assets'):
+            self.m_demo_view.load_archive_assets({})
         try:
             self.m_tree.clear();self.m_items={}
         except Exception:pass
@@ -1813,6 +1824,8 @@ class c_scene_editor(W.QMainWindow):
             self.m_warning_view.load_archive_assets(self.m_virtual_files)
         if hasattr(self.m_title_view, 'load_archive_assets'):
             self.m_title_view.load_archive_assets(self.m_virtual_files)
+        if hasattr(self.m_demo_view, 'load_archive_assets'):
+            self.m_demo_view.load_archive_assets(self.m_virtual_files)
 
         self.statusBar().showMessage('Loaded archive %s — %d entries'%(info_path.name,len(self.m_virtual_files)))
         self.m_scene_status.setText('Archive: %d entries'%len(self.m_virtual_files))
@@ -3300,6 +3313,16 @@ class c_scene_editor(W.QMainWindow):
         if not self.m_project or self.m_material<0:return
         from types import SimpleNamespace
         self.m_material_view.set_project(SimpleNamespace(m_document=material_preview_document(self.m_project.m_document,self.m_material)),fit=True)
+    def inspect_title_handoff(self,result):
+        # An in-editor inspector transition only; do not emulate the
+        # original application factory, movie streaming or GS runtime.
+        if hasattr(self.m_demo_view,'accept_title_result'):
+            if self.m_demo_view.accept_title_result(result):
+                self.m_menu_tabs.setCurrentWidget(self.m_demo_view)
+                self.statusBar().showMessage(
+                    'CAppTitleMain (ID 2) requests CAppDemoMain (ID 6). '
+                    'Showing registered factory and loader (diagnostic).')
+
     def change_view(self,index):
         self.m_views.setCurrentIndex(index)
         self.m_workspaces.blockSignals(True);self.m_workspaces.setCurrentIndex(index);self.m_workspaces.blockSignals(False)
@@ -3315,7 +3338,7 @@ class c_scene_editor(W.QMainWindow):
             self.m_object_view.request_draw()
             if not self.m_view.m_selection:self.statusBar().showMessage('Object View: select an object or group in the Outliner.')
         elif index==4:
-            self.statusBar().showMessage('Game screens: main menu, startup logos, warning and title screen.')
+            self.statusBar().showMessage('Game screens: title handoff to Demo Main, warning, splash and menu.')
         elif index==5:
             self.select_audio_view()
         self.sync_view_controls()

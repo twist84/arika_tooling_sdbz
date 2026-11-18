@@ -123,8 +123,10 @@ All other tests run against synthetic images or the recovered
 control model in Ubuntu and Windows CI. The original game binary
 is not shipped with the repository.
 
-**Next milestone:** identify the actual app ID-6 target from the
-native app table and trace the handoff between
-`CAppTitleMain` and the interactive menu. This requires verifying
-the original startup application manager rather than assigning
-screen names from the order of ELF strings.
+**Resolved in the next milestone:** The original app registry maps
+ID 2 to `CAppTitleMain` and its requested destination ID 6
+to `CAppDemoMain`, not directly to `CAppDemoMovie` (ID 7).
+See [NATIVE_APP_HANDOFF.md](NATIVE_APP_HANDOFF.md) for the exact
+factory/class-name evidence, child request branches, and the
+in-editor Demo Main inspector. No claim of a completed native movie
+or interactive menu handoff is made.
