@@ -189,6 +189,37 @@ the original glyph shapes together are the acceptance criterion.
 The prompt-case selector (currently case 0 in the user's screenshot)
 does not influence FFON glyph advance.
 
+### Individual native glyph submissions — follow-up
+
+The next owner-supplied screenshot showed a **copyright-region MAE
+of 31.213 (hidden) and 32.827 (visible)** despite comparatively close
+line geometry. The comparison also shows roughly 38% more near-white
+copyright-region pixels in the Qt reconstruction than in the PCSX2
+capture at a fixed RGB threshold in the screenshot; this is descriptive
+and includes screenshot scaling and local background. A font run
+rendered as one enlarged/smoothed bitmap is not a literal model of
+the original font dispatcher.
+
+The original `0x2CDCA0` string renderer calls the font vtable
+`+0x20` glyph draw path `0x199EE0` per character; its advance
+comes from `0x19A030`. The editor now decodes each **12×24
+ASCII half-cell glyph** from the original `font/5-24-2.fon`, caches
+its shadow (RGB .25) and white (RGB 1.0) images on archive load, and
+submits a separate fractionally positioned 12×24 source quad at the
+original `0x3F2B851F` scale. Pen origins come from the existing
+float32 `native_help_glyph_origins` helper, not an invented
+inter-character spacing. The prior whole-line composition remains as
+an isolated legacy/synthetic fallback, and the main-menu font path
+does not change.
+
+The displayed glyphs may still differ from native GS due to alpha
+test, TEX1 filtering, half-pixel sample locations and blending. No
+screenshot-derived colour, font spacing, alignment or asset replacement
+has been hardcoded. Repeat the two capture comparisons with the same
+case-1 prompt selection after pulling this commit; the measurable
+copyright-only residual will determine whether the actual-per-glyph
+submission reduced the visual discrepancy.
+
 ## All prompt dispatch layouts (M1 follow-up, 2026-11-18)
 
 A direct disassembly of exact EU-beta `0x3F7E10` shows five selector
