@@ -25,7 +25,7 @@ ELF_FILE_BIAS = 0xFFF80
 # from neighboring strings. No claim of original boot order is made.
 APP_FACTORIES = (
     (2, 0x3F2D80, 0x3F86E0, 0x3F86C0, 0x4D7F90, 'CAppTitleMain'),
-    (4, 0x3F2CC0, 0x41E620, 0x41E5F0, 0x4D9180, 'CAppLogoMain'),
+    (4, 0x3F2CC0, 0x41E620, 0x41EC80, 0x4D91F8, 'CAppLogoMain'),
     (5, 0x3F2C60, 0x41ECA0, 0x41EC80, 0x4D8518, 'CAppWarning'),
     (6, 0x3F2C00, 0x3E03E0, 0x3E0D10, 0x4D52F0, 'CAppDemoMain'),
     (7, 0x3F2BA0, 0x3E1BD0, 0x3E2080, 0x4D5338, 'CAppDemoMovie'),
@@ -52,7 +52,7 @@ APP_REGISTRATION_SITES = {
 # via 0x3DFBD0 based on this+0x28. Their class identities are not
 # assumed here beyond the independently verified ID 4 and ID 7.
 DEMO_MAIN_CHILD_CHOICES = (4, 7, 8, 9)
-DEMO_MAIN_CHOICE_SITES = (0x3E08B4, 0x3E08CC, 0x3E08E4, 0x3E08FC)
+DEMO_MAIN_CHOICE_SITES = (0x3E08B4, 0x3E08CC, 0x3E08E4, 0x3E08F4)
 
 
 def _word(elf, address):
@@ -152,14 +152,16 @@ def verify_app_registry_elf(elf):
             raise ValueError('demo helper string mismatch')
 
     expected = {
-        0x3E0400: 0x24425E00,  # DemoMain base vtable
-        0x3E0414: 0x24425E28,  # DemoMain phase vtable
+        0x3E03FC: 0x24425E00,  # DemoMain base vtable
+        0x3E0410: 0x24425E28,  # DemoMain phase vtable
         0x3E1BEC: 0x24425ED0,  # DemoMovie base vtable
-        0x3E1C04: 0x24425EF8,  # DemoMovie phase vtable
+        0x3E1C00: 0x24425EF8,  # DemoMovie phase vtable
         0x4F5E00 + 8: 0x3E0D10,  # DemoMain name getter
         0x4F5ED0 + 8: 0x3E2080,  # DemoMovie name getter
         0x3E0D18: 0x244252F0,   # CAppDemoMain string
         0x3E2088: 0x24425338,   # CAppDemoMovie string
+        0x4F7258: 0x41EC80,    # LogoMain name getter
+        0x41EC88: 0x244291F8,  # LogoMain name pointer
         0x3F89CC: 0x24050006,   # Title requests app 6
     }
     for address, value in expected.items():
