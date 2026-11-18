@@ -37,6 +37,25 @@ APP_NATIVE_REGISTRY_PATH = (Path(__file__).with_name('research') /
                             'native_app_registry_eu_beta.json')
 APP_NATIVE_REGISTRY = json.loads(APP_NATIVE_REGISTRY_PATH.read_text(encoding='utf-8'))
 APP_ENTRIES = {app['id']: app for app in APP_NATIVE_REGISTRY['applications']}
+# Independent exact-ELF argument audit for all 37 provider callsites.
+# Keep this separate from the 73 transition/child requests: a provider may
+# invoke a factory without requesting a native application transition.
+APP_NATIVE_PROVIDER_AUDIT_PATH = (Path(__file__).with_name('research') /
+                                  'native_factory_provider_calls_eu_beta.json')
+APP_NATIVE_PROVIDER_AUDIT = json.loads(
+    APP_NATIVE_PROVIDER_AUDIT_PATH.read_text(encoding='utf-8'))
+APP_NATIVE_PROVIDER_CALLS = tuple(APP_NATIVE_PROVIDER_AUDIT['callsites'])
+_expected_provider_sites = {
+    edge['callsite'] for edge in APP_NATIVE_REGISTRY['callsites']
+    if edge['api'] == 'factory_lookup'
+}
+if (len(APP_NATIVE_PROVIDER_CALLS) != 37 or
+        len({edge['callsite'] for edge in APP_NATIVE_PROVIDER_CALLS}) != 37 or
+        {edge['callsite'] for edge in APP_NATIVE_PROVIDER_CALLS} !=
+        _expected_provider_sites):
+    raise ValueError('factory-provider audit must cover exactly 37 sites')
+
+
 if (len(APP_ENTRIES) != APP_REGISTRY_COUNT or
         sorted(APP_ENTRIES) != list(range(1, APP_REGISTRY_COUNT + 1))):
     raise ValueError('invalid native application registry: missing or duplicate IDs')
@@ -130,6 +149,25 @@ def registered_native_requests(source_id=None, request_kind=None):
                  if (request_kind is None or edge['api'] == request_kind) and
                  (source_id is None or source_id in edge['source_candidates']))
 
+
+
+def registered_factory_providers(target_id=None, argument_kind=None):
+    """Return static provider argument evidence, NOT execution events.
+
+    `target_id` filters only proved literal IDs; mutable child/pending ID
+    arguments are returned by `argument_kind` or in the full listing.
+    """
+    if target_id is not None and (
+            type(target_id) is not int or target_id not in APP_ENTRIES):
+        raise ValueError('invalid literal provider target ID')
+    kinds = ('literal', 'child_id_byte', 'pending_id_byte',
+             'requested_child_id')
+    if argument_kind is not None and argument_kind not in kinds:
+        raise ValueError('invalid native provider argument kind')
+    return tuple(
+        edge for edge in APP_NATIVE_PROVIDER_CALLS
+        if (target_id is None or edge['target_id'] == target_id) and
+           (argument_kind is None or edge['argument_kind'] == argument_kind))
 
 
 def title_handoff_request(title_result):
