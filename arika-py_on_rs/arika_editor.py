@@ -1224,6 +1224,17 @@ class c_scene_editor(W.QMainWindow):
             self.m_title_view=W.QLabel('Title screen unavailable: %s'%error)
             self.m_menu_tabs.addTab(self.m_title_view,'Title Screen')
         try:
+            from arika_press_start_preview import c_press_start_preview
+            self.m_press_start_view=c_press_start_preview()
+            self.m_press_start_view.setSizePolicy(
+                W.QSizePolicy.Policy.Expanding,W.QSizePolicy.Policy.Expanding)
+            self.m_press_start_view.transition_requested.connect(
+                self.inspect_press_start_destination)
+            self.m_menu_tabs.addTab(self.m_press_start_view,'Press Start')
+        except Exception as error:
+            self.m_press_start_view=W.QLabel('Press Start editor unavailable: %s'%error)
+            self.m_menu_tabs.addTab(self.m_press_start_view,'Press Start')
+        try:
             from arika_demo_main_preview import c_demo_main_preview
             self.m_demo_view=c_demo_main_preview()
             self.m_menu_tabs.addTab(self.m_demo_view,'Demo Main')
@@ -1777,6 +1788,8 @@ class c_scene_editor(W.QMainWindow):
             self.m_warning_view.load_archive_assets({})
         if hasattr(self.m_title_view, 'load_archive_assets'):
             self.m_title_view.load_archive_assets({})
+        if hasattr(self.m_press_start_view, 'load_archive_assets'):
+            self.m_press_start_view.load_archive_assets({})
         if hasattr(self.m_demo_view, 'load_archive_assets'):
             self.m_demo_view.load_archive_assets({})
         try:
@@ -1824,6 +1837,8 @@ class c_scene_editor(W.QMainWindow):
             self.m_warning_view.load_archive_assets(self.m_virtual_files)
         if hasattr(self.m_title_view, 'load_archive_assets'):
             self.m_title_view.load_archive_assets(self.m_virtual_files)
+        if hasattr(self.m_press_start_view, 'load_archive_assets'):
+            self.m_press_start_view.load_archive_assets(self.m_virtual_files)
         if hasattr(self.m_demo_view, 'load_archive_assets'):
             self.m_demo_view.load_archive_assets(self.m_virtual_files)
 
@@ -3313,6 +3328,19 @@ class c_scene_editor(W.QMainWindow):
         if not self.m_project or self.m_material<0:return
         from types import SimpleNamespace
         self.m_material_view.set_project(SimpleNamespace(m_document=material_preview_document(self.m_project.m_document,self.m_material)),fit=True)
+    def inspect_press_start_destination(self,app_id):
+        # A navigation aid only; never execute the original game factory.
+        if app_id == 6 and hasattr(self.m_demo_view,'reset'):
+            self.m_demo_view.reset()
+            self.m_menu_tabs.setCurrentWidget(self.m_demo_view)
+            self.statusBar().showMessage(
+                'Press Start attract timeout requested DemoMain (ID 6). '
+                'Showing a diagnostic inspector, not running the game.')
+        else:
+            self.statusBar().showMessage(
+                'Press Start requested native application ID %d. '
+                'No native factory executed.'%app_id)
+
     def inspect_title_handoff(self,result):
         # An in-editor inspector transition only; do not emulate the
         # original application factory, movie streaming or GS runtime.
@@ -3338,7 +3366,8 @@ class c_scene_editor(W.QMainWindow):
             self.m_object_view.request_draw()
             if not self.m_view.m_selection:self.statusBar().showMessage('Object View: select an object or group in the Outliner.')
         elif index==4:
-            self.statusBar().showMessage('Game screens: title handoff to Demo Main, warning, splash and menu.')
+            self.statusBar().showMessage(
+                'Game screens: main menu, startup, warning, title, Press Start and Demo Main.')
         elif index==5:
             self.select_audio_view()
         self.sync_view_controls()
