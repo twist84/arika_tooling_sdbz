@@ -237,15 +237,55 @@ def load_native_ee_trace(path):
         return inspect_native_ee_trace(json.load(stream))
 
 
+def pcsx2_ee_symbols():
+    """Produce PCSX2 .sym navigation labels from the verified registry.
+
+    .sym labels help navigate the debugger; importing them does not
+    automatically create breakpoints or record EE instructions.
+    """
+    specials = {
+        0x003DFD34: 'ee_root_phase5_handoff_jal',
+        ROOT_HANDOFF: 'ee_root_factory_handoff_entry',
+        ROOT_DISPATCH: 'ee_root_factory_jalr',
+        ROOT_RETURN: 'ee_root_factory_return',
+        ROOT_STORE: 'ee_root_store_after_factory',
+        FALLBACK_STORE: 'ee_root_store_invalid_id',
+        PROVIDER_DISPATCH: 'ee_provider_factory_jalr',
+        PROVIDER_RETURN: 'ee_provider_factory_return',
+        ROOT_SLOT: 'ee_active_root_global',
+    }
+    labels = dict(specials)
+    for app_id, app in APP_ENTRIES.items():
+        address = app['factory']
+        if address in labels:
+            raise ValueError('factory address collides with debugger label')
+        class_name = ''.join(ch if ch.isalnum() else '_'
+                             for ch in app['class_name'])
+        labels[address] = 'ee_app_%02d_%s_factory' % (app_id, class_name)
+    if len(labels) != len(APP_ENTRIES) + len(specials):
+        raise ValueError('native debugger symbol set is incomplete')
+    return ''.join('%08X %s\n' % (address, name)
+                   for address, name in sorted(labels.items()))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('trace', type=Path, help='EE debugger JSON capture')
+    parser.add_argument('trace', nargs='?', type=Path,
+                        help='user-recorded EE debugger JSON capture')
+    parser.add_argument('--write-pcsx2-symbols', type=Path,
+                        help='write a .sym label file for 47 native factories')
     args = parser.parse_args()
     try:
-        summary = load_native_ee_trace(args.trace)
+        if args.write_pcsx2_symbols is not None:
+            args.write_pcsx2_symbols.write_text(
+                pcsx2_ee_symbols(), encoding='utf-8')
+        if args.trace is not None:
+            summary = load_native_ee_trace(args.trace)
+            print(json.dumps(summary, indent=2))
+        elif args.write_pcsx2_symbols is None:
+            parser.error('supply an EE trace or --write-pcsx2-symbols')
     except (OSError, ValueError, json.JSONDecodeError) as error:
         parser.error(str(error))
-    print(json.dumps(summary, indent=2))
 
 
 if __name__ == '__main__':
