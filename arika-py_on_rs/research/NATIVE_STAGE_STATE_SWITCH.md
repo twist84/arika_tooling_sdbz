@@ -11,8 +11,10 @@ The original game stores **runtime** flags (not STG asset bytes) at object
 offset `+0x28`. A kind-6 control stores its primary target pointer at
 `+0x6C`, its secondary pointer at `+0x70`, and its phase/status integer
 at `+0x54`. The earlier audit recovered initial `0x300` mask assignment.
-The new work independently checked **28 additional original EE opcodes**
-against the exact beta ELF, on top of the 18 previous checked words.
+The new work independently checked **38 additional original EE opcodes**
+plus **one original vtable pointer word**, on top of the 18 previous
+initial-state signatures. The 38 comprise 28 switch/restore/event
+instructions and 10 loader/constructor/phase progression instructions.
 
 | Original EE function | Conditions | Proven effect on object `+0x28` |
 |---|---|---|
@@ -21,6 +23,25 @@ against the exact beta ELF, on top of the 18 previous checked words.
 | `0x00240910` — direct restore | invoked with non-null target pointers | **Primary:** clear `0x300` at `0x240940`–`0x240944`; **secondary:** set `0x300` at `0x240970`–`0x240974` |
 | `0x002409F0` — event callback | original object's `+0x24` flag `0x08000000` set | enters a separate restoration branch, clearing primary at `0x240A64`–`0x240A70` and setting secondary at `0x240A9C`–`0x240AA0` |
 | `0x002409F0` — other branch | bit `0x08000000` clear and bit `0x20` set in object `+0x24` | calls `0x1ABD30` or `0x1ABD70` with mask `0x10`, depending on the callback argument. **Neither helper is treated as a known rendering/collision/destruction mechanism** |
+
+### Confirmed kind-6 callback ownership and phase-1 path
+
+The native kind-6 loader calls the initial setup helper **directly**
+at `0x23CCF4`. The kind-6 constructor at `0x240C20` installs vtable
+base `0x4E7110` into object `+0` (writes at `0x240C40`).
+The vtable pointer at **`0x4E7128`**, offset **`+0x18`** from the
+base, is exactly **`0x240710`**. Thus this is a registered
+virtual callback for the kind-6 runtime object, not an unowned
+function discovered merely by nearby addresses.
+
+The constructor initializes its controller `+0x54` word to zero
+at `0x240C78`. A native reset path at `0x2408DC` also stores
+zero there and reloads a countdown `+0x60` from `+0x5C`.
+The timer/update routine `0x2403D0` can store value **1**
+at `0x2404B0`; the virtual callback `0x240710` only
+switches the masks if that word is 1 and increments it afterward.
+No frame frequency, damage threshold, scheduler dispatch or
+actual gameplay event is inferred from those static instructions.
 
 **Important:** Recovering a function, branch predicate, object flag mutation
 or callback argument does not establish **whether or when that path ran**
@@ -90,8 +111,9 @@ SDBZ_EU_BETA_ELF=/path/to/SLES_541.61 python -m unittest test_arika_native_stage
 
 Acceptance criteria:
 
-1. Previous 18 original opcode signatures plus **28 new** signatures
-   match the exact EU-beta ELF, guarded by SHA-256.
+1. Previous 18 original opcode signatures plus **38 new instruction**
+   signatures and **one exact vtable pointer** match the EU-beta
+   ELF, guarded by SHA-256.
 2. Suppression for “switched” is refused unless the caller supplies
    `+0x54 == 1`; unspecified or other status values produce **no
    inferred switched visual outcome**.
