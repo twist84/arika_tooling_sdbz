@@ -19,6 +19,7 @@ The original ELF and game assets are not committed.
 
 | ID | Factory | Constructor | Vtable-name getter | Class string |
 | ---: | --- | --- | --- | --- |
+| 3 | `0x3F2D20` | `0x3F7150` | `0x3F86C0` → `0x4D7F90` | `CAppTitleMain` (alternate) |
 | 6 | `0x3F2C00` | `0x3E03E0` | `0x3E0D10` → `0x4D52F0` | `CAppDemoMain` |
 | 7 | `0x3F2BA0` | `0x3E1BD0` | `0x3E2080` → `0x4D5338` | `CAppDemoMovie` |
 | 8 | `0x3F2B40` | `0x3E2160` | `0x3E26B0` → `0x4D5348` | `CAppDemoMain` |
@@ -31,6 +32,10 @@ The ID-6 vtables are `0x4F5E00/0x4F5E28`.
 The duplicate `CAppDemoMain` class names are **in the original
 ELF**, not an accidental registry alias. They identify separate
 factory/constructor implementations and must not be conflated.
+Likewise ID 3 is an alternate registered `CAppTitleMain` with
+a distinct phase vtable (`0x4F6698`) from the ID-2 title
+application. The ID-7 completion path thus returns to registered
+ID **3**, not an unidentified application.
 
 ## Exact update state
 
