@@ -246,6 +246,7 @@ class c_warning_preview(W.QWidget):
         self.m_timer.stop()
         self.m_last_elapsed_ns = 0
         self.m_play.setText('Play')
+        self.m_step.setEnabled(not self.m_runtime.snapshot()['finished'])
 
     def reset(self):
         self.pause_playback()
@@ -255,6 +256,7 @@ class c_warning_preview(W.QWidget):
 
     def hideEvent(self, event):
         self.pause_playback()
+        self.redraw()
         super().hideEvent(event)
 
     def closeEvent(self, event):
