@@ -14,6 +14,7 @@ by a zero-based enumeration of adjacent class strings.
 | Actual app ID | Factory | Constructor | Class getter | Native class |
 | ---: | --- | --- | --- | --- |
 | 2 | `0x3F2D80` | `0x3F86E0` | `0x3F86C0` | `CAppTitleMain` |
+| 3 | `0x3F2D20` | `0x3F7150` | `0x3F86C0` | `CAppTitleMain` (distinct constructor/vtables) |
 | 4 | `0x3F2CC0` | `0x41E620` | `0x41EC80` | `CAppLogoMain` |
 | 5 | `0x3F2C60` | `0x41ECA0` | `0x41F580` | `CAppWarning` |
 | **6** | **`0x3F2C00`** | **`0x3E03E0`** | **`0x3E0D10`** | **`CAppDemoMain`** |
@@ -32,8 +33,10 @@ optional exact-ELF oracle in `arika_app_registry.py`.
 `CAppDemoPlay`, while `CCardDemo` is a helper class.
 **IDs 6 and 8 both have native class name `CAppDemoMain` but
 different factory addresses, constructors, vtables and name-string
-pointers.** Do not combine their C++ class identities or assume ID 8
-runs the same logic as the ID-6 `0x3E0830` callback.
+pointers.** Likewise IDs **2 and 3** both return `CAppTitleMain`
+from the same name getter but use different factories, constructors
+and phase vtables. Do not combine these registrations by string
+identity or assume they share update logic.
 
 ## Source title callback and transition
 
