@@ -132,6 +132,7 @@ class c_viewport(QRenderWidget):
         self.m_native_initial_state_preview=False
         self.m_native_stage_hidden=set()
         self.m_native_stage_report=None
+        self.m_authored_hidden=set()
         self.m_center=[0,0,0];self.m_distance=1000.;self.m_yaw=35.;self.m_pitch=30.;self.m_selected=-1
         self.m_selection=set()
         self.m_isolated=None
@@ -171,6 +172,8 @@ class c_viewport(QRenderWidget):
             self.m_stage_background_key=key
         self.m_native_stage_hidden=set()
         self.m_native_stage_report=None
+        self.m_authored_hidden=(hidden_nodes(project.m_document)
+                               if project is not None else set())
         stage=getattr(project,'m_stage',None) if project is not None else None
         if stage is not None and getattr(stage,'m_scene',None) is not None:
             self.m_native_stage_report=native_initial_preview_hidden_nodes(
@@ -192,10 +195,9 @@ class c_viewport(QRenderWidget):
                     count=len(self.m_renderer.m_instances)
                     self.window().statusBar().showMessage('WebGPU ready: %d mesh instances. MMB orbit | Shift+MMB pan | Wheel zoom'%count)
             if self.m_project is not None:
-                manual_hidden=hidden_nodes(self.m_project.m_document)
                 native_hidden=(self.m_native_stage_hidden
                                if self.m_native_initial_state_preview else set())
-                self.m_renderer.m_hidden=manual_hidden|native_hidden
+                self.m_renderer.m_hidden=self.m_authored_hidden|native_hidden
             width,height=self.get_physical_size()
             self.m_renderer.render(width,height,self.m_yaw,self.m_pitch,self.m_center,self.m_distance,self.m_mode,self.m_selection or self.m_selected,self.m_collision,orthographic=self.m_orthographic,isolated=self.m_isolated,options=self.m_options,gizmo=self.gizmo_state())
             self.m_error=''
@@ -1383,7 +1385,11 @@ class c_scene_editor(W.QMainWindow):
             flags=node_state(self.m_project.m_document,index)
             item.setCheckState(1,C.Qt.CheckState.Unchecked if flags['hidden'] else C.Qt.CheckState.Checked)
             item.setCheckState(2,C.Qt.CheckState.Checked if flags['locked'] else C.Qt.CheckState.Unchecked)
-        self.m_tree.blockSignals(False);self.sync_selection();self.m_object_view.request_draw()
+        self.m_tree.blockSignals(False);self.sync_selection()
+        authored_hidden=hidden_nodes(self.m_project.m_document)
+        for view in (self.m_view,self.m_object_view):
+            view.m_authored_hidden=set(authored_hidden)
+            view.request_draw()
 
     def show_all_objects(self):self.change_node_state(indices=set(self.m_items),hidden=False)
 
@@ -1742,7 +1748,7 @@ class c_scene_editor(W.QMainWindow):
         if not checked:
             self.statusBar().showMessage(
                 'Native stage initial-state diagnostic disabled; '
-                'author-visible objects restored.')
+                'authored Show/Hide state retained.')
             return
         report=getattr(self.m_view,'m_native_stage_report',None)
         if report is None:
