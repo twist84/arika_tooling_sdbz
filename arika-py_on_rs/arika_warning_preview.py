@@ -115,9 +115,11 @@ class c_warning_preview(W.QWidget):
         self.m_next = W.QPushButton('Next option (bit 0x2)')
         self.m_previous = W.QPushButton('Previous option (bit 0x1)')
         self.m_confirm = W.QPushButton('Confirm (bit 0x80)')
-        self.m_next.clicked.connect(lambda: self.press_input(PAD_NEXT))
-        self.m_previous.clicked.connect(lambda: self.press_input(PAD_PREVIOUS))
-        self.m_confirm.clicked.connect(lambda: self.press_input(PAD_CONFIRM))
+        # Bound slots avoid closures that retain their parent QWidget
+        # through the child-button signal connections at Qt shutdown.
+        self.m_next.clicked.connect(self.next_option)
+        self.m_previous.clicked.connect(self.previous_option)
+        self.m_confirm.clicked.connect(self.confirm_option)
 
         self.m_step = W.QPushButton('Step one update')
         self.m_play = W.QPushButton('Play')
@@ -224,6 +226,15 @@ class c_warning_preview(W.QWidget):
         else:
             seconds = self.m_delta.value()
         self.advance_native(seconds, mask)
+
+    def next_option(self):
+        self.press_input(PAD_NEXT)
+
+    def previous_option(self):
+        self.press_input(PAD_PREVIOUS)
+
+    def confirm_option(self):
+        self.press_input(PAD_CONFIRM)
 
     def toggle_play(self):
         if self.m_timer.isActive():
