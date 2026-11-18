@@ -205,6 +205,9 @@ class NativeStageInitialStateTests(unittest.TestCase):
             self.assertEqual(editor.m_object_view.effective_hidden_nodes(),set())
             self.assertEqual(document,original)
         finally:
+            # The synthetic SimpleNamespace is not a c_scene_project and
+            # has no save/dirty protocol. Remove it before closeEvent().
+            editor.m_project=None
             editor.close()
             app.processEvents()
 
