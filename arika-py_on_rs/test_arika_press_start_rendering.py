@@ -15,7 +15,8 @@ from arika_press_start_rendering import (
     raster_press_start_copyright, raster_press_start_copyright_glyph_quads,
     load_press_start_archive_font, tint_press_start_ffon,
     native_press_start_ffon_rect, verify_press_start_font_draw_elf,
-    PRESS_START_FONT_DRAW_QUANTIZATION,
+    PRESS_START_FONT_DRAW_QUANTIZATION, FONT_COVERAGE_MODELS,
+    FONT_4BIT_ALPHA_FACTOR, press_start_font_model,
 )
 from arika_press_start_resources import PRESS_START_RESOURCE_KEYS
 from test_arika_logo_preview import synthetic_tim2_rgba32, synthetic_fpix
@@ -310,6 +311,85 @@ class PressStartRenderingTests(unittest.TestCase):
             Path(elf_path).read_bytes())
         self.assertTrue(result['quantized_positions_and_dimensions'])
         self.assertEqual(result['glyph_draw'], '0x199ee0')
+
+    def test_ffon_source_luminance_and_4bit_alpha_are_diagnostic_only(self):
+        glyph = G.QImage(2, 1, G.QImage.Format.Format_RGBA8888)
+        glyph.fill(C.Qt.GlobalColor.transparent)
+        glyph.setPixelColor(0, 0, G.QColor(170, 170, 170, 170))
+        glyph.setPixelColor(1, 0, G.QColor(255, 255, 255, 255))
+        current = tint_press_start_ffon(glyph, 1.0)
+        source = tint_press_start_ffon(
+            glyph, 1.0, preserve_luminance=True)
+        self.assertEqual(current.pixelColor(0, 0),
+                         G.QColor(255, 255, 255, 170))
+        self.assertEqual(source.pixelColor(0, 0),
+                         G.QColor(170, 170, 170, 170))
+        self.assertEqual(current.pixelColor(1, 0),
+                         source.pixelColor(1, 0))
+        dark = tint_press_start_ffon(
+            glyph, .25, preserve_luminance=True)
+        self.assertAlmostEqual(
+            dark.pixelColor(0, 0).red(), 42, delta=1)
+        self.assertEqual(dark.pixelColor(0, 0).alpha(), 170)
+        for mode, expect in (
+                ('coverage_alpha', (False, 1.0)),
+                ('coverage_alpha_4bit',
+                 (False, FONT_4BIT_ALPHA_FACTOR)),
+                ('coverage_luminance', (True, 1.0)),
+                ('coverage_luminance_4bit',
+                 (True, FONT_4BIT_ALPHA_FACTOR))):
+            self.assertEqual(press_start_font_model(mode), expect)
+        for value in (None, True, 0, 'random', 'coverage_gamma'):
+            with self.subTest(mode=value), self.assertRaises(ValueError):
+                press_start_font_model(value)
+        with self.assertRaisesRegex(ValueError, 'selector'):
+            tint_press_start_ffon(glyph, 1.0, preserve_luminance=1)
+        self.assertEqual(len(FONT_COVERAGE_MODELS), 4)
+
+    def test_comparison_scores_font_hypotheses_without_replacing_reference(self):
+        from test_arika_menu_ffon_native import synthetic_font
+        font, raw = synthetic_font()
+        raw = bytearray(raw)
+        # Native FFON 4-bit intensity=10 out of 15 creates a partial glyph.
+        raw[0] = 0x0a
+        quads = raster_press_start_copyright_glyph_quads(
+            font, bytes(raw))
+        luminance = raster_press_start_copyright_glyph_quads(
+            font, bytes(raw), preserve_luminance=True)
+        background = self.texture((100, 30, 20, 255))
+        images = (None, background, None)
+        reference = render_press_start_image(
+            images, copyright_quads=quads)
+        result = press_start_comparison_metrics(
+            images, None, reference, copyright_quads=quads,
+            copyright_quads_luminance=luminance)
+        visible = result['reference_states']['visible']
+        scores = visible['copyright_coverage_models']
+        self.assertEqual(set(scores), set(FONT_COVERAGE_MODELS))
+        self.assertEqual(scores['coverage_alpha'], 0.0)
+        self.assertEqual(visible['best_diagnostic_model'],
+                         'coverage_alpha')
+        self.assertGreater(scores['coverage_alpha_4bit'], 0.0)
+        self.assertGreater(scores['coverage_luminance'], 0.0)
+        self.assertIsNone(result['reference_states'].get('hidden'))
+        self.assertEqual(reference.pixelColor(86, 381).alpha(), 255)
+
+    def test_editor_explicit_font_hypotheses_keep_default_rendering(self):
+        viewer = c_press_start_preview()
+        self.m_views.append(viewer)
+        self.assertEqual(viewer.m_ffon_model.currentData(),
+                         'coverage_alpha')
+        self.assertIn('Unverified', viewer.m_ffon_model.toolTip())
+        viewer.m_ffon_model.setCurrentIndex(3)
+        self.assertEqual(viewer.m_ffon_model.currentData(),
+                         'coverage_luminance_4bit')
+        pix = synthetic_tim2_rgba32()
+        viewer.load_archive_assets({
+            key + '.pix': pix for key in PRESS_START_RESOURCE_KEYS
+        })
+        self.assertEqual(viewer.m_ffon_model.currentData(),
+                         'coverage_alpha')
+        self.assertIsNotNone(viewer.current_reconstruction())
 
     def test_copyright_uses_individual_float32_native_glyph_quads(self):
         from test_arika_menu_ffon_native import synthetic_font
