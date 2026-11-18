@@ -70,11 +70,35 @@ runtime resource object, intermediate opcode-1 commands, GS
 captured execution. Initial selector 1 is consistent with an
 initial linear preference, **not** evidence of final per-draw GS state.
 
-## Separate Qt preview
+## Integrated Arika Editor startup/splash view
 
-`arika_logo_preview.py` adds a stand-alone boot-logo diagnostic
-window; it does not modify the main-menu editor. Supply extracted
-assets whose names match the native keys **exactly**:
+The existing `arika_editor.py` **Menu** workspace now has two independent
+tabs: **Main menu** and **Startup / Splash**. To use it:
+
+1. Start `launch_editor.bat` as usual.
+2. Use **File → Open archive…** and select your EU-beta
+   `INFO.DAT` / `GAME.DAT` pair.
+3. Select **Menu** in the workspace bar (or **Menu Editor** in the view
+   dropdown), then **Startup / Splash**.
+4. Use **Step one native update**, **Observed delta**, **busy** and
+   the controller input toggle to inspect the recovered lifecycle.
+   Reset restarts the logo state without reloading the archive.
+
+The logo viewer consumes the **same** `m_virtual_files` mapping as the
+existing main-menu preview. No additional file dialogs, writes to disk,
+proprietary assets in Git, or separate process are needed. Archive
+replacement clears the prior logo images, missing keys and ambiguous
+resource matches are reported, and the Qt canvas fits the editor tab
+while preserving the diagnostic 4:3 presentation.
+
+The original loader names extensionless resource keys. The integrated
+archive matcher accepts those keys and their standard `.pix` archive
+suffix, normalized for slashes/case; it never searches by basename or
+silently chooses an atlas. This is still a **logo application**
+diagnostic, separate from the already recovered main-menu state machine.
+
+The standalone `arika_logo_preview.py` CLI remains available if
+needed. Supply extracted assets whose names match the native keys:
 
 ```text
 extracted/dis/d03/d03t0205
@@ -93,8 +117,8 @@ Alternatively use the user's original archive pair:
 python arika_logo_preview.py --info INFO.DAT --game GAME.DAT --elf SLES_541.61
 ```
 
-The preview extracts those exact keys with the existing archive
-backend, if supplied. It only supports a single unambiguous
+The standalone tool extracts those exact keys with the existing archive
+backend, if supplied. Both preview modes support only a single unambiguous
 FPIX/XPIX/TIM2 image (or standalone TIM2); multiple texture entries
 are **reported as unresolved**, not silently mapped to entry zero.
 Missing or unsupported resources show an explicit message.

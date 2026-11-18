@@ -1188,15 +1188,25 @@ class c_scene_editor(W.QMainWindow):
         self.setWindowTitle('Arika Editor');self.resize(1400,900);self.m_view=c_viewport();self.m_view.selection_requested.connect(self.select_view);self.m_view.selection_all.connect(self.select_all);self.m_view.delete_requested.connect(self.delete_selected);self.m_view.transform_changed.connect(self.sync_selection);self.m_view.gizmo_mode_requested.connect(self.set_gizmo_mode)
         self.m_views=W.QStackedWidget();self.m_views.addWidget(self.m_view);self.m_material_view=c_viewport();self.m_material_view.m_show_gizmo=False;self.m_material_view.m_options.update(grid=False,axes=False);self.m_views.addWidget(self.m_material_view)
         texture_panel=W.QWidget();texture_layout=W.QVBoxLayout(texture_panel);self.m_texture_info=W.QLabel('Choose a texture');texture_layout.addWidget(self.m_texture_info);self.m_texture_view=c_texture_view();texture_layout.addWidget(self.m_texture_view);self.m_views.addWidget(texture_panel)
-        menu_panel=W.QWidget();menu_layout=W.QVBoxLayout(menu_panel);menu_layout.setContentsMargins(0,0,0,0);self.m_menu_info=W.QLabel('Menu editor');menu_layout.addWidget(self.m_menu_info)
+        menu_panel=W.QWidget();menu_layout=W.QVBoxLayout(menu_panel);menu_layout.setContentsMargins(0,0,0,0);self.m_menu_info=W.QLabel('Game screens — EU beta');menu_layout.addWidget(self.m_menu_info)
+        self.m_menu_tabs=W.QTabWidget()
+        menu_layout.addWidget(self.m_menu_tabs,1)
         try:
             from arika_menu_editor import c_menu_editor
             self.m_menu_view=c_menu_editor()
             self.m_menu_view.setSizePolicy(W.QSizePolicy.Policy.Expanding,W.QSizePolicy.Policy.Expanding)
-            menu_layout.addWidget(self.m_menu_view,1)
+            self.m_menu_tabs.addTab(self.m_menu_view,'Main menu')
         except Exception:
             self.m_menu_view=W.QLabel('Menu editor unavailable.')
-            menu_layout.addWidget(self.m_menu_view,1)
+            self.m_menu_tabs.addTab(self.m_menu_view,'Main menu')
+        try:
+            from arika_logo_preview import c_logo_preview
+            self.m_logo_view=c_logo_preview()
+            self.m_logo_view.setSizePolicy(W.QSizePolicy.Policy.Expanding,W.QSizePolicy.Policy.Expanding)
+            self.m_menu_tabs.addTab(self.m_logo_view,'Startup / Splash')
+        except Exception as error:
+            self.m_logo_view=W.QLabel('Startup logo editor unavailable: %s'%error)
+            self.m_menu_tabs.addTab(self.m_logo_view,'Startup / Splash')
         self.m_object_view=c_viewport();self.m_object_view.m_isolated=set();self.m_object_view.selection_requested.connect(self.select_view);self.m_object_view.selection_all.connect(self.select_all);self.m_object_view.delete_requested.connect(self.delete_selected);self.m_object_view.transform_changed.connect(self.sync_selection);self.m_object_view.gizmo_mode_requested.connect(self.set_gizmo_mode);self.m_views.addWidget(self.m_object_view)
         self.m_views.addWidget(menu_panel)
         audio_panel=W.QWidget();al=W.QVBoxLayout(audio_panel);al.setContentsMargins(8,8,8,8);al.setSpacing(6)
@@ -1735,6 +1745,9 @@ class c_scene_editor(W.QMainWindow):
             self.m_menu_view.load_textures(None)
         if hasattr(self.m_menu_view, 'load_help_font'):
             self.m_menu_view.load_help_font(None)
+        if hasattr(self.m_logo_view, 'load_archive_assets'):
+            # Immediately clear any images from an older game archive.
+            self.m_logo_view.load_archive_assets({})
         try:
             self.m_tree.clear();self.m_items={}
         except Exception:pass
@@ -1771,6 +1784,11 @@ class c_scene_editor(W.QMainWindow):
                     self.m_menu_view.load_help_font(font_data)
                 except (ValueError, RuntimeError) as error:
                     self.statusBar().showMessage('Native menu font: %s' % error)
+
+        # The logo and main-menu tabs share the SAME opened archive in memory.
+        # Never launch a separate preview or extract copyrighted files to disk.
+        if hasattr(self.m_logo_view, 'load_archive_assets'):
+            self.m_logo_view.load_archive_assets(self.m_virtual_files)
 
         self.statusBar().showMessage('Loaded archive %s — %d entries'%(info_path.name,len(self.m_virtual_files)))
         self.m_scene_status.setText('Archive: %d entries'%len(self.m_virtual_files))
@@ -3273,7 +3291,7 @@ class c_scene_editor(W.QMainWindow):
             self.m_object_view.request_draw()
             if not self.m_view.m_selection:self.statusBar().showMessage('Object View: select an object or group in the Outliner.')
         elif index==4:
-            self.statusBar().showMessage('Menu editor: recovered 2D menu preview.')
+            self.statusBar().showMessage('Game screens: main menu and native startup logos.')
         elif index==5:
             self.select_audio_view()
         self.sync_view_controls()

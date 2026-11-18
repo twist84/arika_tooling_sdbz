@@ -1,4 +1,4 @@
-"""Standalone EU-beta original-asset startup logo diagnostic preview.
+"""EU-beta original-asset startup logo diagnostic, also embedded in Arika Editor.
 
 Run with extracted loose native asset keys, or supply INFO.DAT/GAME.DAT.
 The ELF establishes three resource names, a 512x447 texture rectangle
@@ -90,11 +90,54 @@ def load_logo_images(root):
             errors.append('%s: %s' % (name, error))
     return images, errors
 
+def load_logo_archive_images(virtual_files):
+    """Decode only the three ELF resource keys from the editor's open archive.
+
+    The game loader names extensionless resources; archive entries may have
+    the .pix storage suffix. Never select an unrelated basename, guess a
+    FPIX chunk, or reuse an image from a previously opened archive.
+    """
+    if not hasattr(virtual_files, 'items'):
+        raise TypeError('expected the editor virtual file mapping')
+
+    indexed = {}
+    native_keys = set(LOGO_RESOURCE_NAMES)
+    valid_keys = native_keys | {name + '.pix' for name in native_keys}
+    for original_name, data in virtual_files.items():
+        if not isinstance(original_name, str):
+            continue
+        key = original_name.replace('\\', '/').lstrip('/').lower()
+        if key in valid_keys:
+            indexed.setdefault(key, []).append((original_name, data))
+
+    images = []
+    errors = []
+    for name in LOGO_RESOURCE_NAMES:
+        matches = indexed.get(name, []) + indexed.get(name + '.pix', [])
+        if len(matches) != 1:
+            images.append(None)
+            errors.append(
+                '%s: %s' % (name,
+                           'not found in opened archive' if not matches else
+                           'ambiguous duplicate resource paths'))
+            continue
+        try:
+            images.append(decode_logo_texture(matches[0][1]))
+            errors.append(None)
+        except (ValueError, TypeError) as error:
+            images.append(None)
+            errors.append('%s: %s' % (name, error))
+    return images, errors
+
 
 class c_logo_preview(W.QWidget):
-    """Separate boot-logo laboratory, not an extension of main-menu Qt."""
-    def __init__(self, images, errors, parent=None):
+    """Embeddable boot-logo viewer; no authored startup timings or art."""
+    def __init__(self, images=None, errors=None, parent=None):
         super().__init__(parent)
+        if images is None:
+            images = [None] * 3
+        if errors is None:
+            errors = ['Open an INFO.DAT / GAME.DAT archive in Arika Editor'] * 3
         if len(images) != 3 or len(errors) != 3:
             raise ValueError('expected three logo image slots')
         self.m_images = tuple(images)
@@ -102,9 +145,12 @@ class c_logo_preview(W.QWidget):
         self.m_runtime = c_logo_runtime()
         self.setWindowTitle('Super Dragon Ball Z (EU beta) — native logo preview')
         self.m_canvas = W.QLabel()
-        self.m_canvas.setFixedSize(640, 480)
+        self.m_canvas.setMinimumSize(220, 165)
+        self.m_canvas.setSizePolicy(W.QSizePolicy.Policy.Ignored,
+                                    W.QSizePolicy.Policy.Ignored)
         self.m_canvas.setAlignment(C.Qt.AlignmentFlag.AlignCenter)
         self.m_canvas.setStyleSheet('background-color: black; color: white;')
+        self.m_canvas.installEventFilter(self)
         self.m_status = W.QLabel()
         self.m_status.setWordWrap(True)
         self.m_delta = W.QDoubleSpinBox()
@@ -120,32 +166,58 @@ class c_logo_preview(W.QWidget):
         self.m_step.clicked.connect(self.step)
         self.m_reset.clicked.connect(self.reset)
 
-        controls = W.QHBoxLayout()
-        controls.addWidget(self.m_delta)
-        controls.addWidget(self.m_busy)
-        controls.addWidget(self.m_skip)
-        controls.addWidget(self.m_step)
-        controls.addWidget(self.m_reset)
-        controls.setContentsMargins(0, 0, 0, 0)
+        clock_controls = W.QHBoxLayout()
+        clock_controls.addWidget(W.QLabel('Observed delta'))
+        clock_controls.addWidget(self.m_delta)
+        clock_controls.addWidget(self.m_busy)
+        clock_controls.addStretch()
+        input_controls = W.QHBoxLayout()
+        input_controls.addWidget(self.m_skip)
+        input_controls.addWidget(self.m_step)
+        input_controls.addWidget(self.m_reset)
+        input_controls.addStretch()
         layout = W.QVBoxLayout(self)
-        layout.addWidget(self.m_canvas, alignment=C.Qt.AlignmentFlag.AlignHCenter)
-        layout.addLayout(controls)
+        layout.addWidget(self.m_canvas, 1)
+        layout.addLayout(clock_controls)
+        layout.addLayout(input_controls)
         layout.addWidget(self.m_status)
         self.redraw()
 
-    def redraw(self):
+    def eventFilter(self, watched, event):
+        if watched is self.m_canvas and event.type() == C.QEvent.Type.Resize:
+            self.draw_canvas()
+        return super().eventFilter(watched, event)
+
+    def load_archive_assets(self, virtual_files):
+        """Swap in-memory logo assets on archive open and reset the sequence."""
+        images, errors = load_logo_archive_images(virtual_files)
+        self.m_images = tuple(images)
+        self.m_errors = tuple(errors)
+        self.m_runtime = c_logo_runtime()
+        self.m_skip.setChecked(False)
+        self.m_busy.setChecked(False)
+        self.redraw()
+        return sum(image is not None for image in self.m_images)
+
+    def draw_canvas(self):
         snap = self.m_runtime.snapshot()
-        index = snap['current_logo']
-        original = self.m_images[index]
+        original = self.m_images[snap['current_logo']]
         if original is not None:
             img = render_logo_image(original)
+            display_size = C.QSize(640, 480).scaled(
+                self.m_canvas.size(), C.Qt.AspectRatioMode.KeepAspectRatio)
             pixmap = G.QPixmap.fromImage(img).scaled(
-                640, 480, C.Qt.AspectRatioMode.IgnoreAspectRatio,
+                display_size, C.Qt.AspectRatioMode.IgnoreAspectRatio,
                 C.Qt.TransformationMode.SmoothTransformation)
             self.m_canvas.setPixmap(pixmap)
         else:
             self.m_canvas.clear()
             self.m_canvas.setText('Original native logo asset unavailable')
+
+    def redraw(self):
+        snap = self.m_runtime.snapshot()
+        index = snap['current_logo']
+        self.draw_canvas()
         warning = self.m_errors[index] or 'Original resource decoded'
         self.m_status.setText(
             'Logo %d: %s | phase %d | age %.6f | updates %d | %s. '
