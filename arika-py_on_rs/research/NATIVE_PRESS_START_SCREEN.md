@@ -259,6 +259,52 @@ The native font draw change is not asserted to solve the entire pixel
 difference until the user repeats comparison with actual archive assets.
 GS alpha/filter/UV remain open research items.
 
+### 18:47 comparison — isolated FFON coverage hypotheses
+
+After the native `CVT.W.S` glyph-quad correction, the owner's
+visible-state screenshot reports **full-frame MAE 12.393** and
+**copyright-region MAE 31.420**, versus the previous screenshot's
+visible copyright-region MAE **32.827** (roughly 4.3% better).
+Only one reference is loaded, so no hidden-state measurement is claimed.
+The copyright glyphs are still perceptibly brighter/thicker than PCSX2.
+The FFON cell advance, ELF positions, and tint values remain fixed.
+
+We can distinguish specific PS2 4-bit pixel-interpretation
+hypotheses without silently substituting artwork or screenshot colours:
+
+| Editor diagnostic model | RGB used for FFON glyph | FFON alpha |
+|---|---|---|
+| `coverage_alpha` (unchanged default) | Native constant tint | Existing nibble ×17 |
+| `coverage_alpha_4bit` | Native constant tint | Nibble ×16 |
+| `coverage_luminance` | Original decoded nibble luminance × native tint | Existing nibble ×17 |
+| `coverage_luminance_4bit` | Original decoded nibble luminance × native tint | Nibble ×16 |
+
+In the table, the native white/shadow RGB tint from the ELF remains
+`1.0`/`0.25` in **all four models**. All pixels come from the exact
+loaded `font/5-24-2.fon`, never from a reference screenshot. The
+`×16` model is implemented relative to the current `×17` alpha as
+a final alpha factor `16/17`; it is not asserted to match PS2 GS
+CLUT/TEXA semantics. The actual original alpha palette and GS texture
+state are **still unknown**.
+
+The existing Press Start tab now exposes an explicitly labelled
+**FFON diagnostic model** selector, defaulting to the previous
+`coverage_alpha` model and resetting to it on archive change.
+`Measure loaded PCSX2 state(s)` computes a copyright-only MAE for
+**all four** models from the same original assets and same reference
+capture, without registration, colour fitting, or reference-driven
+rendering. It also reports the lowest *diagnostic* MAE, not a verified
+GS setting; the preview selection stays manual and never automatically
+follows the reference. These results allow us to investigate whether
+glyph luminance or the 4-bit alpha conversion explains the remaining
+bright-pixel excess before changing native defaults.
+
+Next acceptance check: compare each model's copyright MAE and glyph
+appearance on the owner's actual opened EU-beta archive. A lower MAE
+alone is not sufficient for original GS parity; independently recover
+the font texture's original palette, TEXA/TEST/ALPHA state and source
+sampling before locking an interpretation as native.
+
 ## All prompt dispatch layouts (M1 follow-up, 2026-11-18)
 
 A direct disassembly of exact EU-beta `0x3F7E10` shows five selector
