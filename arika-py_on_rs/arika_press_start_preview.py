@@ -283,16 +283,24 @@ class c_press_start_preview(W.QWidget):
                 self.m_images, self.m_reference_hidden,
                 self.m_reference_visible, self.m_copyright_images,
                 prompt_case=self.m_prompt_case.currentData())
-            hidden = result['reference_states']['hidden']['all_pixels']
-            visible = result['reference_states']['visible']['all_pixels']
+            hidden_result = result['reference_states']['hidden']
+            visible_result = result['reference_states']['visible']
+            hidden = hidden_result['all_pixels']
+            visible = visible_result['all_pixels']
+            hidden_text = hidden_result['copyright_region']['all_pixels']
+            visible_text = visible_result['copyright_region']['all_pixels']
             self.m_comparison_stats.setText(
                 'Measured (bilinear resize, no registration; NOT GS parity): '
                 'hidden MAE %.3f RMSE %.3f | '
-                'visible MAE %.3f RMSE %.3f' %
+                'visible MAE %.3f RMSE %.3f | '
+                'copyright-only hidden MAE %.3f | '
+                'copyright-only visible MAE %.3f' %
                 (hidden['mean_absolute_error'],
                  hidden['root_mean_square_error'],
                  visible['mean_absolute_error'],
-                 visible['root_mean_square_error']))
+                 visible['root_mean_square_error'],
+                 hidden_text['mean_absolute_error'],
+                 visible_text['mean_absolute_error']))
         except (ValueError, TypeError) as error:
             self.m_comparison_stats.setText(
                 'Comparison unavailable: ' + str(error))
