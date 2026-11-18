@@ -206,17 +206,19 @@ class c_native_stage_state_runtime:
         for intents in self.m_intents.values():
             for target, operation in intents.items():
                 desired.setdefault(target, set()).add(operation)
-        # A single controller can name the same node in both roles.
-        # The original sequential writes produce one final flag value, but
-        # the preview cannot honestly identify it as a unique geometry role.
-        for actions in self.m_actions.values():
-            for action in actions:
-                desired.setdefault(action['target_node'], set()).add(
-                    action['operation'])
         conflicts = {
             target for target, operations in desired.items()
             if len(operations) > 1
         }
+        # Multiple roles within a single controller also make preview
+        # intent ambiguous, regardless of which native write happened last.
+        for actions in self.m_actions.values():
+            roles = {}
+            for action in actions:
+                roles.setdefault(action['target_node'], set()).add(
+                    action['role'])
+            conflicts.update(target for target, named in roles.items()
+                             if len(named) > 1)
         enabled = set()
         suppressed = []
         warnings = list(self.m_unknowns)
