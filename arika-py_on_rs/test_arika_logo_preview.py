@@ -211,13 +211,16 @@ class LogoPreviewTests(unittest.TestCase):
         widget = c_logo_preview()
         widget.m_play.click()
         self.assertEqual(widget.m_last_elapsed_ns, 0)
+        widget.m_timer.timeout.emit()
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 2)
         # Simulate a delayed timer tick; wall-time jitter is accumulated,
         # never replaced with a fabricated 1/60-second native update.
-        widget.m_last_elapsed_ns = -2_000_000_000
+        widget.m_last_elapsed_ns = widget.m_elapsed.nsecsElapsed() - 2_000_000_000
         widget.advance_playback()
-        self.assertGreaterEqual(widget.m_runtime.snapshot()['age_seconds'], 0)
-        self.assertEqual(widget.m_runtime.snapshot()['phase'], 2)
+        self.assertGreaterEqual(widget.m_runtime.snapshot()['age_seconds'], 2.0)
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 3)
         widget.m_play.click()
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 3)
         widget.m_play.click()
         self.assertEqual(widget.m_last_elapsed_ns, 0)
         widget.m_play.click()
