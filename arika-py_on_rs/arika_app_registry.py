@@ -25,6 +25,7 @@ ELF_FILE_BIAS = 0xFFF80
 # from neighboring strings. No claim of original boot order is made.
 APP_FACTORIES = (
     (2, 0x3F2D80, 0x3F86E0, 0x3F86C0, 0x4D7F90, 'CAppTitleMain'),
+    (3, 0x3F2D20, 0x3F7150, 0x3F86C0, 0x4D7F90, 'CAppTitleMain'),
     (4, 0x3F2CC0, 0x41E620, 0x41EC80, 0x4D91F8, 'CAppLogoMain'),
     (5, 0x3F2C60, 0x41ECA0, 0x41F580, 0x4D8518, 'CAppWarning'),
     (6, 0x3F2C00, 0x3E03E0, 0x3E0D10, 0x4D52F0, 'CAppDemoMain'),
@@ -44,6 +45,7 @@ DEMO_HELPER_STRINGS = {
 # registration site and registration table-address evidence.
 APP_REGISTRATION_SITES = {
     2: (0x3F15CC, 0x3F15D4, 0x3F15E0),
+    3: (0x3F15EC, 0x3F15F4, 0x3F1600),
     4: (0x3F160C, 0x3F1614, 0x3F1620),
     5: (0x3F162C, 0x3F1634, 0x3F1640),
     6: (0x3F164C, 0x3F1654, 0x3F1660),
@@ -166,6 +168,10 @@ def verify_app_registry_elf(elf):
         0x4F7258: 0x41EC80,    # LogoMain name getter
         0x41EC88: 0x244291F8,  # LogoMain name pointer
         0x3F89CC: 0x24050006,   # Title requests app 6
+        0x3F716C: 0x24636670,   # ID 3 ctor: alternate title base
+        0x3F7170: 0x24426698,   # ID 3 ctor: alternate title phase
+        0x4F6678: 0x003F86C0,   # ID 3 base name getter
+        0x3F86C8: 0x24427F90,   # shared CAppTitleMain name pointer
         0x3E217C: 0x24425F30,   # ID 8 ctor: own base vtable
         0x3E2190: 0x24425F58,   # ID 8 ctor: own phase vtable
         0x4F5F38: 0x003E26B0,   # ID 8 class getter
@@ -192,10 +198,10 @@ def verify_app_registry_elf(elf):
         'transition_request': hex(APP_TRANSITION_REQUEST),
         'child_request': hex(APP_CHILD_REQUEST),
         'registered': [resolve_app(app_id) for app_id, *_ in APP_FACTORIES],
-        'duplicate_class_names_are_distinct_factories': {
-            'ids': [6, 8],
-            'name': 'CAppDemoMain',
-        },
+        'duplicate_class_names_are_distinct_factories': [
+            {'ids': [2, 3], 'name': 'CAppTitleMain'},
+            {'ids': [6, 8], 'name': 'CAppDemoMain'},
+        ],
         'title_handoff': {
             'source_id': 2,
             'source': 'CAppTitleMain',
