@@ -182,6 +182,12 @@ class c_viewport(QRenderWidget):
                 self.m_native_stage_report['hidden_gltf_nodes'])
         self.m_project=project;self.m_world_cache=None;self.m_upload=True;self.m_geometry=geometry;self.m_fit=fit or self.m_fit;self.request_draw()
 
+    def effective_hidden_nodes(self):
+        """Combine authored state with optional nonpersistent native preview."""
+        return self.m_authored_hidden | (
+            self.m_native_stage_hidden
+            if self.m_native_initial_state_preview else set())
+
     def draw_frame(self):
         if not self.isVisible():return
         try:
@@ -195,9 +201,7 @@ class c_viewport(QRenderWidget):
                     count=len(self.m_renderer.m_instances)
                     self.window().statusBar().showMessage('WebGPU ready: %d mesh instances. MMB orbit | Shift+MMB pan | Wheel zoom'%count)
             if self.m_project is not None:
-                native_hidden=(self.m_native_stage_hidden
-                               if self.m_native_initial_state_preview else set())
-                self.m_renderer.m_hidden=self.m_authored_hidden|native_hidden
+                self.m_renderer.m_hidden=self.effective_hidden_nodes()
             width,height=self.get_physical_size()
             self.m_renderer.render(width,height,self.m_yaw,self.m_pitch,self.m_center,self.m_distance,self.m_mode,self.m_selection or self.m_selected,self.m_collision,orthographic=self.m_orthographic,isolated=self.m_isolated,options=self.m_options,gizmo=self.gizmo_state())
             self.m_error=''
