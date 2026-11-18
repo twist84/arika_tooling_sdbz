@@ -460,7 +460,8 @@ def press_start_comparison_image(reconstructed, reference):
 def press_start_comparison_metrics(images, hidden_reference,
                                    visible_reference, copyright_images=None,
                                    prompt_case=1, resampling='bilinear',
-                                   copyright_quads=None):
+                                   copyright_quads=None,
+                                   copyright_quads_luminance=None):
     """Measure each available original PCSX2 state against archive layers.
 
     Each reconstruction uses the SAME original resources with only the
@@ -520,6 +521,38 @@ def press_start_comparison_metrics(images, hidden_reference,
             resampling=resampling)
         detail['native_rect'] = list(native_rect)
         metrics['copyright_region'] = detail
+        if copyright_quads is not None and copyright_quads_luminance is not None:
+            # Fixed and labelled source-FFON interpretation hypotheses:
+            # current v*17 alpha; v*16 alpha; v*17 RGB+alpha; both.
+            # The original PCSX2 capture is only a comparison reference,
+            # never a layer or parameter of these reconstructed candidates.
+            model_errors = {
+                'coverage_alpha': detail['all_pixels']
+                ['mean_absolute_error'],
+            }
+            for model in FONT_COVERAGE_MODELS[1:]:
+                preserve_luminance, alpha_multiplier = (
+                    press_start_font_model(model))
+                candidate_quads = (copyright_quads_luminance
+                                   if preserve_luminance else
+                                   copyright_quads)
+                model_image = render_press_start_image(
+                    images, copyright_images=copyright_images,
+                    prompt_visible=show_prompt, prompt_case=prompt_case,
+                    copyright_quads=candidate_quads,
+                    font_alpha_multiplier=alpha_multiplier)
+                model_pixels = pillow_image(model_image)
+                if model_pixels.size != reference_pixels.size:
+                    model_pixels = model_pixels.resize(
+                        reference_pixels.size, RESAMPLE_MODES[resampling])
+                model_stats, _ = compare_screenshot_pixels(
+                    reference_pixels.crop(region),
+                    model_pixels.crop(region), resampling=resampling)
+                model_errors[model] = model_stats[
+                    'all_pixels']['mean_absolute_error']
+            metrics['copyright_coverage_models'] = model_errors
+            metrics['best_diagnostic_model'] = min(
+                model_errors, key=model_errors.get)
         results[name] = metrics
     return {
         'prompt_case': prompt_case,
