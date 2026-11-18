@@ -144,7 +144,7 @@ class c_press_start_preview(W.QWidget):
         self.m_load_visible = W.QPushButton('Load PCSX2 capture: prompt')
         self.m_load_hidden.clicked.connect(self.choose_hidden_capture)
         self.m_load_visible.clicked.connect(self.choose_visible_capture)
-        self.m_measure = W.QPushButton('Measure both PCSX2 states')
+        self.m_measure = W.QPushButton('Measure loaded PCSX2 state(s)')
         self.m_measure.setToolTip(
             'Compute unaligned pixel differences from original archive sprites; '
             'this does not establish PS2 GS pixel parity.')
@@ -286,24 +286,22 @@ class c_press_start_preview(W.QWidget):
                 self.m_reference_visible, self.m_copyright_images,
                 prompt_case=self.m_prompt_case.currentData(),
                 copyright_quads=self.m_copyright_quads)
-            hidden_result = result['reference_states']['hidden']
-            visible_result = result['reference_states']['visible']
-            hidden = hidden_result['all_pixels']
-            visible = visible_result['all_pixels']
-            hidden_text = hidden_result['copyright_region']['all_pixels']
-            visible_text = visible_result['copyright_region']['all_pixels']
-            self.m_comparison_stats.setText(
-                'Measured (bilinear resize, no registration; NOT GS parity): '
-                'hidden MAE %.3f RMSE %.3f | '
-                'visible MAE %.3f RMSE %.3f | '
-                'copyright-only hidden MAE %.3f | '
-                'copyright-only visible MAE %.3f' %
-                (hidden['mean_absolute_error'],
-                 hidden['root_mean_square_error'],
-                 visible['mean_absolute_error'],
-                 visible['root_mean_square_error'],
-                 hidden_text['mean_absolute_error'],
-                 visible_text['mean_absolute_error']))
+            lines = [
+                'Measured (bilinear resize, no registration; NOT GS parity):'
+            ]
+            for state in ('hidden', 'visible'):
+                measurement = result['reference_states'].get(state)
+                if measurement is None:
+                    lines.append(state + ': no reference loaded')
+                    continue
+                full = measurement['all_pixels']
+                copyright_error = measurement['copyright_region']['all_pixels']
+                lines.append(
+                    '%s MAE %.3f RMSE %.3f | copyright-only MAE %.3f' %
+                    (state, full['mean_absolute_error'],
+                     full['root_mean_square_error'],
+                     copyright_error['mean_absolute_error']))
+            self.m_comparison_stats.setText(' | '.join(lines))
         except (ValueError, TypeError) as error:
             self.m_comparison_stats.setText(
                 'Comparison unavailable: ' + str(error))
@@ -415,8 +413,8 @@ class c_press_start_preview(W.QWidget):
              'loaded' if self.m_copyright_images is not None else 'missing',
              ' | ' + self.m_reference_error if self.m_reference_error else ''))
         self.m_measure.setEnabled(
-            self.m_reference_hidden is not None and
-            self.m_reference_visible is not None and
+            (self.m_reference_hidden is not None or
+             self.m_reference_visible is not None) and
             any(image is not None for image in self.m_images[:2]))
         self.m_notice.setToolTip(
             '\n'.join([error for error in self.m_asset_errors if error] +
