@@ -9,7 +9,7 @@ from arika_native_ee_trace import (
     ELF_SHA256, TRACE_FORMAT, inspect_native_ee_trace,
     load_native_ee_trace, ROOT_DISPATCH, PROVIDER_DISPATCH,
     ROOT_RETURN, PROVIDER_RETURN, ROOT_SLOT, ROOT_STORE, FALLBACK_STORE,
-    ROOT_INVALID_FALLBACK,
+    ROOT_INVALID_FALLBACK, pcsx2_ee_symbols,
 )
 
 
@@ -166,6 +166,21 @@ class NativeEeTraceTests(unittest.TestCase):
         # unsigned low part used by s0 & 0xff, rejecting ambiguous width.
         with self.assertRaisesRegex(ValueError, '32-bit'):
             inspect_native_ee_trace(sample)
+
+    def test_pcsx2_symbol_labels_cover_every_factory_and_trace_site(self):
+        lines = pcsx2_ee_symbols().splitlines()
+        self.assertEqual(len(lines), 56)
+        self.assertEqual(len({line.split()[0] for line in lines}), 56)
+        self.assertTrue(all(len(line.split()) == 2 for line in lines))
+        self.assertIn('003F1C78 ee_provider_factory_jalr', lines)
+        self.assertIn('003F1BE0 ee_root_factory_jalr', lines)
+        self.assertIn('0063BE38 ee_active_root_global', lines)
+        for app_id, app in APP_ENTRIES.items():
+            with self.subTest(app_id=app_id):
+                self.assertEqual(
+                    sum(line.startswith('%08X ' % app['factory'])
+                        for line in lines), 1)
+                self.assertIn('ee_app_%02d_' % app_id, ''.join(lines))
 
     def test_file_load_and_synthetic_fixture_remain_explicit(self):
         sample = fixture([dispatch(1), entry(2), ret(3), store(4)])
