@@ -18,6 +18,8 @@ by a zero-based enumeration of adjacent class strings.
 | 5 | `0x3F2C60` | `0x41ECA0` | `0x41F580` | `CAppWarning` |
 | **6** | **`0x3F2C00`** | **`0x3E03E0`** | **`0x3E0D10`** | **`CAppDemoMain`** |
 | 7 | `0x3F2BA0` | `0x3E1BD0` | `0x3E2080` | `CAppDemoMovie` |
+| **8** | **`0x3F2B40`** | **`0x3E2160`** | **`0x3E26B0`** | **`CAppDemoMain` (distinct implementation)** |
+| **9** | **`0x3F2AE0`** | **`0x3E0DF0`** | **`0x3E1AE0`** | **`CAppDemoPlay`** |
 
 The factory initialization in `0x3F1580` writes pointers to the
 native BSS table at `0x6217E0 + 4 × application_id` and registers
@@ -26,8 +28,12 @@ checks the ID range and calls the registered factory. The name
 getters and class strings are independently verified by the
 optional exact-ELF oracle in `arika_app_registry.py`.
 
-**Distinction:** the nearby `CAppDemoPlay` and `CCardDemo`
-strings are not the class registered under application ID 6.
+**Distinction:** ID 9 *is* the separately registered
+`CAppDemoPlay`, while `CCardDemo` is a helper class.
+**IDs 6 and 8 both have native class name `CAppDemoMain` but
+different factory addresses, constructors, vtables and name-string
+pointers.** Do not combine their C++ class identities or assume ID 8
+runs the same logic as the ID-6 `0x3E0830` callback.
 
 ## Source title callback and transition
 
@@ -79,13 +85,17 @@ these IDs through **`0x3DFBD0`**:
 | --- | ---: | --- |
 | `0x3E08B4` | 4 | `CAppLogoMain` |
 | `0x3E08CC` | 7 | `CAppDemoMovie` |
-| `0x3E08E4` | 8 | Not yet resolved |
-| `0x3E08F4` | 9 | Not yet resolved |
+| `0x3E08E4` | 8 | `CAppDemoMain` (alternate factory `0x3F2B40`) |
+| `0x3E08F4` | 9 | `CAppDemoPlay` (factory `0x3F2AE0`) |
 
-These are **possible child request paths**, not a
-predetermined video playlist. The current branch does not
-recover their full condition predicates, input behavior,
-runtime movie decoding or actual GS output.
+The exact selection predicate has now been recovered:
+`this+0x29` holds the **next choice** (0..3), copied to
+`this+0x28` at dispatch. After requesting a child, the next
+choice increments modulo four. The child-completion and parent
+transition rules are in
+[NATIVE_DEMO_MAIN_UPDATE.md](NATIVE_DEMO_MAIN_UPDATE.md).
+The current Qt simulation still does not execute any native app,
+media decoder or GS draw.
 
 ## Existing editor integration
 
@@ -107,7 +117,9 @@ and **Demo Main**.
    checkbox explicitly controls the native readiness result.
 5. Use **Inspect native child branch** to view four candidate
    child IDs and their addresses without triggering movie
-   playback or inventing child-selection conditions.
+   playback. The additional **Step native update** controls
+   trace the recovered EE 0x3E0830 dispatch, including explicit
+   child-pending and global-exit observations.
 
 Changing the loaded archive resets any earlier title
 handoff/loader inspector. No additional game assets are bundled.
@@ -131,7 +143,7 @@ The oracle checks original code words at factory registration,
 lookup, class getter/vtable and child request sites; synthetic
 unit tests and Qt GUI tests run in both Ubuntu and Windows CI.
 
-**Next:** recover the complete original
-`CAppDemoMain` update predicates, identify IDs 8 and 9
-from the same registry, and only then consider the movie
-renderer or app-manager lifecycle integration.
+**Next:** recover the full original ID-6 `CAppDemoMain`
+loader sub-states, distinguish alternate ID-8 demo behaviour,
+and correlate an actual runtime capture before reconstructing
+native movie graphics or audio.
