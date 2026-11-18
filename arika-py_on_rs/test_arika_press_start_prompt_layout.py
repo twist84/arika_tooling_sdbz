@@ -8,6 +8,7 @@ import unittest
 from arika_press_start_prompt_layout import (
     PRESS_START_PROMPT_CASES, PRESS_START_PROMPT_CASE_ENTRY,
     PRESS_START_PROMPT_LAYOUT_WORDS, native_prompt_layout,
+    native_prompt_case_from_service_results,
     verify_press_start_prompt_layout_elf,
 )
 
@@ -44,6 +45,28 @@ class PressStartPromptLayoutTests(unittest.TestCase):
             with self.subTest(case=case):
                 with self.assertRaises(ValueError):
                     native_prompt_layout(case)
+
+    def test_exact_native_selector_decision_tree_from_service_results(self):
+        select = native_prompt_case_from_service_results
+        # Immediate override to case 4.
+        self.assertEqual(select(True, False), 4)
+        self.assertEqual(select(True, True), 4)
+        # No dual-mode service: only first eligible/fallback is considered.
+        self.assertEqual(select(False, False, eligibility0=True), 4)
+        self.assertEqual(select(False, False, fallback0=True), 1)
+        self.assertEqual(select(False, False, fallback1=True), 0)
+        # Dual-mode native state disambiguates cases 2, 3 and 4.
+        self.assertEqual(select(False, True, True, True), 4)
+        self.assertEqual(select(False, True, True, False), 2)
+        self.assertEqual(select(False, True, False, True), 3)
+        self.assertEqual(select(False, True, False, False), 0)
+        self.assertEqual(select(False, True, False, False, True), 1)
+        self.assertEqual(select(False, True, False, False, False, True), 1)
+        for invalid in (1, 0, None, 'false'):
+            with self.subTest(value=invalid):
+                with self.assertRaisesRegex(ValueError, 'boolean'):
+                    select(invalid, False)
+        self.assertGreaterEqual(len(PRESS_START_PROMPT_LAYOUT_WORDS), 54)
 
     def test_exact_eu_beta_elf_if_available(self):
         with self.assertRaisesRegex(ValueError, 'EU-beta ELF'):
