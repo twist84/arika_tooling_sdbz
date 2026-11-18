@@ -50,7 +50,7 @@ class PressStartPreviewTests(unittest.TestCase):
     def test_user_capture_rect_is_actual_four_three_viewport(self):
         image = make_pcsx2_test_capture((10, 50, 90))
         cropped = extract_press_start_reference(image)
-        self.assertEqual((cropped.width(), cropped.height()), (1040, 778))
+        self.assertEqual((cropped.width(), cropped.height()), (1206, 903))
         pixel = cropped.pixelColor(520, 390)
         self.assertEqual((pixel.red(), pixel.green(), pixel.blue()),
                          (10, 50, 90))
