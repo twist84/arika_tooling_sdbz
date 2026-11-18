@@ -14,6 +14,8 @@ from arika_press_start_rendering import (
     press_start_comparison_metrics,
     raster_press_start_copyright, raster_press_start_copyright_glyph_quads,
     load_press_start_archive_font, tint_press_start_ffon,
+    native_press_start_ffon_rect, verify_press_start_font_draw_elf,
+    PRESS_START_FONT_DRAW_QUANTIZATION,
 )
 from arika_press_start_resources import PRESS_START_RESOURCE_KEYS
 from test_arika_logo_preview import synthetic_tim2_rgba32, synthetic_fpix
@@ -255,6 +257,59 @@ class PressStartRenderingTests(unittest.TestCase):
         self.assertEqual(text.pixelColor(index * 12, 0).alpha(), 255)
         self.assertEqual(text.pixelColor(index * 12 + 13, 0).alpha(), 0)
         self.assertEqual(text.width(), 12 * len(COPYRIGHT_LINES[0]))
+
+    def test_original_glyph_destinations_round_to_native_integer_quads(self):
+        from arika_press_start_copyright import (
+            native_copyright_draws, COPYRIGHT_FONT_SCALE,
+        )
+        from arika_menu_ffon_native import native_help_glyph_origins
+
+        image = self.texture((255, 255, 255, 255), 12, 24)
+        operations = native_copyright_draws()
+        foreground = operations[2]
+        shadow = operations[0]
+        origins, _ = native_help_glyph_origins(
+            'A' * 18, COPYRIGHT_FONT_SCALE)
+
+        self.assertEqual(
+            native_press_start_ffon_rect(foreground, origins[0], image),
+            C.QRect(86, 381, 8, 16))
+        self.assertEqual(
+            native_press_start_ffon_rect(shadow, origins[0], image),
+            C.QRect(88, 383, 8, 16))
+        self.assertEqual(
+            native_press_start_ffon_rect(foreground, origins[12], image),
+            C.QRect(182, 381, 8, 16))
+        self.assertEqual(
+            native_press_start_ffon_rect(foreground, origins[13], image),
+            C.QRect(191, 381, 8, 16))
+        # Cumulative float32 positions yield a 9px step occasionally,
+        # rather than subpixel blending over neighbouring glyphs.
+        self.assertEqual(
+            native_press_start_ffon_rect(foreground, origins[13], image).x() -
+            native_press_start_ffon_rect(foreground, origins[12], image).x(),
+            9)
+        self.assertEqual(
+            native_press_start_ffon_rect(foreground, origins[13], image).width(),
+            8)
+        for value in (None, float('nan'), float('inf'), '0'):
+            with self.subTest(origin=value):
+                with self.assertRaises(ValueError):
+                    native_press_start_ffon_rect(foreground, value, image)
+
+    def test_native_font_draw_quantization_has_elf_opcode_oracle(self):
+        import os
+        from pathlib import Path
+        self.assertEqual(len(PRESS_START_FONT_DRAW_QUANTIZATION), 7)
+        with self.assertRaisesRegex(ValueError, 'EU-beta ELF'):
+            verify_press_start_font_draw_elf(b'not the original ELF')
+        elf_path = os.environ.get('SDBZ_EU_BETA_ELF')
+        if not elf_path:
+            self.skipTest('Original EU-beta ELF omitted from CI')
+        result = verify_press_start_font_draw_elf(
+            Path(elf_path).read_bytes())
+        self.assertTrue(result['quantized_positions_and_dimensions'])
+        self.assertEqual(result['glyph_draw'], '0x199ee0')
 
     def test_copyright_uses_individual_float32_native_glyph_quads(self):
         from test_arika_menu_ffon_native import synthetic_font
