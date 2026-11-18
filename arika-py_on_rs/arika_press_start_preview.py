@@ -246,9 +246,10 @@ class c_press_start_preview(W.QWidget):
         self.redraw()
 
     def load_archive_assets(self, virtual_files):
-        # The original scene is a composite of streamed game objects,
-        # not a single proven PIX key. Never invent an archive key.
+        """Swap in only ELF-backed resources; discard stale archive state."""
         self.pause_playback()
+        self.m_images = (None, None, None)
+        self.m_asset_errors = ('Archive not loaded',) * 3
         self.m_reference_hidden = None
         self.m_reference_visible = None
         self.m_reference_error = None
@@ -257,18 +258,38 @@ class c_press_start_preview(W.QWidget):
         self.m_prompt_visible.setChecked(True)
         self.m_transition_busy.setChecked(False)
         self.m_idle_reset.setChecked(False)
+        self.m_view_mode.setCurrentIndex(0)
+        images, errors = load_press_start_archive_images(virtual_files)
+        self.m_images = tuple(images)
+        self.m_asset_errors = tuple(errors)
         self.redraw()
+        return sum(image is not None for image in images)
+
+    def current_reconstruction(self):
+        """Return decoded original sprite pixels, never screenshot pixels."""
+        return render_press_start_image(self.m_images)
 
     def draw_canvas(self):
         show_prompt = (self.m_prompt_visible.isChecked() and
                        self.m_runtime.snapshot()['phase'] ==
                        PHASE_WAIT_FOR_START)
-        image = (self.m_reference_visible if show_prompt else
-                 self.m_reference_hidden)
-        if image is None:
-            # The unmatched reference is NOT a substitute for native art.
+        reference = (self.m_reference_visible if show_prompt else
+                     self.m_reference_hidden)
+        reconstruction = self.current_reconstruction()
+        mode = self.m_view_mode.currentIndex()
+        if mode == 2 and reference is not None:
+            image = reference
+        elif mode == 1 and reference is not None and reconstruction is not None:
+            image = press_start_comparison_image(reconstruction, reference)
+        elif reconstruction is not None:
+            image = reconstruction
+        else:
+            # A reference frame must not fill in missing native game artwork.
             image = press_start_diagnostic_canvas(show_prompt)
-        size = C.QSize(640, 480).scaled(
+        comparison_ready = (mode == 1 and reference is not None and
+                            reconstruction is not None)
+        aspect = (C.QSize(1280, 480) if comparison_ready else C.QSize(640, 480))
+        size = aspect.scaled(
             self.m_canvas.size(), C.Qt.AspectRatioMode.KeepAspectRatio)
         pixmap = G.QPixmap.fromImage(image).scaled(
             size, C.Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -290,12 +311,15 @@ class c_press_start_preview(W.QWidget):
         self.m_status.setText(
             '%s | native app ID %d | phase %d | idle age %.4f s | '
             'updates %d | one-shot %s | destination %s | '
-            'reference captures %d/2%s' %
+            'reference captures %d/2 | decoded resources %d/3%s' %
             (state, PRESS_START_APP_ID, snapshot['phase'],
              snapshot['elapsed_seconds'], snapshot['updates'],
              'done' if snapshot['one_shot'] else 'pending',
              target_name, capture_count,
+             sum(image is not None for image in self.m_images),
              ' | ' + self.m_reference_error if self.m_reference_error else ''))
+        self.m_notice.setToolTip(
+            '\n'.join(error for error in self.m_asset_errors if error))
         self.m_calls.setText(
             'Original calls (recorded, NOT executed): ' +
             (', '.join(call['address'] for call in self.m_last_calls)
