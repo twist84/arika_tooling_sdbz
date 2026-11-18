@@ -15,6 +15,7 @@ from arika_press_start_rendering import (
     raster_press_start_copyright,
     raster_press_start_copyright_glyph_quads, render_press_start_image,
     press_start_comparison_image, press_start_comparison_metrics,
+    FONT_COVERAGE_MODELS, press_start_font_model,
 )
 from arika_press_start_animation import c_press_start_prompt_clock
 from arika_press_start_prompt_layout import PRESS_START_PROMPT_CASES
@@ -97,6 +98,7 @@ class c_press_start_preview(W.QWidget):
             'Open an EU-beta INFO.DAT / GAME.DAT archive',) * 3
         self.m_copyright_images = None
         self.m_copyright_quads = None
+        self.m_copyright_quads_luminance = None
         self.m_font_error = 'Original game FFON not loaded'
         self.m_prompt_clock = c_press_start_prompt_clock()
 
@@ -140,6 +142,18 @@ class c_press_start_preview(W.QWidget):
             'Manual diagnostic selection of ELF dispatch cases 0..4. '
             'Actual controller-service state to case mapping is unverified.')
         self.m_prompt_case.currentIndexChanged.connect(self.invalidate_comparison)
+        self.m_ffon_model = W.QComboBox()
+        for label, model in (
+                ('FFON: current coverage', 'coverage_alpha'),
+                ('FFON: 4-bit /16 alpha', 'coverage_alpha_4bit'),
+                ('FFON: source luminance', 'coverage_luminance'),
+                ('FFON: luminance + /16', 'coverage_luminance_4bit')):
+            self.m_ffon_model.addItem(label, model)
+        self.m_ffon_model.setToolTip(
+            'Unverified PS2 font coverage hypotheses for visual comparison. '
+            'The original archive FFON and ELF glyph geometry are unchanged; '
+            'the capture never supplies reconstruction pixels.')
+        self.m_ffon_model.currentIndexChanged.connect(self.redraw)
         self.m_load_hidden = W.QPushButton('Load PCSX2 capture: no prompt')
         self.m_load_visible = W.QPushButton('Load PCSX2 capture: prompt')
         self.m_load_hidden.clicked.connect(self.choose_hidden_capture)
@@ -207,6 +221,7 @@ class c_press_start_preview(W.QWidget):
         references.addWidget(self.m_view_mode)
         references.addWidget(self.m_measure)
         references.addWidget(self.m_prompt_case)
+        references.addWidget(self.m_ffon_model)
         references.addStretch()
         layout.addLayout(references)
         inputs = W.QHBoxLayout()
@@ -285,9 +300,11 @@ class c_press_start_preview(W.QWidget):
                 self.m_images, self.m_reference_hidden,
                 self.m_reference_visible, self.m_copyright_images,
                 prompt_case=self.m_prompt_case.currentData(),
-                copyright_quads=self.m_copyright_quads)
+                copyright_quads=self.m_copyright_quads,
+                copyright_quads_luminance=self.m_copyright_quads_luminance)
             lines = [
-                'Measured (bilinear resize, no registration; NOT GS parity):'
+                'Baseline FFON comparison (bilinear resize, '
+                'no registration; NOT GS parity):'
             ]
             for state in ('hidden', 'visible'):
                 measurement = result['reference_states'].get(state)
@@ -301,6 +318,14 @@ class c_press_start_preview(W.QWidget):
                     (state, full['mean_absolute_error'],
                      full['root_mean_square_error'],
                      copyright_error['mean_absolute_error']))
+                if 'copyright_coverage_models' in measurement:
+                    scores = measurement['copyright_coverage_models']
+                    lines.append(
+                        state + ' FFON hypotheses, copyright MAE: ' +
+                        ', '.join('%s %.3f' % (model, scores[model])
+                                  for model in FONT_COVERAGE_MODELS) +
+                        ' | lowest diagnostic error: ' +
+                        measurement['best_diagnostic_model'])
             self.m_comparison_stats.setText(' | '.join(lines))
         except (ValueError, TypeError) as error:
             self.m_comparison_stats.setText(
@@ -321,6 +346,7 @@ class c_press_start_preview(W.QWidget):
         self.m_comparison_stats.setText('Comparison metrics: not measured')
         self.m_copyright_images = None
         self.m_copyright_quads = None
+        self.m_copyright_quads_luminance = None
         self.m_font_error = 'Archive not loaded'
         self.m_prompt_clock = c_press_start_prompt_clock()
         self.m_reference_hidden = None
@@ -333,6 +359,7 @@ class c_press_start_preview(W.QWidget):
         self.m_idle_reset.setChecked(False)
         self.m_view_mode.setCurrentIndex(0)
         self.m_prompt_case.setCurrentIndex(1)
+        self.m_ffon_model.setCurrentIndex(0)
         images, errors = load_press_start_archive_images(virtual_files)
         self.m_images = tuple(images)
         self.m_asset_errors = tuple(errors)
@@ -345,18 +372,27 @@ class c_press_start_preview(W.QWidget):
                 self.m_copyright_quads = (
                     raster_press_start_copyright_glyph_quads(
                         font, font_data))
+                self.m_copyright_quads_luminance = (
+                    raster_press_start_copyright_glyph_quads(
+                        font, font_data, preserve_luminance=True))
             except (ValueError, TypeError) as failure:
                 self.m_font_error = str(failure)
         self.redraw()
         return sum(image is not None for image in images)
 
     def current_reconstruction(self):
-        """Return decoded original sprite pixels, never screenshot pixels."""
+        """Render a chosen original-asset-backed FFON diagnostic model."""
+        keep_luminance, alpha_multiplier = press_start_font_model(
+            self.m_ffon_model.currentData())
+        selected_quads = (
+            self.m_copyright_quads_luminance if keep_luminance
+            else self.m_copyright_quads)
         return render_press_start_image(
             self.m_images, self.m_copyright_images,
             prompt_visible=self.m_prompt_clock.visible, fade_alpha=1.0,
             prompt_case=self.m_prompt_case.currentData(),
-            copyright_quads=self.m_copyright_quads)
+            copyright_quads=selected_quads,
+            font_alpha_multiplier=alpha_multiplier)
 
     def draw_canvas(self):
         show_prompt = (self.m_prompt_visible.isChecked() and
