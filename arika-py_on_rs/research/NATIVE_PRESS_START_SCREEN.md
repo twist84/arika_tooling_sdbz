@@ -171,6 +171,31 @@ existing gamepad eligibility controls. Native prompt blink timing
 continues to come exclusively from the recovered global UI clock.
 All five variants are regression-tested on both CI platforms.
 
+### Native selector's helper-result decision tree
+
+The native selector at `0x3F7D40` was also recovered, not merely the
+five rendering cases. Its branch conditions depend on return values from
+`0x2AFB70`, `0x2AFB80`, `0x2AFAD0(0/1)` and
+`0x2AFC80(0/1)`. The actual meaning of the first two service returns
+must be established at runtime; labels such as "number of controllers"
+would currently be speculation.
+
+1. If `0x2AFB70()` is nonzero, select **4**.
+2. Otherwise, if `0x2AFB80()` is zero, select **4** if
+   `0x2AFAD0(0)` is nonzero; else select **1** if
+   `0x2AFC80(0)` is positive, otherwise **0**.
+3. If `0x2AFB80()` is nonzero, query both `0x2AFAD0` calls:
+   both nonzero ⇒ **4**; only input 0 nonzero ⇒ **2**;
+   only input 1 nonzero ⇒ **3**; both zero ⇒ **1** if the sum
+   `0x2AFC80(0) + 0x2AFC80(1)` is positive, else **0**.
+
+`native_prompt_case_from_service_results` reproduces this exact
+branch tree **only for explicitly supplied helper return observations**.
+This is separately unit-tested with all five outcomes, and the
+optional ELF oracle checks the additional callsites and branches.
+The editor deliberately retains a manual diagnostic case selector
+until those original helper outputs are actually observed during play.
+
 **Outstanding observation:** record the original return from
 `0x3F7D40` alongside the controller-service state and a GS prompt draw
 to establish when each case appears naturally. Without that capture,
