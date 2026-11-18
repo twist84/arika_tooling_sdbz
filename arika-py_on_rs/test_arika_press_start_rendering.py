@@ -12,8 +12,8 @@ from arika_press_start_rendering import (
     decode_press_start_texture, load_press_start_archive_images,
     render_press_start_image, press_start_comparison_image,
     press_start_comparison_metrics,
-    raster_press_start_copyright, load_press_start_archive_font,
-    tint_press_start_ffon,
+    raster_press_start_copyright, raster_press_start_copyright_glyph_quads,
+    load_press_start_archive_font, tint_press_start_ffon,
 )
 from arika_press_start_resources import PRESS_START_RESOURCE_KEYS
 from test_arika_logo_preview import synthetic_tim2_rgba32, synthetic_fpix
@@ -255,6 +255,66 @@ class PressStartRenderingTests(unittest.TestCase):
         self.assertEqual(text.pixelColor(index * 12, 0).alpha(), 255)
         self.assertEqual(text.pixelColor(index * 12 + 13, 0).alpha(), 0)
         self.assertEqual(text.width(), 12 * len(COPYRIGHT_LINES[0]))
+
+    def test_copyright_uses_individual_float32_native_glyph_quads(self):
+        from test_arika_menu_ffon_native import synthetic_font
+        from arika_menu_ffon_native import native_help_glyph_origins
+        from arika_press_start_copyright import (
+            COPYRIGHT_LINES, COPYRIGHT_FONT_SCALE,
+        )
+        font, raw = synthetic_font()
+        quads = raster_press_start_copyright_glyph_quads(font, raw)
+        self.assertEqual(len(quads), 2)
+        first = COPYRIGHT_LINES[0]
+        origins, total_width = native_help_glyph_origins(
+            first, COPYRIGHT_FONT_SCALE)
+        self.assertAlmostEqual(
+            total_width, len(first) * 12 * COPYRIGHT_FONT_SCALE, delta=.001)
+        supported = [(ch, offset) for ch, offset in zip(first, origins)
+                     if ch in 'AB']
+        self.assertEqual(len(quads[0]), len(supported))
+        for (character, expected_x), (actual_x, shadow, face) in zip(
+                supported, quads[0]):
+            self.assertEqual(actual_x, expected_x)
+            self.assertEqual((shadow.width(), shadow.height()), (12, 24))
+            self.assertEqual((face.width(), face.height()), (12, 24))
+            self.assertEqual(shadow.pixelColor(0, 0),
+                             G.QColor(64, 64, 64, 255))
+            self.assertEqual(face.pixelColor(0, 0),
+                             G.QColor(255, 255, 255, 255))
+        self.assertTrue(any(
+            abs(origin - round(origin)) > .01
+            for origin, _, _ in quads[0]))
+
+        background = self.texture((120, 80, 40, 255))
+        image = render_press_start_image(
+            (None, background, None), copyright_quads=quads)
+        self.assertEqual((image.width(), image.height()), (512, 448))
+        self.assertNotEqual(image.pixelColor(86, 381),
+                            image.pixelColor(86, 376))
+        for invalid in ((), ((),), ((None,), ())):
+            with self.subTest(quads=repr(invalid)):
+                with self.assertRaises(ValueError):
+                    render_press_start_image(
+                        (None, background, None), copyright_quads=invalid)
+
+    def test_quads_can_be_compared_against_both_original_prompt_states(self):
+        from test_arika_menu_ffon_native import synthetic_font
+        font, raw = synthetic_font()
+        quads = raster_press_start_copyright_glyph_quads(font, raw)
+        background = self.texture((120, 80, 40, 255))
+        images = (None, background, None)
+        candidate = render_press_start_image(
+            images, copyright_quads=quads)
+        stats = press_start_comparison_metrics(
+            images, candidate, candidate,
+            copyright_quads=quads)
+        self.assertEqual(
+            stats['reference_states']['hidden']
+            ['copyright_region']['all_pixels']['mean_absolute_error'], 0.0)
+        self.assertEqual(
+            stats['reference_states']['visible']
+            ['copyright_region']['all_pixels']['mean_absolute_error'], 0.0)
 
     def test_native_prompt_clock_steps_without_replacing_reference_toggle(self):
         viewer = c_press_start_preview()
