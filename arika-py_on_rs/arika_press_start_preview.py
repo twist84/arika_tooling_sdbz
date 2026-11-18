@@ -12,7 +12,8 @@ from arika_press_start_runtime import (
 from arika_app_registry import resolve_app
 from arika_press_start_rendering import (
     load_press_start_archive_images, load_press_start_archive_font,
-    raster_press_start_copyright, render_press_start_image,
+    raster_press_start_copyright,
+    raster_press_start_copyright_glyph_quads, render_press_start_image,
     press_start_comparison_image, press_start_comparison_metrics,
 )
 from arika_press_start_animation import c_press_start_prompt_clock
@@ -95,6 +96,7 @@ class c_press_start_preview(W.QWidget):
         self.m_asset_errors = (
             'Open an EU-beta INFO.DAT / GAME.DAT archive',) * 3
         self.m_copyright_images = None
+        self.m_copyright_quads = None
         self.m_font_error = 'Original game FFON not loaded'
         self.m_prompt_clock = c_press_start_prompt_clock()
 
@@ -282,7 +284,8 @@ class c_press_start_preview(W.QWidget):
             result = press_start_comparison_metrics(
                 self.m_images, self.m_reference_hidden,
                 self.m_reference_visible, self.m_copyright_images,
-                prompt_case=self.m_prompt_case.currentData())
+                prompt_case=self.m_prompt_case.currentData(),
+                copyright_quads=self.m_copyright_quads)
             hidden_result = result['reference_states']['hidden']
             visible_result = result['reference_states']['visible']
             hidden = hidden_result['all_pixels']
@@ -319,6 +322,7 @@ class c_press_start_preview(W.QWidget):
         self.m_asset_errors = ('Archive not loaded',) * 3
         self.m_comparison_stats.setText('Comparison metrics: not measured')
         self.m_copyright_images = None
+        self.m_copyright_quads = None
         self.m_font_error = 'Archive not loaded'
         self.m_prompt_clock = c_press_start_prompt_clock()
         self.m_reference_hidden = None
@@ -340,6 +344,9 @@ class c_press_start_preview(W.QWidget):
             try:
                 self.m_copyright_images = raster_press_start_copyright(
                     font, font_data)
+                self.m_copyright_quads = (
+                    raster_press_start_copyright_glyph_quads(
+                        font, font_data))
             except (ValueError, TypeError) as failure:
                 self.m_font_error = str(failure)
         self.redraw()
@@ -350,7 +357,8 @@ class c_press_start_preview(W.QWidget):
         return render_press_start_image(
             self.m_images, self.m_copyright_images,
             prompt_visible=self.m_prompt_clock.visible, fade_alpha=1.0,
-            prompt_case=self.m_prompt_case.currentData())
+            prompt_case=self.m_prompt_case.currentData(),
+            copyright_quads=self.m_copyright_quads)
 
     def draw_canvas(self):
         show_prompt = (self.m_prompt_visible.isChecked() and
