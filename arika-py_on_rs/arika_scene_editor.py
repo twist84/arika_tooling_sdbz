@@ -20,6 +20,7 @@ from arika_import import c_gltf_reader
 from arika_models import identity,local_matrix,multiply
 from arika_animation_preview import c_animation_preview
 from arika_scene_state import node_state,hidden_nodes,selection_nodes,transform_locks
+from arika_native_stage_controls import native_initial_preview_hidden_nodes
 
 NAVIGATION_HELP='MMB orbit · Shift+MMB pan · Ctrl+MMB zoom · Wheel zoom · Home frame all · Numpad . frame selected · Numpad 1/3/7 views · Numpad 5 perspective/ortho'
 
@@ -126,6 +127,12 @@ class c_viewport(QRenderWidget):
         import os
         super().__init__(parent,present_method=os.environ.get('ARIKA_PRESENT_METHOD','screen' if sys.platform=='win32' else 'bitmap'),update_mode='ondemand')
         self.m_project=None;self.m_renderer=None;self.m_upload=False;self.m_geometry=True;self.m_fit=False;self.m_world_cache=None
+        # An optional, nonpersistent preview of the exact kind-6 0x300 masks.
+        # It is separate from user-authored Show/Hide state and exported glTF.
+        self.m_native_initial_state_preview=False
+        self.m_native_stage_hidden=set()
+        self.m_native_stage_report=None
+        self.m_authored_hidden=set()
         self.m_center=[0,0,0];self.m_distance=1000.;self.m_yaw=35.;self.m_pitch=30.;self.m_selected=-1
         self.m_selection=set()
         self.m_isolated=None
@@ -163,7 +170,23 @@ class c_viewport(QRenderWidget):
             background=project.background_rgba() if project is not None and hasattr(project,'background_rgba') else None
             self.m_options['background']=background or DEFAULT_BACKGROUND
             self.m_stage_background_key=key
+        self.m_native_stage_hidden=set()
+        self.m_native_stage_report=None
+        self.m_authored_hidden=(hidden_nodes(project.m_document)
+                               if project is not None else set())
+        stage=getattr(project,'m_stage',None) if project is not None else None
+        if stage is not None and getattr(stage,'m_scene',None) is not None:
+            self.m_native_stage_report=native_initial_preview_hidden_nodes(
+                stage.m_scene,project.m_document)
+            self.m_native_stage_hidden=set(
+                self.m_native_stage_report['hidden_gltf_nodes'])
         self.m_project=project;self.m_world_cache=None;self.m_upload=True;self.m_geometry=geometry;self.m_fit=fit or self.m_fit;self.request_draw()
+
+    def effective_hidden_nodes(self):
+        """Combine authored state with optional nonpersistent native preview."""
+        return self.m_authored_hidden | (
+            self.m_native_stage_hidden
+            if self.m_native_initial_state_preview else set())
 
     def draw_frame(self):
         if not self.isVisible():return
@@ -177,6 +200,8 @@ class c_viewport(QRenderWidget):
                 if hasattr(self.window(),'statusBar'):
                     count=len(self.m_renderer.m_instances)
                     self.window().statusBar().showMessage('WebGPU ready: %d mesh instances. MMB orbit | Shift+MMB pan | Wheel zoom'%count)
+            if self.m_project is not None:
+                self.m_renderer.m_hidden=self.effective_hidden_nodes()
             width,height=self.get_physical_size()
             self.m_renderer.render(width,height,self.m_yaw,self.m_pitch,self.m_center,self.m_distance,self.m_mode,self.m_selection or self.m_selected,self.m_collision,orthographic=self.m_orthographic,isolated=self.m_isolated,options=self.m_options,gizmo=self.gizmo_state())
             self.m_error=''
@@ -861,6 +886,15 @@ class c_scene_editor(W.QMainWindow):
         for label,key in [('Floor grid','grid'),('World axes','axes'),('Selection highlight','highlight'),('Backface culling','cull')]:
             action=options.addAction(label);action.setCheckable(True);action.toggled.connect(lambda checked,key=key:self.viewport_option(key,checked));self.m_option_actions[key]=action
         options.addSeparator();self.m_projection_action=options.addAction('Orthographic projection');self.m_projection_action.setCheckable(True);self.m_projection_action.toggled.connect(self.projection)
+        self.m_native_stage_state_action=options.addAction(
+            'Preview native stage initial state (kind 6)')
+        self.m_native_stage_state_action.setCheckable(True)
+        self.m_native_stage_state_action.setToolTip(
+            'Diagnostic only: suppress the original kind-6 secondary '
+            'subtrees in the viewport. Does not emulate runtime visibility, '
+            'collision, destruction or alter stage/project files.')
+        self.m_native_stage_state_action.toggled.connect(
+            self.toggle_native_stage_initial_state)
         options.addAction('Stage background…').triggered.connect(self.stage_background)
         options.addAction('Background color…').triggered.connect(self.background_color)
         options.aboutToShow.connect(self.sync_view_controls)
@@ -1355,7 +1389,11 @@ class c_scene_editor(W.QMainWindow):
             flags=node_state(self.m_project.m_document,index)
             item.setCheckState(1,C.Qt.CheckState.Unchecked if flags['hidden'] else C.Qt.CheckState.Checked)
             item.setCheckState(2,C.Qt.CheckState.Checked if flags['locked'] else C.Qt.CheckState.Unchecked)
-        self.m_tree.blockSignals(False);self.sync_selection();self.m_object_view.request_draw()
+        self.m_tree.blockSignals(False);self.sync_selection()
+        authored_hidden=hidden_nodes(self.m_project.m_document)
+        for view in (self.m_view,self.m_object_view):
+            view.m_authored_hidden=set(authored_hidden)
+            view.request_draw()
 
     def show_all_objects(self):self.change_node_state(indices=set(self.m_items),hidden=False)
 
@@ -1691,6 +1729,10 @@ class c_scene_editor(W.QMainWindow):
         for key,action in self.m_option_actions.items():
             action.blockSignals(True);action.setChecked(view.m_options[key]);action.blockSignals(False)
         self.m_projection_action.blockSignals(True);self.m_projection_action.setChecked(view.m_orthographic);self.m_projection_action.blockSignals(False)
+        self.m_native_stage_state_action.blockSignals(True)
+        self.m_native_stage_state_action.setChecked(
+            self.m_view.m_native_initial_state_preview)
+        self.m_native_stage_state_action.blockSignals(False)
 
     def viewport_option(self,key,value):
         view=self.active_view();view.m_options[key]=value;view.request_draw()
@@ -1700,6 +1742,32 @@ class c_scene_editor(W.QMainWindow):
 
     def align_view(self,yaw,pitch):
         view=self.active_view();view.m_yaw=yaw;view.m_pitch=pitch;view.m_orthographic=True;view.m_axis_view=True;view.request_draw()
+
+    def toggle_native_stage_initial_state(self,enabled):
+        """Opt-in diagnostic suppression: neither STG nor saved Show state."""
+        checked=bool(enabled)
+        for view in (self.m_view,self.m_object_view):
+            view.m_native_initial_state_preview=checked
+            view.request_draw()
+        if not checked:
+            self.statusBar().showMessage(
+                'Native stage initial-state diagnostic disabled; '
+                'authored Show/Hide state retained.')
+            return
+        report=getattr(self.m_view,'m_native_stage_report',None)
+        if report is None:
+            self.statusBar().showMessage(
+                'No parsed native stage controls to preview.')
+            return
+        details=report['stage_state']
+        self.statusBar().showMessage(
+            'Diagnostic only: %d original kind-6 controls, %d '
+            'editor preview-hidden nodes, %d unresolved/ambiguous; '
+            'not native runtime visibility.' %
+            (details['native_control_count'],
+             len(report['hidden_gltf_nodes']),
+             len(details['conflicts_or_unresolved'])+
+             len(report['skipped_mappings'])))
 
     def stage_background(self):
         project=self.m_project
