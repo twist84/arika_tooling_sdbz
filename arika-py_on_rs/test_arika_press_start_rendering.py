@@ -351,6 +351,11 @@ class PressStartRenderingTests(unittest.TestCase):
             self.assertEqual(data['all_pixels']['mean_absolute_error'], 0)
             self.assertEqual(data['all_pixels']['root_mean_square_error'], 0)
             self.assertEqual(data['registration'], 'none')
+            copyright_region = data['copyright_region']
+            self.assertEqual(copyright_region['native_rect'],
+                             [60, 375, 480, 416])
+            self.assertEqual(
+                copyright_region['all_pixels']['mean_absolute_error'], 0)
         shifted = self.texture((0, 0, 0, 255), 512, 448)
         errors = press_start_comparison_metrics(
             (foreground, background, None), hidden, shifted)
@@ -383,6 +388,10 @@ class PressStartRenderingTests(unittest.TestCase):
         viewer.m_measure.click()
         self.assertIn('hidden MAE', viewer.m_comparison_stats.text())
         self.assertIn('visible MAE', viewer.m_comparison_stats.text())
+        self.assertIn('copyright-only hidden MAE',
+                      viewer.m_comparison_stats.text())
+        self.assertIn('copyright-only visible MAE',
+                      viewer.m_comparison_stats.text())
         self.assertIn('NOT GS parity', viewer.m_comparison_stats.text())
         viewer.m_prompt_case.setCurrentIndex(4)
         self.assertIn('not measured', viewer.m_comparison_stats.text())
