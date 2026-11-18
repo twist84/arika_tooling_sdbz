@@ -68,6 +68,29 @@ class NativeFactoryProviderTests(unittest.TestCase):
         self.assertEqual(by_site[0x3E9340]['target_id'], 22)
         self.assertEqual(len(registered_factory_providers(target_id=15)), 12)
 
+    def test_warning_cri_ownership_is_proven_not_proximity_assigned(self):
+        verified = [e for e in APP_NATIVE_PROVIDER_CALLS
+                    if e['source_ownership_verified']]
+        self.assertEqual({e['callsite'] for e in verified},
+                         {0x3FABF8, 0x3FAC30})
+        phase_data = {
+            0x3FABF8: (3, 0x3C, 0x3FABF0),
+            0x3FAC30: (4, 0x40, 0x3FAC20),
+        }
+        for row in verified:
+            with self.subTest(site=row['callsite']):
+                phase, offset, callback = phase_data[row['callsite']]
+                self.assertEqual(row['source_application_id'], 1)
+                self.assertEqual(row['source_callback_phase'], phase)
+                self.assertEqual(row['source_base_vtable_offset'], offset)
+                self.assertEqual(row['source_callback_address'], callback)
+                self.assertEqual(APP_ENTRIES[1]['base_slots'][
+                    '0x%02x' % offset], callback)
+                self.assertEqual(row['target_id'], 2)
+                self.assertFalse(row['factory_invoked_in_observed_runtime'])
+        self.assertEqual(sum(e['source_application_id'] is None
+                             for e in APP_NATIVE_PROVIDER_CALLS), 35)
+
     def test_dynamic_provider_reads_never_claim_registered_destination(self):
         dynamic = [e for e in APP_NATIVE_PROVIDER_CALLS
                    if e['argument_kind'] != 'literal']
@@ -127,6 +150,12 @@ class NativeFactoryProviderTests(unittest.TestCase):
         corrupted = copy.deepcopy(APP_NATIVE_PROVIDER_AUDIT)
         corrupted['callsites'][0]['target_id'] = 14
         with self.assertRaisesRegex(ValueError, 'literal provider ID'):
+            verify_provider_audit(data, corrupted, APP_NATIVE_REGISTRY)
+        corrupted = copy.deepcopy(APP_NATIVE_PROVIDER_AUDIT)
+        owner = next(e for e in corrupted['callsites']
+                     if e['callsite'] == 0x3FABF8)
+        owner['source_application_id'] = 3
+        with self.assertRaisesRegex(ValueError, 'ownership'):
             verify_provider_audit(data, corrupted, APP_NATIVE_REGISTRY)
         corrupted = copy.deepcopy(APP_NATIVE_PROVIDER_AUDIT)
         corrupted['callsites'][0]['factory_invoked_in_observed_runtime'] = True
