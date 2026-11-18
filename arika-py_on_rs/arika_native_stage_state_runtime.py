@@ -206,6 +206,13 @@ class c_native_stage_state_runtime:
         for intents in self.m_intents.values():
             for target, operation in intents.items():
                 desired.setdefault(target, set()).add(operation)
+        # A single controller can name the same node in both roles.
+        # The original sequential writes produce one final flag value, but
+        # the preview cannot honestly identify it as a unique geometry role.
+        for actions in self.m_actions.values():
+            for action in actions:
+                desired.setdefault(action['target_node'], set()).add(
+                    action['operation'])
         conflicts = {
             target for target, operations in desired.items()
             if len(operations) > 1
