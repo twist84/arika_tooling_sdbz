@@ -415,7 +415,7 @@ def press_start_comparison_metrics(images, hidden_reference,
                                    visible_reference, copyright_images=None,
                                    prompt_case=1, resampling='bilinear',
                                    copyright_quads=None):
-    """Measure both original PCSX2 states against rebuilt archive layers.
+    """Measure each available original PCSX2 state against archive layers.
 
     Each reconstruction uses the SAME original resources with only the
     verified prompt visibility gate changed. No screenshot pixels are
@@ -436,12 +436,14 @@ def press_start_comparison_metrics(images, hidden_reference,
             'RGBA', (rgba.width(), rgba.height()), data,
             'raw', 'RGBA', rgba.bytesPerLine(), 1)
 
-    if hidden_reference is None or visible_reference is None:
-        raise ValueError('both original PCSX2 reference states are required')
+    if hidden_reference is None and visible_reference is None:
+        raise ValueError('at least one original PCSX2 reference is required')
     results = {}
     for name, show_prompt, reference in (
             ('hidden', False, hidden_reference),
             ('visible', True, visible_reference)):
+        if reference is None:
+            continue
         candidate = render_press_start_image(
             images, copyright_images=copyright_images,
             prompt_visible=show_prompt, prompt_case=prompt_case,
@@ -476,5 +478,7 @@ def press_start_comparison_metrics(images, hidden_reference,
     return {
         'prompt_case': prompt_case,
         'reference_states': results,
+        'missing_states': [state for state in ('hidden', 'visible')
+                           if state not in results],
         'evidence': 'diagnostic only; GS and fade parity not established',
     }
