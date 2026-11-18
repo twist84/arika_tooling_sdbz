@@ -290,8 +290,10 @@ class PressStartRenderingTests(unittest.TestCase):
         image = render_press_start_image(
             (None, background, None), copyright_quads=quads)
         self.assertEqual((image.width(), image.height()), (512, 448))
-        self.assertNotEqual(image.pixelColor(86, 381),
-                            image.pixelColor(86, 376))
+        self.assertTrue(any(
+            image.pixelColor(x, y).red() > 80
+            for x in range(120, 155)
+            for y in range(380, 400)))
         for invalid in ((), ((),), ((None,), ())):
             with self.subTest(quads=repr(invalid)):
                 with self.assertRaises(ValueError):
