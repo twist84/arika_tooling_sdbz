@@ -56,9 +56,7 @@ class LogoResourceTests(unittest.TestCase):
                          list(LOGO_SOURCE_RECT))
         self.assertEqual(report['sprite']['initial_sampler_bytes'],
                          list(LOGO_SAMPLER_BYTES))
-        self.assertIn('unknown', report['limits'][-2].lower()
-                      if 'unknown' in report['limits'][-2].lower()
-                      else report['limits'][-2].lower() + ' unknown')
+        self.assertIn('not prove', report['limits'][-2].lower())
 
     def test_cli_with_user_provided_elf(self):
         path = os.environ.get('SDBZ_EU_BETA_ELF')
