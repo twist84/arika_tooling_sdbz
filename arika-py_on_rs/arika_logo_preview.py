@@ -143,7 +143,6 @@ class c_logo_preview(W.QWidget):
                 640, 480, C.Qt.AspectRatioMode.IgnoreAspectRatio,
                 C.Qt.TransformationMode.SmoothTransformation)
             self.m_canvas.setPixmap(pixmap)
-            self.m_canvas.setText('')
         else:
             self.m_canvas.clear()
             self.m_canvas.setText('Original native logo asset unavailable')
