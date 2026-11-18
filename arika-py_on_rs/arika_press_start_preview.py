@@ -349,7 +349,7 @@ class c_press_start_preview(W.QWidget):
             '%s | native app ID %d | phase %d | idle age %.4f s | '
             'updates %d | one-shot %s | destination %s | '
             'reference captures %d/2 | decoded resources %d/3 | '
-            'native prompt %.4f s (%s, case %d) | FFON %s%s' %
+            'native prompt %.4f s (%s) | prompt case %d | FFON %s%s' %
             (state, PRESS_START_APP_ID, snapshot['phase'],
              snapshot['elapsed_seconds'], snapshot['updates'],
              'done' if snapshot['one_shot'] else 'pending',
