@@ -56,3 +56,47 @@ class c_press_start_prompt_clock:
             self.m_phase = 0.0 if next_phase > PRESS_START_CYCLE_END else next_phase
             self.m_ticks += 1
         return self.visible
+
+
+# Original clock scheduler, comparison and prompt-dispatch opcodes.
+PRESS_START_ANIMATION_WORDS = {
+    0x002CB734: 0x0C0B92CC,
+    0x002CB740: 0x0C0B9384,
+    0x002CB744: 0x4600A306,
+    0x002E4E10: 0xC48100D4,
+    0x002E4E14: 0x3C034040,
+    0x002E4E20: 0x460C0840,
+    0x002E4E24: 0x46000836,
+    0x002E4E2C: 0xE48100D4,
+    0x002E4E3C: 0xAC8000D4,
+    0x002E5510: 0xC48100D4,
+    0x002E5520: 0x46000836,
+    0x002E5524: 0x45000002,
+    0x002E5528: 0x24020001,
+    0x002E552C: 0x0000102D,
+    0x003F7B58: 0x0C0B92CC,
+    0x003F7B60: 0x0C0B9544,
+    0x003F7B68: 0x10400005,
+    0x003F7B74: 0x0C0FDF84,
+}
+
+
+def verify_press_start_animation_elf(elf):
+    """Refuse any different ELF and validate exact timer/gate instructions."""
+    from arika_press_start_runtime import verify_press_start_elf
+    from arika_app_registry import _word
+
+    verify_press_start_elf(elf)
+    for address, expected in PRESS_START_ANIMATION_WORDS.items():
+        if _word(elf, address) != expected:
+            raise ValueError('Press Start blink instruction mismatch at 0x%08X' %
+                             address)
+    return dict(
+        source=hex(PRESS_START_CLOCK_CALLER),
+        clock=hex(PRESS_START_CLOCK_UPDATE),
+        gate=hex(PRESS_START_PROMPT_GATE),
+        prompt_draw=hex(PRESS_START_PROMPT_DRAW),
+        visible_after=PRESS_START_VISIBLE_AFTER,
+        reset_above=PRESS_START_CYCLE_END,
+        verified_words=len(PRESS_START_ANIMATION_WORDS),
+    )
