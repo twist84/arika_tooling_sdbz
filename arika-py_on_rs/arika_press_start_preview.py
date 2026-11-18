@@ -22,7 +22,7 @@ from arika_press_start_animation import c_press_start_prompt_clock
 # screenshots. This only crops a reference; it is NOT a native
 # GS register/viewport assertion or a generally valid capture crop.
 PCSX2_REFERENCE_SIZE = (1920, 1040)
-PCSX2_REFERENCE_RECT = (307, 96, 1040, 778)
+PCSX2_REFERENCE_RECT = (357, 111, 1206, 903)
 
 
 def extract_press_start_reference(image):
