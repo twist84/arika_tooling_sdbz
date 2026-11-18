@@ -25,3 +25,13 @@ secondary-target geometry, separate from authored Show/Hide state. It does
 not claim full native GS/collision visibility or persist masked geometry.
 Details, 18 verified opcode words and the remaining flag-consumer work:
 [research/NATIVE_STAGE_CONTROL_INITIAL_STATE.md](research/NATIVE_STAGE_CONTROL_INITIAL_STATE.md).
+
+## Original stage switch and restore callback branches
+
+The kind-6 phase-one callback at `0x240710`, direct restore at `0x240910`
+and guarded event callback at `0x2409F0` now have 28 additional exact
+EU-beta ELF instruction signatures. The scene editor supports optional
+Initial, Switched (hypothetical `+0x54 == 1`) and Restored visual mask
+scenarios. This is not confirmed runtime destruction/GS or collision
+behaviour; original stage data and authored visibility are unchanged.
+See [the state-switch audit](research/NATIVE_STAGE_STATE_SWITCH.md).

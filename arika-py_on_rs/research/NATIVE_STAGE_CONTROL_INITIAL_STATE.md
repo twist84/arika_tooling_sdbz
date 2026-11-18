@@ -107,3 +107,11 @@ whether mask propagation to child nodes agrees with the
 editor's subtree-hidden visual approximation. Compare actual
 PCSX2 stage screenshots in both initial and alternate states
 before enabling automatic visibility by default.
+
+## Follow-on native state-switch research
+
+The [original switch/restore audit](NATIVE_STAGE_STATE_SWITCH.md) validates
+28 further EU-beta instruction words and adds opt-in **Initial**, **Switched**
+(with hypothetical phase `+0x54 == 1`), and **Restored** editor preview
+scenarios. The original flag consumers, collision consequences and actual
+runtime destruction trigger remain unverified.

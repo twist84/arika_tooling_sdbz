@@ -20,7 +20,9 @@ from arika_import import c_gltf_reader
 from arika_models import identity,local_matrix,multiply
 from arika_animation_preview import c_animation_preview
 from arika_scene_state import node_state,hidden_nodes,selection_nodes,transform_locks
-from arika_native_stage_controls import native_initial_preview_hidden_nodes
+from arika_native_stage_state_switch import (
+    SCENARIO_NAMES, native_stage_scenario_preview_hidden_nodes,
+)
 
 NAVIGATION_HELP='MMB orbit · Shift+MMB pan · Ctrl+MMB zoom · Wheel zoom · Home frame all · Numpad . frame selected · Numpad 1/3/7 views · Numpad 5 perspective/ortho'
 
@@ -130,8 +132,11 @@ class c_viewport(QRenderWidget):
         # An optional, nonpersistent preview of the exact kind-6 0x300 masks.
         # It is separate from user-authored Show/Hide state and exported glTF.
         self.m_native_initial_state_preview=False
+        self.m_native_stage_scenario='initial'
         self.m_native_stage_hidden=set()
         self.m_native_stage_report=None
+        self.m_native_stage_state_hidden={}
+        self.m_native_stage_state_reports={}
         self.m_authored_hidden=set()
         self.m_center=[0,0,0];self.m_distance=1000.;self.m_yaw=35.;self.m_pitch=30.;self.m_selected=-1
         self.m_selection=set()
@@ -172,20 +177,33 @@ class c_viewport(QRenderWidget):
             self.m_stage_background_key=key
         self.m_native_stage_hidden=set()
         self.m_native_stage_report=None
+        self.m_native_stage_state_hidden={}
+        self.m_native_stage_state_reports={}
         self.m_authored_hidden=(hidden_nodes(project.m_document)
                                if project is not None else set())
         stage=getattr(project,'m_stage',None) if project is not None else None
         if stage is not None and getattr(stage,'m_scene',None) is not None:
-            self.m_native_stage_report=native_initial_preview_hidden_nodes(
-                stage.m_scene,project.m_document)
+            for scenario in SCENARIO_NAMES:
+                # Alternate mode is explicitly a *hypothetical* phase-1
+                # outcome; no EE callback or destruction event is executed.
+                phase=1 if scenario=='switched' else None
+                report=native_stage_scenario_preview_hidden_nodes(
+                    stage.m_scene,project.m_document,
+                    scenario=scenario,assumed_phase_word=phase)
+                self.m_native_stage_state_reports[scenario]=report
+                self.m_native_stage_state_hidden[scenario]=set(
+                    report['hidden_gltf_nodes'])
+            self.m_native_stage_report=(
+                self.m_native_stage_state_reports['initial'])
             self.m_native_stage_hidden=set(
-                self.m_native_stage_report['hidden_gltf_nodes'])
+                self.m_native_stage_state_hidden['initial'])
         self.m_project=project;self.m_world_cache=None;self.m_upload=True;self.m_geometry=geometry;self.m_fit=fit or self.m_fit;self.request_draw()
 
     def effective_hidden_nodes(self):
         """Combine authored state with optional nonpersistent native preview."""
         return self.m_authored_hidden | (
-            self.m_native_stage_hidden
+            self.m_native_stage_state_hidden.get(
+                self.m_native_stage_scenario,set())
             if self.m_native_initial_state_preview else set())
 
     def draw_frame(self):
@@ -887,14 +905,33 @@ class c_scene_editor(W.QMainWindow):
             action=options.addAction(label);action.setCheckable(True);action.toggled.connect(lambda checked,key=key:self.viewport_option(key,checked));self.m_option_actions[key]=action
         options.addSeparator();self.m_projection_action=options.addAction('Orthographic projection');self.m_projection_action.setCheckable(True);self.m_projection_action.toggled.connect(self.projection)
         self.m_native_stage_state_action=options.addAction(
-            'Preview native stage initial state (kind 6)')
+            'Preview native stage state (kind 6)')
         self.m_native_stage_state_action.setCheckable(True)
         self.m_native_stage_state_action.setToolTip(
-            'Diagnostic only: suppress the original kind-6 secondary '
-            'subtrees in the viewport. Does not emulate runtime visibility, '
-            'collision, destruction or alter stage/project files.')
+            'Diagnostic only: visualize original kind-6 mask outcomes. '
+            'No callbacks are executed, and no STG, project, collision '
+            'or authored Show/Hide state is modified.')
         self.m_native_stage_state_action.toggled.connect(
             self.toggle_native_stage_initial_state)
+        state_menu=options.addMenu('Native stage state scenario')
+        self.m_native_state_actions={}
+        self.m_native_stage_state_group=G.QActionGroup(self)
+        self.m_native_stage_state_group.setExclusive(True)
+        for scenario,label in (
+                ('initial','Initial — secondary suppressed'),
+                ('switched','Switched — assume original phase 1'),
+                ('restored','Restored — direct helper outcome')):
+            action=state_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(scenario=='initial')
+            action.setToolTip(
+                'Static ELF-derived scenario; does NOT imply the '
+                'game event, rendering or destruction occurred.')
+            self.m_native_stage_state_group.addAction(action)
+            action.triggered.connect(
+                lambda checked=False,mode=scenario:
+                    self.set_native_stage_scenario(mode))
+            self.m_native_state_actions[scenario]=action
         options.addAction('Stage background…').triggered.connect(self.stage_background)
         options.addAction('Background color…').triggered.connect(self.background_color)
         options.aboutToShow.connect(self.sync_view_controls)
@@ -1733,6 +1770,10 @@ class c_scene_editor(W.QMainWindow):
         self.m_native_stage_state_action.setChecked(
             self.m_view.m_native_initial_state_preview)
         self.m_native_stage_state_action.blockSignals(False)
+        for scenario,action in self.m_native_state_actions.items():
+            action.blockSignals(True)
+            action.setChecked(scenario==self.m_view.m_native_stage_scenario)
+            action.blockSignals(False)
 
     def viewport_option(self,key,value):
         view=self.active_view();view.m_options[key]=value;view.request_draw()
@@ -1743,31 +1784,50 @@ class c_scene_editor(W.QMainWindow):
     def align_view(self,yaw,pitch):
         view=self.active_view();view.m_yaw=yaw;view.m_pitch=pitch;view.m_orthographic=True;view.m_axis_view=True;view.request_draw()
 
+    def set_native_stage_scenario(self,scenario):
+        """Change *hypothetical* original mask state, without editing assets."""
+        if scenario not in SCENARIO_NAMES:
+            raise ValueError('unknown native stage state scenario')
+        for view in (self.m_view,self.m_object_view):
+            view.m_native_stage_scenario=scenario
+            view.request_draw()
+        for mode,action in self.m_native_state_actions.items():
+            action.blockSignals(True)
+            action.setChecked(mode==scenario)
+            action.blockSignals(False)
+        self._report_native_stage_preview()
+
+    def _report_native_stage_preview(self):
+        if not self.m_view.m_native_initial_state_preview:
+            self.statusBar().showMessage(
+                'Native stage-state preview disabled; original STG and '
+                'authored Show/Hide state retained.')
+            return
+        scenario=self.m_view.m_native_stage_scenario
+        report=self.m_view.m_native_stage_state_reports.get(scenario)
+        if report is None:
+            self.statusBar().showMessage(
+                'No parsed kind-6 stage controls to preview.')
+            return
+        details=report['stage_state']
+        assumed=('hypothetical phase +0x54 == 1; '
+                 if scenario=='switched' else '')
+        self.statusBar().showMessage(
+            'Diagnostic only: %s — %s%d controls, %d preview-hidden '
+            'objects, %d unresolved/ambiguous. NOT observed native '
+            'visibility or destruction.' %
+            (scenario, assumed, details['native_control_count'],
+             len(report['hidden_gltf_nodes']),
+             len(details['conflicts_or_unresolved'])+
+             len(report['skipped_mappings'])))
+
     def toggle_native_stage_initial_state(self,enabled):
-        """Opt-in diagnostic suppression: neither STG nor saved Show state."""
+        """Opt-in scenario overlay; neither STG nor saved Show state changes."""
         checked=bool(enabled)
         for view in (self.m_view,self.m_object_view):
             view.m_native_initial_state_preview=checked
             view.request_draw()
-        if not checked:
-            self.statusBar().showMessage(
-                'Native stage initial-state diagnostic disabled; '
-                'authored Show/Hide state retained.')
-            return
-        report=getattr(self.m_view,'m_native_stage_report',None)
-        if report is None:
-            self.statusBar().showMessage(
-                'No parsed native stage controls to preview.')
-            return
-        details=report['stage_state']
-        self.statusBar().showMessage(
-            'Diagnostic only: %d original kind-6 controls, %d '
-            'editor preview-hidden nodes, %d unresolved/ambiguous; '
-            'not native runtime visibility.' %
-            (details['native_control_count'],
-             len(report['hidden_gltf_nodes']),
-             len(details['conflicts_or_unresolved'])+
-             len(report['skipped_mappings'])))
+        self._report_native_stage_preview()
 
     def stage_background(self):
         project=self.m_project
