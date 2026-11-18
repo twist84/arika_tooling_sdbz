@@ -287,7 +287,9 @@ def press_start_comparison_metrics(images, hidden_reference,
     Stats are descriptive, not a claim of GS pixel parity.
     """
     from PIL import Image
-    from arika_menu_pixel_comparison import compare_screenshot_pixels
+    from arika_menu_pixel_comparison import (
+        RESAMPLE_MODES, compare_screenshot_pixels,
+    )
 
     def pillow_image(qimage):
         if not isinstance(qimage, G.QImage) or qimage.isNull():
@@ -309,9 +311,30 @@ def press_start_comparison_metrics(images, hidden_reference,
             prompt_visible=show_prompt, prompt_case=prompt_case)
         if candidate is None:
             raise ValueError('original game texture layers are required')
+        reference_pixels = pillow_image(reference)
+        candidate_pixels = pillow_image(candidate)
         metrics, _ = compare_screenshot_pixels(
-            pillow_image(reference), pillow_image(candidate),
+            reference_pixels, candidate_pixels,
             resampling=resampling)
+
+        # The whole-frame error can conceal locally incorrect FFON glyphs.
+        # Measure native copyright geometry separately, without changing
+        # registration, sampling, reference or source image.
+        native_rect = (60, 375, 480, 416)
+        region = (
+            round(native_rect[0] * reference_pixels.width / 512),
+            round(native_rect[1] * reference_pixels.height / 448),
+            round(native_rect[2] * reference_pixels.width / 512),
+            round(native_rect[3] * reference_pixels.height / 448),
+        )
+        if candidate_pixels.size != reference_pixels.size:
+            candidate_pixels = candidate_pixels.resize(
+                reference_pixels.size, RESAMPLE_MODES[resampling])
+        detail, _ = compare_screenshot_pixels(
+            reference_pixels.crop(region), candidate_pixels.crop(region),
+            resampling=resampling)
+        detail['native_rect'] = list(native_rect)
+        metrics['copyright_region'] = detail
         results[name] = metrics
     return {
         'prompt_case': prompt_case,
