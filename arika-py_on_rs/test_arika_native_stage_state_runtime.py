@@ -1,7 +1,9 @@
 """Deterministic tests for the evidence-bounded EU-beta kind-6 model."""
 
 import copy
+import importlib.util
 import json
+import os
 from pathlib import Path
 import unittest
 
@@ -184,6 +186,53 @@ class NativeStageRuntimeTests(unittest.TestCase):
                          'controller+0x54 == 1')
         self.assertEqual(by_id['timer_ready']['confidence'], 'effect-only')
         self.assertTrue(graph['unresolved'])
+
+
+    @unittest.skipUnless(
+        all(importlib.util.find_spec(name) for name in
+            ('PySide6', 'wgpu', 'rendercanvas')),
+        'Qt/WebGPU scene-editor dependencies required')
+    def test_editor_runtime_overlay_is_opt_in_and_nonpersistent(self):
+        from types import SimpleNamespace
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6 import QtWidgets as W
+        from arika_scene_editor import c_scene_editor
+
+        app = W.QApplication.instance() or W.QApplication([])
+        editor = c_scene_editor()
+        document = copy.deepcopy(self.document)
+        project = SimpleNamespace(
+            m_stage=SimpleNamespace(m_scene=self.scene),
+            m_document=document,
+            m_background_preset=None,
+            background_rgba=lambda: None,
+        )
+        before = copy.deepcopy(document)
+        try:
+            editor.m_project = project
+            for view in (editor.m_view, editor.m_object_view):
+                view.set_project(project)
+            editor.m_native_runtime_action.setChecked(True)
+            self.assertEqual(editor.m_view.effective_hidden_nodes(), {4})
+            result = editor.native_stage_runtime_event('advance')
+            self.assertFalse(result['applied'])
+            self.assertEqual(editor.m_view.effective_hidden_nodes(), {4})
+            editor.native_stage_runtime_event('timer_ready')
+            editor.native_stage_runtime_event('switch')
+            self.assertEqual(editor.m_view.effective_hidden_nodes(), {3})
+            self.assertEqual(editor.m_object_view.effective_hidden_nodes(), {3})
+            self.assertIn('Diagnostic kind-6', editor.statusBar().currentMessage())
+            editor.native_stage_runtime_event('restore')
+            self.assertEqual(editor.m_view.effective_hidden_nodes(), {4})
+            editor.m_native_runtime_action.setChecked(False)
+            self.assertEqual(editor.m_view.effective_hidden_nodes(), {4})
+            editor.m_native_stage_state_action.setChecked(False)
+            self.assertEqual(editor.m_view.effective_hidden_nodes(), set())
+            self.assertEqual(document, before)
+        finally:
+            editor.m_project = None
+            editor.close()
+            app.processEvents()
 
 
 if __name__ == '__main__':
