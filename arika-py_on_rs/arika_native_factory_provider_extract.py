@@ -74,11 +74,35 @@ def verify_provider_audit(data, snapshot, canonical_registry):
             raise ValueError('provider JAL mismatch at 0x%08X' % site)
         if (_word(data, argument_site) != row['argument_opcode']):
             raise ValueError('argument source opcode mismatch at 0x%08X' % site)
-        if (row['source_application_id'] is not None or
-                row['source_ownership_verified'] or
-                row['factory_invoked_in_observed_runtime'] or
+        # Only two instance-provider source functions are independently
+        # proven by ID1's vtable and the previously recovered cross-app
+        # call instructions. Proximity does not prove other app owners.
+        ownership = {
+            0x3FABF8: (1, 3, 0x3C, 0x3FABF0),
+            0x3FAC30: (1, 4, 0x40, 0x3FAC20),
+        }
+        if site in ownership:
+            owner, phase, offset, function = ownership[site]
+            app = next(a for a in canonical_registry['applications']
+                       if a['id'] == owner)
+            cross = [e for e in canonical_registry['cross_app_interactions']
+                     if e['callsite'] == site and
+                     e['mechanism'] == 'factory_lookup']
+            if (len(cross) != 1 or
+                    app['base_slots']['0x%02x' % offset] != function or
+                    cross[0]['source_function'] != function or
+                    row['source_application_id'] != owner or
+                    not row['source_ownership_verified'] or
+                    row.get('source_callback_address') != function or
+                    row.get('source_callback_phase') != phase or
+                    row.get('source_base_vtable_offset') != offset):
+                raise ValueError('verified provider source ownership mismatch')
+        elif (row['source_application_id'] is not None or
+              row['source_ownership_verified']):
+            raise ValueError('unsupported provider source attribution')
+        if (row['factory_invoked_in_observed_runtime'] or
                 row['returned_object_observed']):
-            raise ValueError('unsupported runtime/source attribution claim')
+            raise ValueError('unsupported runtime execution claim')
         position = row['argument_position']
         if position == 'jal_delay_slot':
             if argument_site != site + 4:
