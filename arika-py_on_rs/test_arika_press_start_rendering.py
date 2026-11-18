@@ -215,12 +215,13 @@ class PressStartRenderingTests(unittest.TestCase):
             images, copyright_images=(glyph, glyph), fade_alpha=1.0)
         half = render_press_start_image(
             images, copyright_images=(glyph, glyph), fade_alpha=.5)
-        # x=98,y=392 is shadow-only. White text at (86,381)
-        # does not reach that point; shadow begins at (88,383).
-        shadow = full.pixelColor(98, 392)
+        # 20-pixel source at native scale ~.67 occupies ~13.4 pixels.
+        # (100,395) is inside the shadow (88,383), but outside
+        # the white foreground glyph (86,381).
+        shadow = full.pixelColor(100, 395)
         white = full.pixelColor(87, 382)
         base = full.pixelColor(110, 390)
-        faded = half.pixelColor(98, 392)
+        faded = half.pixelColor(100, 395)
         self.assertLess(shadow.red(), base.red())
         self.assertGreater(white.red(), base.red())
         self.assertGreater(faded.red(), shadow.red())
