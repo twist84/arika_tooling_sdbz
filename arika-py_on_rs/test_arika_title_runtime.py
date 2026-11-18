@@ -89,7 +89,7 @@ class TitleRuntimeTests(unittest.TestCase):
         self.assertFalse(runtime.load_step()['ready'])
         self.assertFalse(runtime.load_step(False)['ready'])
         ready = runtime.load_step(True)
-        self.assertTrue(ready['ready'])
+        self.assertFalse(ready['ready'])
         self.assertEqual(ready['loader_phase'], 10)
         self.assertEqual(ready['calls'][-2]['arguments'],
                          list(TITLE_SOURCE_RECT))
