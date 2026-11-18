@@ -1,9 +1,7 @@
-"""Press Start (original EU-beta app ID 3) inside the existing editor.
+"""Asset-backed EU-beta Press Start inside the existing Arika Editor.
 
-The game scene is composed from dynamically streamed resources and GS
-draws. The editor does not claim to render them. Optionally load the
-user's two PCSX2 captures as exact visual references, one with and
-one without the PRESS START button prompt. No image is bundled.
+Known sprite layers use original game resources. Captures remain separate
+references rather than replacements for unsupported native GS operations.
 """
 from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
 
@@ -12,6 +10,10 @@ from arika_press_start_runtime import (
     PHASE_WAIT_FOR_START, c_press_start_runtime,
 )
 from arika_app_registry import resolve_app
+from arika_press_start_rendering import (
+    load_press_start_archive_images, render_press_start_image,
+    press_start_comparison_image,
+)
 
 
 # Actual viewport bounds measured from the user's 1920x1040 PCSX2
@@ -86,6 +88,9 @@ class c_press_start_preview(W.QWidget):
         self.m_reference_hidden = None
         self.m_reference_visible = None
         self.m_reference_error = None
+        self.m_images = (None, None, None)
+        self.m_asset_errors = (
+            'Open an EU-beta INFO.DAT / GAME.DAT archive',) * 3
 
         self.m_timer = C.QTimer(self)
         self.m_timer.setTimerType(C.Qt.TimerType.PreciseTimer)
@@ -108,6 +113,12 @@ class c_press_start_preview(W.QWidget):
             'Choose the visible/hidden reference frame manually. '
             'The native prompt blink timing is not yet verified.')
         self.m_prompt_visible.toggled.connect(self.redraw)
+        self.m_view_mode = W.QComboBox()
+        self.m_view_mode.addItems((
+            'Reconstruction', 'Side-by-side comparison', 'Reference capture'))
+        self.m_view_mode.setToolTip(
+            'Reference screenshots are never used as native sprite textures.')
+        self.m_view_mode.currentIndexChanged.connect(self.redraw)
         self.m_load_hidden = W.QPushButton('Load PCSX2 capture: no prompt')
         self.m_load_visible = W.QPushButton('Load PCSX2 capture: prompt')
         self.m_load_hidden.clicked.connect(self.choose_hidden_capture)
@@ -149,11 +160,11 @@ class c_press_start_preview(W.QWidget):
         self.m_calls = W.QLabel()
         self.m_calls.setWordWrap(True)
         self.m_notice = W.QLabel(
-            'The original background, logo, and copyright graphics are '
-            'not synthesized. Loaded PCSX2 images are pixel-reference '
-            'captures, NOT recreated native GS rendering. '
-            'Prompt visibility is manually selectable; no blink rate '
-            'has been guessed.')
+            'Two native sprite layers use decoded original game resources. '
+            'Qt compositing is NOT recreated native GS output: '
+            'exact blending, filtering, the third dynamic sprite, '
+            'copyright/font and prompt timing remain unresolved. '
+            'Prompt visibility manually selects the reference state only.')
         self.m_notice.setWordWrap(True)
 
         layout = W.QVBoxLayout(self)
@@ -162,6 +173,7 @@ class c_press_start_preview(W.QWidget):
         references.addWidget(self.m_load_hidden)
         references.addWidget(self.m_load_visible)
         references.addWidget(self.m_prompt_visible)
+        references.addWidget(self.m_view_mode)
         references.addStretch()
         layout.addLayout(references)
         inputs = W.QHBoxLayout()
