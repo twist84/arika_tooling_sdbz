@@ -13,6 +13,7 @@ from arika_press_start_rendering import (
     render_press_start_image, press_start_comparison_image,
     press_start_comparison_metrics,
     raster_press_start_copyright, load_press_start_archive_font,
+    tint_press_start_ffon,
 )
 from arika_press_start_resources import PRESS_START_RESOURCE_KEYS
 from test_arika_logo_preview import synthetic_tim2_rgba32, synthetic_fpix
@@ -185,6 +186,45 @@ class PressStartRenderingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             render_press_start_image(
                 (foreground, background, None), prompt_visible=1)
+
+    def test_ffon_tint_preserves_glyph_coverage_and_changes_rgb(self):
+        glyph = G.QImage(8, 8, G.QImage.Format.Format_RGBA8888)
+        glyph.fill(C.Qt.GlobalColor.transparent)
+        glyph.setPixelColor(1, 1, G.QColor(255, 255, 255, 255))
+        glyph.setPixelColor(2, 2, G.QColor(255, 255, 255, 128))
+        shadow = tint_press_start_ffon(glyph, .25)
+        foreground = tint_press_start_ffon(glyph, 1.0)
+        self.assertEqual(shadow.pixelColor(1, 1),
+                         G.QColor(64, 64, 64, 255))
+        self.assertEqual(foreground.pixelColor(1, 1),
+                         G.QColor(255, 255, 255, 255))
+        self.assertEqual(shadow.pixelColor(0, 0).alpha(), 0)
+        # 4bpp font coverage must not turn into 25%-opaque white.
+        self.assertEqual(shadow.pixelColor(2, 2).alpha(), 128)
+        self.assertAlmostEqual(shadow.pixelColor(2, 2).red(),
+                               64, delta=2)
+        for value in (-.1, 1.01, None, True, float('nan')):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                tint_press_start_ffon(glyph, value)
+
+    def test_shadow_is_dark_tint_and_fade_remains_separate(self):
+        glyph = self.texture((255, 255, 255, 255), 20, 20)
+        background = self.texture((200, 200, 200, 255))
+        images = (None, background, None)
+        full = render_press_start_image(
+            images, copyright_images=(glyph, glyph), fade_alpha=1.0)
+        half = render_press_start_image(
+            images, copyright_images=(glyph, glyph), fade_alpha=.5)
+        # x=98,y=392 is shadow-only. White text at (86,381)
+        # does not reach that point; shadow begins at (88,383).
+        shadow = full.pixelColor(98, 392)
+        white = full.pixelColor(87, 382)
+        base = full.pixelColor(110, 390)
+        faded = half.pixelColor(98, 392)
+        self.assertLess(shadow.red(), base.red())
+        self.assertGreater(white.red(), base.red())
+        self.assertGreater(faded.red(), shadow.red())
+        self.assertLess(faded.red(), base.red())
 
     def test_original_ffon_uses_shared_native_raster(self):
         from test_arika_menu_ffon_native import synthetic_font
