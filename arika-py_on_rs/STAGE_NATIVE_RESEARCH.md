@@ -15,3 +15,13 @@ These findings come from original-loader pseudocode; a dedicated instruction ora
 0x1B9F70 checks the starting object name, then searches child subtrees through 0x19E2F0. The latter visits self, then each child subtree in sibling order: first depth-first match wins. The parser now exposes primary_node/secondary_node and all authored matches. Runtime construction creates two objects for kind 3, so an authored node index is not necessarily a unique runtime object pointer.
 
 Use `python arika_stages.py controls-json extracted/stg/s01/s01a.stg controls.json`. Missing named targets are reported as null rather than selected from another root or sibling. Initial visibility export remains unchanged. Callback 0x2409F0 re-applies the primary-enabled/secondary-hidden masks on event 0x08000000; event 0x20 toggles collision flag 16 through 0x1ABD30/0x1ABD70. Full flag consumers and destruction transitions still require tracing.
+
+## Kind-6 initial flag mask diagnostic
+
+The native original EU-beta ELF now has an exact instruction-word oracle for
+kind-6 initial and reversal `0x300` masks on runtime object field `+0x28`.
+The 3D scene editor offers an **optional** stage initial-state preview of
+secondary-target geometry, separate from authored Show/Hide state. It does
+not claim full native GS/collision visibility or persist masked geometry.
+Details, 18 verified opcode words and the remaining flag-consumer work:
+[research/NATIVE_STAGE_CONTROL_INITIAL_STATE.md](research/NATIVE_STAGE_CONTROL_INITIAL_STATE.md).
