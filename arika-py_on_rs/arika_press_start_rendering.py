@@ -162,9 +162,56 @@ def tint_press_start_ffon(image, rgb):
     return tinted
 
 
+
+def raster_press_start_copyright_glyph_quads(font, font_data):
+    """Decode the original FFON into individual native-width glyph quads.
+
+    The EE string path submits glyphs separately, advancing the pen in
+    float32. Resizing a precomposed entire line can blend two adjacent glyph
+    cells together and does not preserve each glyph's fractional placement.
+    Cache the two original ELF colour passes once per archive load.
+    """
+    from arika_ffon import decode_glyph, _char_to_glyph_id
+    from arika_menu_ffon_native import (
+        NATIVE_ASCII_ADVANCE, native_help_glyph_origins,
+    )
+    from arika_press_start_copyright import COPYRIGHT_FONT_SCALE
+
+    if (font.width, font.height, font.bits_per_pixel) != (24, 24, 4):
+        raise ValueError('expected original 24x24 4bpp native font')
+    cached = {}
+    lines = []
+    for text in COPYRIGHT_LINES:
+        origins, _ = native_help_glyph_origins(
+            text, COPYRIGHT_FONT_SCALE)
+        quads = []
+        for origin, character in zip(origins, text):
+            if character == ' ':
+                continue
+            glyph_id = _char_to_glyph_id(font, character)
+            if glyph_id == 0:
+                continue
+            if glyph_id not in cached:
+                source = decode_glyph(
+                    font_data, font.glyph_offset(glyph_id - 1),
+                    font.width, font.height, font.row_stride)
+                source = source.crop(
+                    (0, 0, NATIVE_ASCII_ADVANCE, font.height))
+                width, height = source.size
+                image = G.QImage(
+                    source.tobytes(), width, height, width * 4,
+                    G.QImage.Format.Format_RGBA8888).copy()
+                cached[glyph_id] = (
+                    tint_press_start_ffon(image, 0.25),
+                    tint_press_start_ffon(image, 1.0))
+            quads.append((origin, *cached[glyph_id]))
+        lines.append(tuple(quads))
+    return tuple(lines)
+
+
 def render_press_start_image(images, copyright_images=None,
                              prompt_visible=False, fade_alpha=1.0,
-                             prompt_case=1):
+                             prompt_case=1, copyright_quads=None):
     """Compose original static sprites, proven text/icon calls and prompt case.
 
     Copyright glyph pixels are rasterised with the existing game FFON helper.
@@ -189,6 +236,15 @@ def render_press_start_image(images, copyright_images=None,
                 not isinstance(image, G.QImage) or image.isNull()
                 for image in copyright_images):
             raise ValueError('expected two decoded original FFON strings')
+    if copyright_quads is not None:
+        if len(copyright_quads) != len(COPYRIGHT_LINES):
+            raise ValueError('expected two native FFON glyph quad runs')
+        for quads in copyright_quads:
+            for quad in quads:
+                if (len(quad) != 3 or not isinstance(quad[0], (int, float))
+                        or any(not isinstance(image, G.QImage) or
+                               image.isNull() for image in quad[1:])):
+                    raise ValueError('invalid native FFON glyph quad')
     operations = native_copyright_draws(fade_alpha)
     # Native shadow/text tints are separate from the fade alpha.
     # Tint each glyph mask once per render, not once for each text line.
@@ -231,7 +287,19 @@ def render_press_start_image(images, copyright_images=None,
         painter.setRenderHint(
             G.QPainter.RenderHint.SmoothPixmapTransform, True)
         for operation in operations:
-            if operation['kind'] == 'text' and copyright_images is not None:
+            if operation['kind'] == 'text' and copyright_quads is not None:
+                index = COPYRIGHT_LINES.index(operation['text'])
+                painter.setOpacity(operation['alpha'])
+                tint_index = 0 if operation['rgb'] == 0.25 else 1
+                for origin, shadow, foreground in copyright_quads[index]:
+                    image = shadow if tint_index == 0 else foreground
+                    painter.drawImage(
+                        C.QRectF(
+                            operation['x'] + origin, operation['y'],
+                            image.width() * operation['scale'],
+                            image.height() * operation['scale']),
+                        image, C.QRectF(0, 0, image.width(), image.height()))
+            elif operation['kind'] == 'text' and copyright_images is not None:
                 index = COPYRIGHT_LINES.index(operation['text'])
                 image = text_passes[(index, operation['rgb'])]
                 painter.setOpacity(operation['alpha'])
@@ -278,7 +346,8 @@ def press_start_comparison_image(reconstructed, reference):
 
 def press_start_comparison_metrics(images, hidden_reference,
                                    visible_reference, copyright_images=None,
-                                   prompt_case=1, resampling='bilinear'):
+                                   prompt_case=1, resampling='bilinear',
+                                   copyright_quads=None):
     """Measure both original PCSX2 states against rebuilt archive layers.
 
     Each reconstruction uses the SAME original resources with only the
@@ -308,7 +377,8 @@ def press_start_comparison_metrics(images, hidden_reference,
             ('visible', True, visible_reference)):
         candidate = render_press_start_image(
             images, copyright_images=copyright_images,
-            prompt_visible=show_prompt, prompt_case=prompt_case)
+            prompt_visible=show_prompt, prompt_case=prompt_case,
+            copyright_quads=copyright_quads)
         if candidate is None:
             raise ValueError('original game texture layers are required')
         reference_pixels = pillow_image(reference)
