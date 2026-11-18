@@ -11,6 +11,8 @@ from arika_demo_main_runtime import c_demo_main_bootstrap, DEMO_MAIN_RESOURCE_GR
 
 
 class c_demo_main_preview(W.QWidget):
+    parent_requested = C.Signal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.m_bootstrap = c_demo_main_bootstrap()
@@ -75,6 +77,11 @@ class c_demo_main_preview(W.QWidget):
         self.m_update_step = W.QPushButton('Step native update')
         self.m_update_play = W.QPushButton('Play')
         self.m_update_reset = W.QPushButton('Reset update')
+        self.m_inspect_parent = W.QPushButton('Inspect returned parent')
+        self.m_inspect_parent.setToolTip(
+            'Navigate to a known registered parent application in the '
+            'existing editor. Never execute the game application factory.')
+        self.m_inspect_parent.clicked.connect(self.inspect_parent)
         self.m_update_step.clicked.connect(self.step_update)
         self.m_update_play.clicked.connect(self.toggle_update_playback)
         self.m_update_reset.clicked.connect(self.reset_update)
@@ -128,6 +135,7 @@ class c_demo_main_preview(W.QWidget):
         update_controls.addWidget(self.m_update_step)
         update_controls.addWidget(self.m_update_play)
         update_controls.addWidget(self.m_update_reset)
+        update_controls.addWidget(self.m_inspect_parent)
         update_controls.addStretch()
         layout.addLayout(update_controls)
         choice_controls = W.QHBoxLayout()
@@ -182,6 +190,11 @@ class c_demo_main_preview(W.QWidget):
         self.m_child_pending.setChecked(True)
         self.m_exit_input.setChecked(False)
         self.redraw()
+
+    def inspect_parent(self):
+        app_id = self.m_bootstrap.m_update.snapshot()['last_return']
+        if app_id is not None and resolve_app(app_id) is not None:
+            self.parent_requested.emit(app_id)
 
     def set_captured_choice(self):
         runtime = self.m_bootstrap.m_update
@@ -294,6 +307,9 @@ class c_demo_main_preview(W.QWidget):
             not update['finished'] and not self.m_update_timer.isActive())
         self.m_update_play.setText(
             'Pause' if self.m_update_timer.isActive() else 'Play')
+        self.m_inspect_parent.setEnabled(
+            update['finished'] and update['last_return'] is not None
+            and resolve_app(update['last_return']) is not None)
         self.m_set_choice.setEnabled(
             not update['finished'] and update['phase'] == 0
             and not self.m_update_timer.isActive())
