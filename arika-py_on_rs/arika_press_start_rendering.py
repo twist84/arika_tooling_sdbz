@@ -363,8 +363,8 @@ def render_press_start_image(images, copyright_images=None,
                 for origin, shadow, foreground in copyright_quads[index]:
                     image = shadow if tint_index == 0 else foreground
                     painter.drawImage(
-                        native_press_start_ffon_rect(
-                            operation, origin, image),
+                        C.QRectF(native_press_start_ffon_rect(
+                            operation, origin, image)),
                         image, C.QRectF(0, 0, image.width(), image.height()))
             elif operation['kind'] == 'text' and copyright_images is not None:
                 index = COPYRIGHT_LINES.index(operation['text'])
