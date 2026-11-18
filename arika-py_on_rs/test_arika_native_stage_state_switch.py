@@ -6,7 +6,8 @@ from pathlib import Path
 import unittest
 
 from arika_native_stage_state_switch import (
-    ELF_SWITCH_WORDS, EVENT_RESET_FLAG, EVENT_SECONDARY_FLAG, SCENARIO_NAMES,
+    ELF_SWITCH_WORDS, ELF_LIFECYCLE_WORDS, ELF_VTABLE_WORDS,
+    EVENT_RESET_FLAG, EVENT_SECONDARY_FLAG, SCENARIO_NAMES,
     inspect_native_stage_event_callback, inspect_native_stage_scenario,
     native_stage_scenario_preview_hidden_nodes, verify_native_stage_switch_elf,
 )
@@ -153,6 +154,17 @@ class NativeStageSwitchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'SHA-256'):
             verify_native_stage_switch_elf(b'incorrect ELF')
 
+    def test_native_constructor_vtable_and_phase_ready_chain(self):
+        self.assertEqual(len(ELF_LIFECYCLE_WORDS), 10)
+        self.assertEqual(ELF_LIFECYCLE_WORDS[0x23CCF4], 0x0C0900A4)
+        self.assertEqual(ELF_LIFECYCLE_WORDS[0x240C38], 0x24427110)
+        self.assertEqual(ELF_LIFECYCLE_WORDS[0x240C78], 0xAC800054)
+        self.assertEqual(ELF_LIFECYCLE_WORDS[0x2404B0], 0xAE020054)
+        self.assertEqual(ELF_VTABLE_WORDS, {0x4E7128: 0x240710})
+        self.assertEqual(
+            inspect_native_stage_scenario(
+                self.scene, 'switched', 1)['native_callback'], 0x240710)
+
     def test_optional_exact_eu_beta_opcode_oracle(self):
         path = os.environ.get('SDBZ_EU_BETA_ELF')
         if not path:
@@ -161,6 +173,9 @@ class NativeStageSwitchTests(unittest.TestCase):
         result = verify_native_stage_switch_elf(data)
         self.assertEqual(result['verified_initial_words'], 18)
         self.assertEqual(result['verified_switch_words'], len(ELF_SWITCH_WORDS))
+        self.assertEqual(result['verified_lifecycle_words'],
+                         len(ELF_LIFECYCLE_WORDS))
+        self.assertEqual(result['verified_vtable_slots'], 1)
         self.assertFalse(result['original_runtime_executed'])
 
     @unittest.skipUnless(
