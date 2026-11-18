@@ -1207,6 +1207,14 @@ class c_scene_editor(W.QMainWindow):
         except Exception as error:
             self.m_logo_view=W.QLabel('Startup logo editor unavailable: %s'%error)
             self.m_menu_tabs.addTab(self.m_logo_view,'Startup / Splash')
+        try:
+            from arika_warning_preview import c_warning_preview
+            self.m_warning_view=c_warning_preview()
+            self.m_warning_view.setSizePolicy(W.QSizePolicy.Policy.Expanding,W.QSizePolicy.Policy.Expanding)
+            self.m_menu_tabs.addTab(self.m_warning_view,'Warning / Video Mode')
+        except Exception as error:
+            self.m_warning_view=W.QLabel('Warning editor unavailable: %s'%error)
+            self.m_menu_tabs.addTab(self.m_warning_view,'Warning / Video Mode')
         self.m_object_view=c_viewport();self.m_object_view.m_isolated=set();self.m_object_view.selection_requested.connect(self.select_view);self.m_object_view.selection_all.connect(self.select_all);self.m_object_view.delete_requested.connect(self.delete_selected);self.m_object_view.transform_changed.connect(self.sync_selection);self.m_object_view.gizmo_mode_requested.connect(self.set_gizmo_mode);self.m_views.addWidget(self.m_object_view)
         self.m_views.addWidget(menu_panel)
         audio_panel=W.QWidget();al=W.QVBoxLayout(audio_panel);al.setContentsMargins(8,8,8,8);al.setSpacing(6)
@@ -1748,6 +1756,8 @@ class c_scene_editor(W.QMainWindow):
         if hasattr(self.m_logo_view, 'load_archive_assets'):
             # Immediately clear any images from an older game archive.
             self.m_logo_view.load_archive_assets({})
+        if hasattr(self.m_warning_view, 'load_archive_assets'):
+            self.m_warning_view.load_archive_assets({})
         try:
             self.m_tree.clear();self.m_items={}
         except Exception:pass
@@ -1789,6 +1799,8 @@ class c_scene_editor(W.QMainWindow):
         # Never launch a separate preview or extract copyrighted files to disk.
         if hasattr(self.m_logo_view, 'load_archive_assets'):
             self.m_logo_view.load_archive_assets(self.m_virtual_files)
+        if hasattr(self.m_warning_view, 'load_archive_assets'):
+            self.m_warning_view.load_archive_assets(self.m_virtual_files)
 
         self.statusBar().showMessage('Loaded archive %s — %d entries'%(info_path.name,len(self.m_virtual_files)))
         self.m_scene_status.setText('Archive: %d entries'%len(self.m_virtual_files))
@@ -3291,7 +3303,7 @@ class c_scene_editor(W.QMainWindow):
             self.m_object_view.request_draw()
             if not self.m_view.m_selection:self.statusBar().showMessage('Object View: select an object or group in the Outliner.')
         elif index==4:
-            self.statusBar().showMessage('Game screens: main menu and native startup logos.')
+            self.statusBar().showMessage('Game screens: main menu, startup logos and warning/video mode.')
         elif index==5:
             self.select_audio_view()
         self.sync_view_controls()
