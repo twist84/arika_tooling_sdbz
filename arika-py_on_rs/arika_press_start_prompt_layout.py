@@ -36,6 +36,18 @@ PRESS_START_PROMPT_CASE_ENTRY = {
 # Dispatch/first-draw and subsequent source-corner immediates, selected
 # from each case's distinct original machine-code sequence.
 PRESS_START_PROMPT_LAYOUT_WORDS = {
+    0x003F7D48: 0x0C0ABEDC,  # service 0x2AFB70
+    0x003F7D60: 0x0C0ABEE0,  # service 0x2AFB80
+    0x003F7D70: 0x0C0ABEB4,  # eligibility service 0x2AFAD0
+    0x003F7D88: 0x0C0ABEB4,
+    0x003F7D94: 0x0C0ABEB4,
+    0x003F7D9C: 0x1200000C,  # branch on first eligibility
+    0x003F7DA4: 0x16000003,  # branch to second-case decision
+    0x003F7DB4: 0x24030002,
+    0x003F7DB8: 0x1000000E,
+    0x003F7DC0: 0x0C0ABF20,  # fallback service 0x2AFC80
+    0x003F7DD8: 0x0C0ABF20,
+    0x003F7DE4: 0x0C0ABF20,
     0x003F7E2C: 0x10430164,  # case 4
     0x003F7E34: 0x104300F7,  # case 3
     0x003F7E40: 0x10430089,  # case 2
@@ -98,6 +110,34 @@ def native_prompt_layout(case):
                             x + float(source[2]) +
                             PRESS_START_PROMPT_SPACING))[0]
     return tuple(result)
+
+
+
+def native_prompt_case_from_service_results(
+        b70, b80, eligibility0=False, eligibility1=False,
+        fallback0=False, fallback1=False):
+    """Reproduce the decision tree in 0x003F7D40 from observed helper results.
+
+    Arguments are *return values* from the original native helpers, not
+    inferred controller counts or Qt checkbox settings. In particular,
+    fallback values represent 0x2AFC80(0/1). Only values reachable along
+    the selected original branch affect the result.
+    """
+    for value in (b70, b80, eligibility0, eligibility1,
+                  fallback0, fallback1):
+        if type(value) is not bool:
+            raise ValueError('native service observations must be boolean')
+    if b70:
+        return 4
+    if not b80:
+        if eligibility0:
+            return 4
+        return int(fallback0)
+    if eligibility0:
+        return 4 if eligibility1 else 2
+    if eligibility1:
+        return 3
+    return int(fallback0 or fallback1)
 
 
 def verify_press_start_prompt_layout_elf(elf):
