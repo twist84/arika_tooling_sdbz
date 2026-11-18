@@ -1,5 +1,7 @@
 """Regression tests for native stage kind-6 initial state mask diagnostics."""
 import copy
+import os
+from pathlib import Path
 import struct
 import unittest
 
@@ -148,6 +150,20 @@ class NativeStageInitialStateTests(unittest.TestCase):
         self.assertEqual(ELF_INITIAL_WORDS[0x240878], 0x30630300)
         with self.assertRaisesRegex(ValueError, 'SHA-256'):
             verify_native_stage_control_elf(b'not an original ELF')
+
+    def test_exact_beta_elf_oracle_optional(self):
+        path=os.environ.get('SDBZ_EU_BETA_ELF')
+        if not path:
+            self.skipTest('exact original EU-beta ELF not distributed in CI')
+        original=Path(path).read_bytes()
+        result=verify_native_stage_control_elf(original)
+        self.assertEqual(result['verified_original_instruction_words'],18)
+        self.assertEqual(result['mask'],0x300)
+        self.assertFalse(result['runtime_execution_proven'])
+        corrupt=bytearray(original)
+        corrupt[0x240878-0xFFF80]^=1
+        with self.assertRaisesRegex(ValueError,'SHA-256'):
+            verify_native_stage_control_elf(bytes(corrupt))
 
     def test_invalid_scene_and_cycles_rejected(self):
         with self.assertRaises(ValueError):
