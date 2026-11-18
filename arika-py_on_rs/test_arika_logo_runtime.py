@@ -42,6 +42,9 @@ class LogoRuntimeTests(unittest.TestCase):
         self.assertEqual(first['calls'], [])
         self.assertEqual(runtime.step(1.5, False)['snapshot']['phase'], 2)
         result = runtime.step(0.5, False)
+        self.assertEqual(result['snapshot']['phase'], 3)
+        self.assertEqual(result['calls'], [])
+        result = runtime.step(0.0, False)
         self.assertEqual(result['snapshot']['phase'], 4)
         self.assertEqual([x['address'] for x in result['calls']],
                          ['0x2c0c90', '0x2c08a0'])
@@ -53,7 +56,8 @@ class LogoRuntimeTests(unittest.TestCase):
         self.assertEqual(runtime.step(5.0, True)['snapshot']['phase'], 1)
         self.assertEqual(runtime.step(0, False)['snapshot']['phase'], 2)
         runtime.step(2.0, True)
-        self.assertEqual(runtime.snapshot()['phase'], 4)
+        self.assertEqual(runtime.snapshot()['phase'], 3)
+        self.assertEqual(runtime.step(0.0, True)['snapshot']['phase'], 4)
         self.assertEqual(runtime.step(42.0, True)['snapshot']['phase'], 4)
         self.assertEqual(runtime.step(1.0, False)['snapshot']['phase'], 5)
         self.assertEqual(runtime.snapshot()['age_seconds'], 0)
@@ -66,9 +70,12 @@ class LogoRuntimeTests(unittest.TestCase):
                 words = ({'controller0': 0x10} if index == 0 else
                          {'controller1': 0x10})
                 result = runtime.step(0, False, **words)
-                self.assertEqual(result['snapshot']['phase'], 4)
+                self.assertEqual(result['snapshot']['phase'], 3)
                 self.assertTrue(result['snapshot']['skip_latched'])
                 self.assertEqual(result['calls'], [])
+                after = runtime.step(0, False)
+                self.assertEqual(after['snapshot']['phase'], 4)
+                self.assertEqual(after['calls'], [])
 
     def test_cycle_0_to_1_to_2_and_finish(self):
         runtime = c_logo_runtime()
@@ -78,7 +85,10 @@ class LogoRuntimeTests(unittest.TestCase):
             self.assertEqual(runtime.snapshot()['phase'], 2)
             # Time expiry is not a button skip.
             result = runtime.step(2, False)
+            self.assertEqual(result['snapshot']['phase'], 3)
+            self.assertEqual(result['calls'], [])
             self.assertFalse(result['snapshot']['skip_latched'])
+            result = runtime.step(0, False)
             if expected_logo == 2:
                 self.assertEqual(result['snapshot']['phase'], 10)
                 self.assertEqual(result['calls'][0]['arguments'], [0])
@@ -101,12 +111,16 @@ class LogoRuntimeTests(unittest.TestCase):
             runtime.step(0, False)
             runtime.step(2, False)
             runtime.step(0, False)
+            runtime.step(0, False)
             runtime.step(LOOP_PAUSE, False)
         runtime.step(0, False)
         self.assertEqual(runtime.snapshot()['current_logo'], 2)
         result = runtime.step(0, False, controller0=0x10)
-        self.assertEqual(result['snapshot']['phase'], 10)
+        self.assertEqual(result['snapshot']['phase'], 3)
         self.assertTrue(result['snapshot']['skip_latched'])
+        self.assertEqual(result['calls'], [])
+        result = runtime.step(0, False)
+        self.assertEqual(result['snapshot']['phase'], 10)
         self.assertEqual([x['address'] for x in result['calls']],
                          ['0x2c0c90', '0x2c08a0', '0x3e0b00'])
 
@@ -114,6 +128,7 @@ class LogoRuntimeTests(unittest.TestCase):
         runtime = c_logo_runtime()
         runtime.step(0, False)
         runtime.step(2, False)
+        runtime.step(0, False)
         runtime.step(0, False)
         self.assertEqual(runtime.snapshot()['phase'], 5)
         runtime.step(LOOP_PAUSE, False)
@@ -157,7 +172,7 @@ class LogoRuntimeTests(unittest.TestCase):
             output = json.loads(result.stdout)
             self.assertEqual(output['format'], 'ARIKA_EU_BETA_LOGO_TRACE')
             self.assertEqual([sample['snapshot']['phase'] for sample in output['steps']],
-                             [2, 4, 5])
+                             [2, 3, 4])
 
 
 if __name__ == '__main__':
