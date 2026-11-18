@@ -13,7 +13,7 @@ from arika_app_registry import resolve_app
 from arika_press_start_rendering import (
     load_press_start_archive_images, load_press_start_archive_font,
     raster_press_start_copyright, render_press_start_image,
-    press_start_comparison_image,
+    press_start_comparison_image, press_start_comparison_metrics,
 )
 from arika_press_start_animation import c_press_start_prompt_clock
 from arika_press_start_prompt_layout import PRESS_START_PROMPT_CASES
@@ -137,11 +137,19 @@ class c_press_start_preview(W.QWidget):
         self.m_prompt_case.setToolTip(
             'Manual diagnostic selection of ELF dispatch cases 0..4. '
             'Actual controller-service state to case mapping is unverified.')
-        self.m_prompt_case.currentIndexChanged.connect(self.redraw)
+        self.m_prompt_case.currentIndexChanged.connect(self.invalidate_comparison)
         self.m_load_hidden = W.QPushButton('Load PCSX2 capture: no prompt')
         self.m_load_visible = W.QPushButton('Load PCSX2 capture: prompt')
         self.m_load_hidden.clicked.connect(self.choose_hidden_capture)
         self.m_load_visible.clicked.connect(self.choose_visible_capture)
+        self.m_measure = W.QPushButton('Measure both PCSX2 states')
+        self.m_measure.setToolTip(
+            'Compute unaligned pixel differences from original archive sprites; '
+            'this does not establish PS2 GS pixel parity.')
+        self.m_measure.clicked.connect(self.measure_both_captures)
+        self.m_comparison_stats = W.QLabel()
+        self.m_comparison_stats.setWordWrap(True)
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
 
         self.m_delta = W.QDoubleSpinBox()
         self.m_delta.setRange(0, 60)
@@ -195,6 +203,7 @@ class c_press_start_preview(W.QWidget):
         references.addWidget(self.m_prompt_visible)
         references.addWidget(self.m_clock_enabled)
         references.addWidget(self.m_view_mode)
+        references.addWidget(self.m_measure)
         references.addWidget(self.m_prompt_case)
         references.addStretch()
         layout.addLayout(references)
@@ -220,6 +229,7 @@ class c_press_start_preview(W.QWidget):
         playback.addStretch()
         layout.addLayout(playback)
         layout.addWidget(self.m_status)
+        layout.addWidget(self.m_comparison_stats)
         layout.addWidget(self.m_calls)
         layout.addWidget(self.m_notice)
         self.redraw()
@@ -258,12 +268,39 @@ class c_press_start_preview(W.QWidget):
         else:
             self.m_reference_hidden = selected
         self.m_reference_error = None
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
         self.redraw()
         return selected
+
+    def invalidate_comparison(self):
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
+        self.redraw()
+
+    def measure_both_captures(self):
+        """Only report measurable differences; never auto-claim parity."""
+        try:
+            result = press_start_comparison_metrics(
+                self.m_images, self.m_reference_hidden,
+                self.m_reference_visible, self.m_copyright_images,
+                prompt_case=self.m_prompt_case.currentData())
+            hidden = result['reference_states']['hidden']['all_pixels']
+            visible = result['reference_states']['visible']['all_pixels']
+            self.m_comparison_stats.setText(
+                'Measured (bilinear resize, no registration; NOT GS parity): '
+                'hidden MAE %.3f RMSE %.3f | '
+                'visible MAE %.3f RMSE %.3f' %
+                (hidden['mean_absolute_error'],
+                 hidden['root_mean_square_error'],
+                 visible['mean_absolute_error'],
+                 visible['root_mean_square_error']))
+        except (ValueError, TypeError) as error:
+            self.m_comparison_stats.setText(
+                'Comparison unavailable: ' + str(error))
 
     def clear_reference_captures(self):
         self.m_reference_hidden = None
         self.m_reference_visible = None
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
         self.m_reference_error = None
         self.redraw()
 
@@ -272,6 +309,7 @@ class c_press_start_preview(W.QWidget):
         self.pause_playback()
         self.m_images = (None, None, None)
         self.m_asset_errors = ('Archive not loaded',) * 3
+        self.m_comparison_stats.setText('Comparison metrics: not measured')
         self.m_copyright_images = None
         self.m_font_error = 'Archive not loaded'
         self.m_prompt_clock = c_press_start_prompt_clock()
@@ -360,6 +398,10 @@ class c_press_start_preview(W.QWidget):
              self.m_prompt_case.currentData(),
              'loaded' if self.m_copyright_images is not None else 'missing',
              ' | ' + self.m_reference_error if self.m_reference_error else ''))
+        self.m_measure.setEnabled(
+            self.m_reference_hidden is not None and
+            self.m_reference_visible is not None and
+            any(image is not None for image in self.m_images[:2]))
         self.m_notice.setToolTip(
             '\n'.join([error for error in self.m_asset_errors if error] +
                       ([self.m_font_error] if self.m_font_error else [])))
