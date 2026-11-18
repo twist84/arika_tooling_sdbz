@@ -80,9 +80,13 @@ tabs: **Main menu** and **Startup / Splash**. To use it:
    `INFO.DAT` / `GAME.DAT` pair.
 3. Select **Menu** in the workspace bar (or **Menu Editor** in the view
    dropdown), then **Startup / Splash**.
-4. Use **Step one native update**, **Observed delta**, **busy** and
-   the controller input toggle to inspect the recovered lifecycle.
-   Reset restarts the logo state without reloading the archive.
+4. Use **Play** to run the three-logo sequence automatically,
+   **Pause** to freeze its current native state, and **Play** again to
+   resume. **Step one native update** still advances exactly one logical
+   update using the **Observed delta** field when paused.
+5. **Reset** restarts the logo state without reloading the archive.
+   Changing the archive or leaving the Startup / Splash tab pauses
+   playback, so no old resources continue running in the background.
 
 The logo viewer consumes the **same** `m_virtual_files` mapping as the
 existing main-menu preview. No additional file dialogs, writes to disk,
@@ -126,7 +130,19 @@ Missing or unsupported resources show an explicit message.
 The display uses the proven native rectangles in a 512×448 logical
 canvas presented as 4:3. A **manual logical-step** control accepts
 `delta_seconds`, the external `0x2C0C20` busy result, and bit
-`0x10` controller input for one update. No authored global frame
+`0x10` controller input for one update. **Play/Pause** uses a Qt
+precise timer for UI scheduling and forwards the **measured monotonic
+elapsed time** since the last callback; the 16 ms timer interval is
+only a UI refresh target, not an assumed native PS2 frame duration.
+Pausing preserves the current phase, logo index and age. Resuming
+starts a fresh elapsed-time measurement, without counting paused
+time. Completion stops the timer and disables further playback
+until Reset. **Observed delta** remains a manual-step control
+and does not override automatic elapsed-time playback.
+
+This is a diagnostic preview: external `0x2C0C20` readiness is
+controlled by the **busy** checkbox, not actual game audio;
+the input bit is sampled once per update. No authored global frame
 clock, synthetic fade timings, system-font substitute, or guessed
 sprite selection schedule is introduced.
 

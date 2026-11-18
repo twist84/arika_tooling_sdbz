@@ -176,6 +176,103 @@ class LogoPreviewTests(unittest.TestCase):
                                delta=0.02)
         tabs.close()
 
+    def test_play_pause_keeps_phase_and_manual_step(self):
+        widget = c_logo_preview()
+        self.assertEqual(widget.m_play.text(), 'Play')
+        self.assertFalse(widget.m_timer.isActive())
+
+        widget.m_play.click()
+        self.assertTrue(widget.m_timer.isActive())
+        self.assertEqual(widget.m_play.text(), 'Pause')
+        self.assertFalse(widget.m_step.isEnabled())
+
+        # Invoke the actual Qt timeout signal without relying on OS timing.
+        widget.m_timer.timeout.emit()
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 2)
+        updates = widget.m_runtime.snapshot()['updates']
+        widget.m_step.click()
+        self.assertEqual(widget.m_runtime.snapshot()['updates'], updates)
+
+        widget.m_play.click()
+        self.assertFalse(widget.m_timer.isActive())
+        self.assertEqual(widget.m_play.text(), 'Play')
+        self.assertTrue(widget.m_step.isEnabled())
+        self.assertIn('paused', widget.m_status.text())
+
+        widget.m_delta.setValue(2)
+        widget.m_step.click()
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 3)
+        widget.m_delta.setValue(0)
+        widget.m_step.click()
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 4)
+        widget.close()
+
+    def test_playback_elapsed_delta_and_resume_reset_clock(self):
+        widget = c_logo_preview()
+        widget.m_play.click()
+        self.assertEqual(widget.m_last_elapsed_ns, 0)
+        widget.m_timer.timeout.emit()
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 2)
+        # Simulate a delayed timer tick; wall-time jitter is accumulated,
+        # never replaced with a fabricated 1/60-second native update.
+        widget.m_last_elapsed_ns = widget.m_elapsed.nsecsElapsed() - 2_000_000_000
+        widget.advance_playback()
+        self.assertGreaterEqual(widget.m_runtime.snapshot()['age_seconds'], 2.0)
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 3)
+        widget.m_play.click()
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 3)
+        widget.m_play.click()
+        self.assertEqual(widget.m_last_elapsed_ns, 0)
+        widget.m_play.click()
+        self.assertFalse(widget.m_timer.isActive())
+        widget.close()
+
+    def test_reset_and_new_archive_stop_playback(self):
+        widget = c_logo_preview()
+        widget.m_play.click()
+        self.assertTrue(widget.m_timer.isActive())
+        widget.m_reset.click()
+        self.assertFalse(widget.m_timer.isActive())
+        self.assertEqual(widget.m_play.text(), 'Play')
+        self.assertEqual(widget.m_runtime.snapshot()['phase'], 0)
+        widget.m_play.click()
+        widget.load_archive_assets({})
+        self.assertFalse(widget.m_timer.isActive())
+        self.assertEqual(widget.m_runtime.snapshot()['updates'], 0)
+        self.assertEqual(widget.m_play.text(), 'Play')
+        widget.close()
+
+    def test_sequence_completion_auto_pauses_and_disables_controls(self):
+        widget = c_logo_preview()
+        widget.m_play.click()
+        widget.m_runtime.m_phase = 10
+        widget.advance_native(0)
+        self.assertFalse(widget.m_timer.isActive())
+        self.assertTrue(widget.m_runtime.snapshot()['finished'])
+        self.assertFalse(widget.m_play.isEnabled())
+        self.assertFalse(widget.m_step.isEnabled())
+        self.assertIn('complete', widget.m_status.text())
+        widget.m_reset.click()
+        self.assertFalse(widget.m_runtime.snapshot()['finished'])
+        self.assertTrue(widget.m_play.isEnabled())
+        widget.close()
+
+    def test_switching_tabs_pauses_hidden_logo_view(self):
+        tabs = W.QTabWidget()
+        widget = c_logo_preview()
+        tabs.addTab(widget, 'Startup / Splash')
+        tabs.addTab(W.QWidget(), 'Main menu')
+        tabs.resize(800, 600)
+        tabs.show()
+        self.m_app.processEvents()
+        widget.m_play.click()
+        self.assertTrue(widget.m_timer.isActive())
+        tabs.setCurrentIndex(1)
+        self.m_app.processEvents()
+        self.assertFalse(widget.m_timer.isActive())
+        self.assertEqual(widget.m_play.text(), 'Play')
+        tabs.close()
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -143,6 +143,14 @@ class c_logo_preview(W.QWidget):
         self.m_images = tuple(images)
         self.m_errors = tuple(errors)
         self.m_runtime = c_logo_runtime()
+        # Qt schedules UI updates; the runtime receives measured monotonic
+        # elapsed seconds, not a fabricated native fixed-frame delta.
+        self.m_timer = C.QTimer(self)
+        self.m_timer.setTimerType(C.Qt.TimerType.PreciseTimer)
+        self.m_timer.setInterval(16)
+        self.m_timer.timeout.connect(self.advance_playback)
+        self.m_elapsed = C.QElapsedTimer()
+        self.m_last_elapsed_ns = 0
         self.setWindowTitle('Super Dragon Ball Z (EU beta) — native logo preview')
         self.m_canvas = W.QLabel()
         self.m_canvas.setMinimumSize(220, 165)
@@ -162,8 +170,13 @@ class c_logo_preview(W.QWidget):
         self.m_busy = W.QCheckBox('0x2C0C20 busy (observed input)')
         self.m_skip = W.QCheckBox('Controller +0x22 bit 0x10 (one update)')
         self.m_step = W.QPushButton('Step one native update')
+        self.m_play = W.QPushButton('Play')
+        self.m_play.setToolTip(
+            'Automatically step with elapsed real time (diagnostic playback, '
+            'not measured PS2 update timing). Pause preserves the native state.')
         self.m_reset = W.QPushButton('Reset')
         self.m_step.clicked.connect(self.step)
+        self.m_play.clicked.connect(self.toggle_play)
         self.m_reset.clicked.connect(self.reset)
 
         clock_controls = W.QHBoxLayout()
@@ -174,6 +187,7 @@ class c_logo_preview(W.QWidget):
         input_controls = W.QHBoxLayout()
         input_controls.addWidget(self.m_skip)
         input_controls.addWidget(self.m_step)
+        input_controls.addWidget(self.m_play)
         input_controls.addWidget(self.m_reset)
         input_controls.addStretch()
         layout = W.QVBoxLayout(self)
@@ -190,6 +204,7 @@ class c_logo_preview(W.QWidget):
 
     def load_archive_assets(self, virtual_files):
         """Swap in-memory logo assets on archive open and reset the sequence."""
+        self.pause_playback()
         images, errors = load_logo_archive_images(virtual_files)
         self.m_images = tuple(images)
         self.m_errors = tuple(errors)
@@ -221,27 +236,75 @@ class c_logo_preview(W.QWidget):
         warning = self.m_errors[index] or 'Original resource decoded'
         self.m_status.setText(
             'Logo %d: %s | phase %d | age %.6f | updates %d | %s. '
-            '4:3 QPainter diagnostic only; no native GS fades or filter parity.'
+            'Playback: %s. 4:3 QPainter diagnostic only; '
+            'no native GS fades or filter parity.'
             % (index, LOGO_RESOURCE_NAMES[index], snap['phase'],
-               snap['age_seconds'], snap['updates'], warning))
-        self.m_step.setEnabled(not snap['finished'])
+               snap['age_seconds'], snap['updates'], warning,
+               'running' if self.m_timer.isActive() else
+               'complete' if snap['finished'] else 'paused'))
+        self.m_step.setEnabled(not snap['finished'] and
+                               not self.m_timer.isActive())
+        self.m_play.setEnabled(not snap['finished'])
+        self.m_play.setText('Pause' if self.m_timer.isActive() else 'Play')
 
-    def step(self):
+    def advance_native(self, delta_seconds):
+        """One update, shared by manual stepping and automatic playback."""
         if self.m_runtime.snapshot()['finished']:
             return
         sample = self.m_runtime.step(
-            self.m_delta.value(), self.m_busy.isChecked(),
+            delta_seconds, self.m_busy.isChecked(),
             0x10 if self.m_skip.isChecked() else 0)
         self.m_skip.setChecked(False)
+        if sample['finished']:
+            self.pause_playback()
         self.redraw()
         if sample['calls']:
             addresses = ', '.join(call['address'] for call in sample['calls'])
             self.m_status.setText(self.m_status.text() + ' | calls: ' + addresses)
 
+    def step(self):
+        if not self.m_timer.isActive():
+            self.advance_native(self.m_delta.value())
+
+    def toggle_play(self):
+        if self.m_timer.isActive():
+            self.pause_playback()
+        elif not self.m_runtime.snapshot()['finished']:
+            self.m_last_elapsed_ns = 0
+            self.m_elapsed.start()
+            self.m_timer.start()
+        self.redraw()
+
+    def advance_playback(self):
+        """Deliver elapsed monotonic time, accounting for timer jitter."""
+        if not self.m_timer.isActive():
+            return
+        now_ns = self.m_elapsed.nsecsElapsed()
+        elapsed_ns = max(0, now_ns - self.m_last_elapsed_ns)
+        self.m_last_elapsed_ns = now_ns
+        self.advance_native(elapsed_ns / 1000000000.0)
+
+    def pause_playback(self):
+        self.m_timer.stop()
+        self.m_last_elapsed_ns = 0
+        self.m_play.setText('Play')
+        self.m_step.setEnabled(not self.m_runtime.snapshot()['finished'])
+
     def reset(self):
+        self.pause_playback()
         self.m_runtime = c_logo_runtime()
         self.m_skip.setChecked(False)
         self.redraw()
+
+    def hideEvent(self, event):
+        # Switching away from the editor's startup tab should not advance
+        # a hidden game-screen simulation.
+        self.pause_playback()
+        super().hideEvent(event)
+
+    def closeEvent(self, event):
+        self.pause_playback()
+        super().closeEvent(event)
 
 
 def main():
