@@ -13,6 +13,9 @@ from arika_press_start_resources import (
     PRESS_START_BACKGROUND_RECT, PRESS_START_BACKGROUND_RGBA,
     PRESS_START_FOREGROUND_SOURCE_RECT, PRESS_START_FOREGROUND_DEST_RECT,
 )
+from arika_press_start_copyright import (
+    COPYRIGHT_LINES, native_copyright_draws, native_prompt_case_one,
+)
 
 
 def decode_press_start_texture(payload):
@@ -79,13 +82,52 @@ def load_press_start_archive_images(virtual_files):
     return images, errors
 
 
-def render_press_start_image(images):
-    """Compose only ELF-proven background and foreground sprite rectangles.
+def load_press_start_archive_font(virtual_files):
+    """Reuse original FFON only from the exact game-font archive path."""
+    from arika_ffon import parse_ffon
 
-    The 0.6f background tint is preserved as painter opacity over black.
-    This is a diagnostic approximation of GS colour/alpha behaviour, not
-    a claim of parity. Native dynamic third-sprite/font/prompt draws are
-    intentionally omitted rather than synthesised.
+    if not hasattr(virtual_files, 'items'):
+        raise TypeError('expected editor virtual archive mapping')
+    matches = [(key, data) for key, data in virtual_files.items()
+               if isinstance(key, str) and
+               key.replace('\\', '/').lstrip('/').lower() ==
+               'font/5-24-2.fon']
+    if len(matches) != 1:
+        return None, None, (
+            'font/5-24-2.fon: not found in opened archive'
+            if not matches else 'font/5-24-2.fon: ambiguous duplicate font')
+    data = matches[0][1]
+    try:
+        font = parse_ffon(data)
+        if (font.width, font.height, font.bits_per_pixel) != (24, 24, 4):
+            raise ValueError('expected original 24x24 4bpp native font')
+        return font, data, None
+    except (TypeError, ValueError) as error:
+        return None, None, 'font/5-24-2.fon: ' + str(error)
+
+
+def raster_press_start_copyright(font, font_data):
+    """Raster original ELF strings using the existing native FFON helper."""
+    from arika_menu_ffon_native import render_native_help_line
+
+    images = []
+    for line in COPYRIGHT_LINES:
+        bitmap = render_native_help_line(font, font_data, line)
+        width, height = bitmap.size
+        raw = bitmap.tobytes()
+        images.append(G.QImage(raw, width, height, width * 4,
+                               G.QImage.Format.Format_RGBA8888).copy())
+    return tuple(images)
+
+
+def render_press_start_image(images, copyright_images=None,
+                             prompt_visible=False, fade_alpha=1.0):
+    """Compose original static sprites, proven text/icon calls and prompt case.
+
+    Copyright glyph pixels are rasterised with the existing game FFON helper.
+    GS blend/filter/UV parity is not asserted. Prompt case 1 is selected from
+    the PCSX2-observed three-part source layout; other controller cases are
+    not silently approximated.
     """
     if len(images) != len(PRESS_START_RESOURCE_KEYS):
         raise ValueError('expected exactly three resource image slots')
@@ -95,12 +137,20 @@ def render_press_start_image(images):
         if image is not None and (not isinstance(image, G.QImage) or
                                   image.isNull()):
             raise ValueError('invalid original texture image')
+    if type(prompt_visible) is not bool:
+        raise ValueError('prompt visibility must be boolean')
+    if copyright_images is not None:
+        if len(copyright_images) != len(COPYRIGHT_LINES) or any(
+                not isinstance(image, G.QImage) or image.isNull()
+                for image in copyright_images):
+            raise ValueError('expected two decoded original FFON strings')
+    operations = native_copyright_draws(fade_alpha)
     canvas = G.QImage(*PRESS_START_CANVAS_SIZE,
                       G.QImage.Format.Format_ARGB32_Premultiplied)
     canvas.fill(G.QColor(0, 0, 0))
     painter = G.QPainter(canvas)
     try:
-        # Filtering remains unknown; avoid asserting a GS sampler value.
+        # The real GS sampler is still unknown. These are bounded Qt draws.
         painter.setRenderHint(G.QPainter.RenderHint.SmoothPixmapTransform, False)
         if images[1] is not None:
             painter.setOpacity(PRESS_START_BACKGROUND_RGBA[0])
@@ -111,6 +161,29 @@ def render_press_start_image(images):
             painter.drawImage(C.QRectF(*PRESS_START_FOREGROUND_DEST_RECT),
                               images[0],
                               C.QRectF(*PRESS_START_FOREGROUND_SOURCE_RECT))
+            if prompt_visible:
+                for source, destination in native_prompt_case_one():
+                    if (images[0].width() >= source[0] + source[2] and
+                            images[0].height() >= source[1] + source[3]):
+                        painter.drawImage(C.QRectF(*destination), images[0],
+                                          C.QRectF(*source))
+        for operation in operations:
+            if operation['kind'] == 'text' and copyright_images is not None:
+                index = COPYRIGHT_LINES.index(operation['text'])
+                image = copyright_images[index]
+                painter.setOpacity(operation['alpha'] * operation['rgb'])
+                width = image.width() * operation['scale']
+                height = image.height() * operation['scale']
+                painter.drawImage(
+                    C.QRectF(operation['x'], operation['y'], width, height),
+                    image, C.QRectF(0, 0, image.width(), image.height()))
+            elif operation['kind'] == 'sprite' and images[2] is not None:
+                sx, sy, sw, sh = operation['source_rect']
+                if (images[2].width() >= sx + sw and
+                        images[2].height() >= sy + sh):
+                    painter.setOpacity(operation['alpha'])
+                    painter.drawImage(C.QRectF(*operation['dest_rect']),
+                                      images[2], C.QRectF(sx, sy, sw, sh))
     finally:
         painter.end()
     return canvas
